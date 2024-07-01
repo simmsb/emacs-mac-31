@@ -364,17 +364,20 @@ mac_draw_horizontal_wave (struct frame *f, GC gc, int x, int y,
     gperiod = wave_length * 2;
     gx1 = floor ((CGRectGetMinX (wave_clip) - 1.0f) / gperiod) * gperiod + 0.5f;
     gxmax = CGRectGetMaxX (wave_clip);
-    gy1 = (CGFloat) y + 0.5f;
-    gy2 = (CGFloat) (y + height) - 0.5f;
+    gy1 = (CGFloat) y;
+    gy2 = (CGFloat) (y + height);
 
     CGContextClipToRect (context, wave_clip);
     CGContextSetStrokeColorWithColor (context, gc->cg_fore_color);
-    CGContextMoveToPoint (context, gx1, gy1);
+
+    CGContextMoveToPoint (context, gx1, y + height / 2.0);
+
     while (gx1 <= gxmax)
       {
-	CGContextAddLineToPoint (context, gx1 + gperiod * 0.5f, gy2);
+	CGContextAddCurveToPoint (context, gx1 + wave_length, gy2,
+				  gx1 + wave_length, gy1,
+				  gx1 + gperiod, y + height / 2.0);
 	gx1 += gperiod;
-	CGContextAddLineToPoint (context, gx1, gy1);
       }
     CGContextStrokePath (context);
   }
@@ -2232,7 +2235,7 @@ mac_draw_stretch_glyph_string (struct glyph_string *s)
 static void
 mac_draw_underwave (struct glyph_string *s, int decoration_width)
 {
-  int wave_height = 3, wave_length = 2;
+  int wave_height = 3, wave_length = 4;
 
   mac_draw_horizontal_wave (s->f, s->gc, s->x, s->ybase - wave_height + 3,
 			    decoration_width, wave_height, wave_length);
