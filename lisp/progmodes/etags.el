@@ -732,6 +732,7 @@ Returns t if it visits a tags table, or nil if there are no more in the list."
                       "File %s does not exist")
                     local-tags-file-name)))))
 
+;;;###autoload
 (defun tags-reset-tags-tables ()
   "Reset tags state to cancel effect of any previous \\[visit-tags-table] or \\[find-tag]."
   (interactive)
@@ -1487,7 +1488,7 @@ hits the start of file."
 	      (setq symbs (symbol-value symbs))
 	    (insert (format-message "symbol `%s' has no value\n" symbs))
 	    (setq symbs nil)))
-        (if (vectorp symbs)
+        (if (obarrayp symbs)
 	    (mapatoms ins-symb symbs)
 	  (dolist (sy symbs)
 	    (funcall ins-symb (car sy))))
@@ -1729,6 +1730,21 @@ if the file was newly read in, the value is the filename."
   (fileloop-next-file novisit)
   (switch-to-buffer (current-buffer)))
 
+(defun etags--ensure-file (file)
+  "Ensure FILE can be visited.
+
+FILE should be an expanded file name.
+This function tries to locate FILE, possibly adding it a suffix
+present in `tags-compression-info-list'.  If the file can't be found,
+signals an error.
+Else, returns the filename that can be visited for sure."
+  (let ((f (locate-file file nil (if auto-compression-mode
+				     tags-compression-info-list
+				   '("")))))
+    (unless f
+      (signal 'file-missing (list "Cannot locate file in TAGS" file)))
+    f))
+
 (defun tags--all-files ()
   (save-excursion
     (let ((cbuf (current-buffer))
@@ -1750,7 +1766,7 @@ if the file was newly read in, the value is the filename."
           ;; list later returned by (tags-table-files).
           (setf (if tail (cdr tail) files)
                 (mapcar #'expand-file-name (tags-table-files)))))
-      files)))
+      (mapcar #'etags--ensure-file files))))
 
 (make-obsolete-variable 'tags-loop-operate 'fileloop-initialize "27.1")
 (defvar tags-loop-operate nil
@@ -2049,7 +2065,8 @@ for \\[find-tag] (which see)."
       (user-error "%s"
                   (substitute-command-keys
                    "No tags table loaded; try \\[visit-tags-table]")))
-  (let ((comp-data (tags-completion-at-point-function)))
+  (let ((comp-data (tags-completion-at-point-function))
+        (completion-ignore-case (find-tag--completion-ignore-case)))
     (if (null comp-data)
 	(user-error "Nothing to complete")
       (completion-in-region (car comp-data) (cadr comp-data)
@@ -2137,7 +2154,7 @@ file name, add `tag-partial-file-name-match-p' to the list value.")
               (beginning-of-line)
               (pcase-let* ((tag-info (etags-snarf-tag))
                            (`(,hint ,line . _) tag-info))
-                (let* ((file (file-of-tag))
+                (let* ((file (etags--ensure-file (file-of-tag)))
                        (mark-key (cons file line)))
                   (unless (gethash mark-key marks)
                     (let ((loc (xref-make-etags-location
@@ -2167,7 +2184,7 @@ file name, add `tag-partial-file-name-match-p' to the list value.")
              (setq symbs (symbol-value symbs))
            (warn "symbol `%s' has no value" symbs)
            (setq symbs nil))
-         (if (vectorp symbs)
+         (if (obarrayp symbs)
              (mapatoms add-xref symbs)
            (dolist (sy symbs)
              (funcall add-xref (car sy))))

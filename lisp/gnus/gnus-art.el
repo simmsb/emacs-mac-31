@@ -694,7 +694,7 @@ used as possible file names."
 
 (defcustom gnus-page-delimiter "^\^L"
   "Regexp describing what to use as article page delimiters.
-The default value is \"^\^L\", which is a form linefeed at the
+The default value is \"^\\^L\", which is a form linefeed at the
 beginning of a line."
   :type 'regexp
   :group 'gnus-article-various)
@@ -2871,12 +2871,15 @@ Return file name relative to the parent of DIRECTORY."
 			      cid handle directory))
 	      (throw 'found file)))
 	   ((equal (concat "<" cid ">") (mm-handle-id handle))
-	    (setq file (or (mm-handle-filename handle)
-			   (concat
-			    (make-temp-name "cid")
-			    (car (rassoc (car (mm-handle-type handle))
-					 mailcap-mime-extensions))))
-		  afile (expand-file-name file directory))
+            ;; Randomize filenames: declared filenames may not be unique.
+            (setq file (format "cid-%d-%s"
+			       (random 99)
+			       (or (mm-handle-filename handle)
+				   (concat
+				    (make-temp-name "cid")
+				    (car (rassoc (car (mm-handle-type handle))
+						 mailcap-mime-extensions)))))
+                  afile (expand-file-name file directory))
 	    (mm-save-part-to-file handle afile)
 	    (throw 'found (concat (file-name-nondirectory
 				   (directory-file-name directory))
@@ -7391,6 +7394,7 @@ This is an extended text-mode.
 \\{gnus-article-edit-mode-map}"
   (make-local-variable 'gnus-article-edit-done-function)
   (make-local-variable 'gnus-prev-winconf)
+  (make-local-variable 'gnus-prev-cwc)
   (setq-local font-lock-defaults '(message-font-lock-keywords t))
   (setq-local mail-header-separator "")
   (setq-local gnus-article-edit-mode t)
@@ -7421,7 +7425,8 @@ groups."
 
 (defun gnus-article-edit-article (start-func exit-func &optional quiet)
   "Start editing the contents of the current article buffer."
-  (let ((winconf (current-window-configuration)))
+  (let ((winconf (current-window-configuration))
+        (cwc gnus-current-window-configuration))
     (set-buffer gnus-article-buffer)
     (let ((message-auto-save-directory
 	   ;; Don't associate the article buffer with a draft file.
@@ -7432,6 +7437,7 @@ groups."
     (gnus-configure-windows 'edit-article)
     (setq gnus-article-edit-done-function exit-func)
     (setq gnus-prev-winconf winconf)
+    (setq gnus-prev-cwc cwc)
     (unless quiet
       (gnus-message 6 "C-c C-c to end edits"))))
 
@@ -7441,7 +7447,8 @@ groups."
   (let ((func gnus-article-edit-done-function)
 	(buf (current-buffer))
 	(start (window-start))
-	(winconf gnus-prev-winconf))
+	(winconf gnus-prev-winconf)
+        (cwc gnus-prev-cwc))
     (widen) ;; Widen it in case that users narrowed the buffer.
     (funcall func arg)
     (set-buffer buf)
@@ -7459,6 +7466,7 @@ groups."
     (set-text-properties (point-min) (point-max) nil)
     (gnus-article-mode)
     (set-window-configuration winconf)
+    (setq gnus-current-window-configuration cwc)
     (set-buffer buf)
     (set-window-start (get-buffer-window buf) start)
     (set-window-point (get-buffer-window buf) (point)))
@@ -7480,10 +7488,12 @@ groups."
       (erase-buffer)
       (if (gnus-buffer-live-p gnus-original-article-buffer)
 	  (insert-buffer-substring gnus-original-article-buffer))
-      (let ((winconf gnus-prev-winconf))
+      (let ((winconf gnus-prev-winconf)
+            (cwc gnus-prev-cwc))
 	(kill-all-local-variables)
 	(gnus-article-mode)
 	(set-window-configuration winconf)
+        (setq gnus-current-window-configuration cwc)
 	;; Tippy-toe some to make sure that point remains where it was.
 	(with-current-buffer curbuf
 	  (set-window-start (get-buffer-window (current-buffer)) window-start)
@@ -8326,11 +8336,10 @@ url is put as the `gnus-button-url' overlay property on the button."
       (when (looking-at "\\([A-Za-z]+\\):")
 	(setq scheme (match-string 1))
 	(goto-char (match-end 0)))
-      (when (looking-at "//\\([^:/]+\\)\\(:?\\)\\([0-9]+\\)?/")
+      (when (looking-at "//\\([^:/]+\\):?\\([0-9]+\\)?/")
 	(setq server (match-string 1))
-	(setq port (if (stringp (match-string 3))
-		       (string-to-number (match-string 3))
-		     (match-string 3)))
+        (setq port (and (match-beginning 2)
+                        (string-to-number (match-string 2))))
 	(goto-char (match-end 0)))
 
       (cond

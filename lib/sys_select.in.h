@@ -19,6 +19,13 @@
 # endif
 @PRAGMA_COLUMNS@
 
+/* This file uses #include_next of a system file that defines time_t.
+   For the 'year2038' module to work right, <config.h> needs to have been
+   included before.  */
+#if !_GL_CONFIG_H_INCLUDED
+ #error "Please include config.h first."
+#endif
+
 /* On OSF/1 and Solaris 2.6, <sys/types.h> and <sys/time.h>
    both include <sys/select.h>.
    On Cygwin and OpenBSD, <sys/time.h> includes <sys/select.h>.
@@ -70,6 +77,11 @@
 #else
 
 #ifndef _@GUARD_PREFIX@_SYS_SELECT_H
+
+/* This file uses GNULIB_POSIXCHECK, HAVE_RAW_DECL_*.  */
+#if !_GL_CONFIG_H_INCLUDED
+ #error "Please include config.h first."
+#endif
 
 /* On many platforms, <sys/select.h> assumes prior inclusion of
    <sys/types.h>.  Also, mingw defines sigset_t there, instead of
@@ -316,7 +328,9 @@ _GL_CXXALIAS_SYS (select, int,
                   (int, fd_set *restrict, fd_set *restrict, fd_set *restrict,
                    timeval *restrict));
 # endif
+# if __GLIBC__ >= 2
 _GL_CXXALIASWARN (select);
+# endif
 #elif @HAVE_WINSOCK2_H@
 # undef select
 # define select select_used_without_requesting_gnulib_module_select

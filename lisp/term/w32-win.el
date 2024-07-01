@@ -117,12 +117,14 @@
                      (split-string (encode-coding-string f coding)
                                    "/")
                      "/")))
-		(dnd-handle-one-url window 'private
-				    (concat
-				     (if (eq system-type 'cygwin)
-					 "file://"
-				       "file:")
-				     file-name)))
+  ;; FIXME: is the W32 build capable only of receiving a single file
+  ;; from each drop?
+  (dnd-handle-multiple-urls window (list (concat
+			                  (if (eq system-type 'cygwin)
+				              "file://"
+			                    "file:")
+			                  file-name))
+                            'private))
 
 (defun w32-drag-n-drop (event &optional new-frame)
   "Edit the files listed in the drag-n-drop EVENT.
@@ -286,7 +288,6 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
        '(libxml2 "libxml2-2.dll" "libxml2.dll")
        '(zlib "zlib1.dll" "libz-1.dll")
        '(lcms2 "liblcms2-2.dll")
-       '(json "libjansson-4.dll")
        '(gccjit "libgccjit-0.dll")
        ;; MSYS2 distributes libtree-sitter.dll, without API version
        ;; number...

@@ -336,7 +336,13 @@ return nil, even with a non-nil bubblep argument."
     (widget-forward 2)
     (forward-char)
     (widget-backward 1)
-    (should (string= "Second" (widget-value (widget-at))))))
+    (should (string= "Second" (widget-value (widget-at))))
+    ;; Check that moving to a widget at beginning of buffer does not
+    ;; signal a beginning-of-buffer error (bug#69943).
+    (widget-backward 1)   ; Should not signal beginning-of-buffer error.
+    (widget-forward 2)
+    (should (string= "Third" (widget-value (widget-at))))
+    (widget-forward 1)))  ; Should not signal beginning-of-buffer error.
 
 (ert-deftest widget-test-color-match ()
   "Test that the :match function for the color widget works."
@@ -348,5 +354,47 @@ return nil, even with a non-nil bubblep argument."
     (should (widget-apply widget :match "#111122223333"))
     (should-not (widget-apply widget :match "someundefinedcolorihope"))
     (should-not (widget-apply widget :match "#11223"))))
+
+(ert-deftest widget-test-alist-default-value-1 ()
+  "Test getting the default value for an alist widget with options."
+  (with-temp-buffer
+    (let ((w (widget-create '(alist :key-type string
+                                    :value-type integer
+                                    :options (("0" (integer)))))))
+      (should (equal '(("0" . 0)) (widget-default-get w))))))
+
+(ert-deftest widget-test-alist-default-value-2 ()
+  "Test getting the default value for an alist widget without :value."
+  (with-temp-buffer
+    (let ((w (widget-create '(alist :key-type string
+                                    :value-type integer))))
+      (should-not (widget-default-get w)))))
+
+(ert-deftest widget-test-alist-default-value-3 ()
+  "Test getting the default value for an alist widget with nil :value."
+  (with-temp-buffer
+    (let ((w (widget-create '(alist :key-type string
+                                    :value-type integer
+                                    :value nil))))
+      (should-not (widget-default-get w)))))
+
+(ert-deftest widget-test-alist-default-value-4 ()
+  "Test getting the default value for an alist widget with non-nil :value."
+  (with-temp-buffer
+    (let ((w (widget-create '(alist :key-type string
+                                    :value-type integer
+                                    :value (("1" . 1) ("2" . 2))))))
+      (should (equal '(("1" . 1) ("2" . 2)) (widget-default-get w))))))
+
+(ert-deftest widget-test-restricted-sexp-empty-val ()
+  "Test that we handle an empty restricted-sexp widget just fine."
+  (with-temp-buffer
+    (let ((w (widget-create '(restricted-sexp
+                              :value 3
+                              :match-alternatives (integerp)))))
+      (widget-setup)
+      (widget-backward 1)
+      (delete-char 1)
+      (should (string= (widget-value w) "")))))
 
 ;;; wid-edit-tests.el ends here

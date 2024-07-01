@@ -672,15 +672,6 @@ This variable is like `sgml-attribute-offset'."
   :type 'integer
   :safe 'integerp)
 
-;;; Keymap
-
-(defvar-keymap js-mode-map
-  :doc "Keymap for `js-mode'."
-  "M-." #'js-find-symbol)
-
-(defvar js-ts-mode-map (copy-keymap js-mode-map)
-  "Keymap used in `js-ts-mode'.")
-
 ;;; Syntax table and parsing
 
 (defvar js-mode-syntax-table
@@ -3643,7 +3634,32 @@ Check if a node type is available, then return the right indent rules."
    :language 'javascript
    :feature 'escape-sequence
    :override t
-   '((escape_sequence) @font-lock-escape-face))
+   '((escape_sequence) @font-lock-escape-face)
+
+   :language 'jsdoc
+   :override t
+   :feature 'keyword
+   '((tag_name) @font-lock-keyword-face)
+
+   :language 'jsdoc
+   :override t
+   :feature 'bracket
+   '((["{" "}"]) @font-lock-bracket-face)
+
+   :language 'jsdoc
+   :override t
+   :feature 'property
+   '((type) @font-lock-variable-use-face)
+
+   :language 'jsdoc
+   :override t
+   :feature 'definition
+   '((identifier) @font-lock-variable-name-face)
+
+   :language 'jsdoc
+   :override t
+   :feature 'comment
+   '((description) @font-lock-comment-face))
   "Tree-sitter font-lock settings.")
 
 (defun js--fontify-template-string (node override start end &rest _)
@@ -3726,6 +3742,9 @@ Currently there are `js-mode' and `js-ts-mode'."
 (define-derived-mode js-mode js-base-mode "JavaScript"
   "Major mode for editing JavaScript."
   :group 'js
+  (js--mode-setup))
+
+(defun js--mode-setup ()
   ;; Ensure all CC Mode "lang variables" are set to valid values.
   (c-init-language-vars js-mode)
   (setq-local indent-line-function #'js-indent-line)
@@ -3808,6 +3827,64 @@ Currently there are `js-mode' and `js-ts-mode'."
   ;;(syntax-propertize (point-max))
   )
 
+(defvar js--treesit-sentence-nodes
+  '("import_statement"
+    "debugger_statement"
+    "expression_statement"
+    "if_statement"
+    "switch_statement"
+    "for_statement"
+    "for_in_statement"
+    "while_statement"
+    "do_statement"
+    "try_statement"
+    "with_statement"
+    "break_statement"
+    "continue_statement"
+    "return_statement"
+    "throw_statement"
+    "empty_statement"
+    "labeled_statement"
+    "variable_declaration"
+    "lexical_declaration"
+    "jsx_element"
+    "jsx_self_closing_element")
+  "Nodes that designate sentences in JavaScript.
+See `treesit-thing-settings' for more information.")
+
+(defvar js--treesit-sexp-nodes
+  '("expression"
+    "parenthesized_expression"
+    "formal_parameters"
+    "pattern"
+    "array"
+    "function"
+    "string"
+    "escape"
+    "template"
+    "regex"
+    "number"
+    "identifier"
+    "this"
+    "super"
+    "true"
+    "false"
+    "null"
+    "undefined"
+    "arguments"
+    "pair"
+    "jsx"
+    "statement_block"
+    "object"
+    "object_pattern"
+    "named_imports"
+    "class_body")
+  "Nodes that designate sexps in JavaScript.
+See `treesit-thing-settings' for more information.")
+
+(defvar js--treesit-jsdoc-beginning-regexp (rx bos "/**")
+  "Regular expression matching the beginning of a jsdoc block comment.")
+
 ;;;###autoload
 (define-derived-mode js-ts-mode js-base-mode "JavaScript"
   "Major mode for editing JavaScript.
@@ -3824,6 +3901,7 @@ Currently there are `js-mode' and `js-ts-mode'."
     ;; Comment.
     (c-ts-common-comment-setup)
     (setq-local comment-multi-line t)
+
     ;; Electric-indent.
     (setq-local electric-indent-chars
                 (append "{}():;,<>/" electric-indent-chars)) ;FIXME: js2-mode adds "[]*".
@@ -3832,7 +3910,8 @@ Currently there are `js-mode' and `js-ts-mode'."
     (setq-local syntax-propertize-function #'js-ts--syntax-propertize)
 
     ;; Tree-sitter setup.
-    (treesit-parser-create 'javascript)
+    (setq-local treesit-primary-parser (treesit-parser-create 'javascript))
+
     ;; Indent.
     (setq-local treesit-simple-indent-rules js--treesit-indent-rules)
     ;; Navigation.
@@ -3843,6 +3922,14 @@ Currently there are `js-mode' and `js-ts-mode'."
                         "function_declaration"
                         "lexical_declaration")))
     (setq-local treesit-defun-name-function #'js--treesit-defun-name)
+
+    (setq-local treesit-thing-settings
+                `((javascript
+                   (sexp ,(js--regexp-opt-symbol js--treesit-sexp-nodes))
+                   (sentence ,(js--regexp-opt-symbol js--treesit-sentence-nodes))
+                   (text ,(js--regexp-opt-symbol '("comment"
+                                                   "template_string"))))))
+
     ;; Fontification.
     (setq-local treesit-font-lock-settings js--treesit-font-lock-settings)
     (setq-local treesit-font-lock-feature-list
@@ -3851,6 +3938,16 @@ Currently there are `js-mode' and `js-ts-mode'."
                   ( assignment constant escape-sequence jsx number
                     pattern string-interpolation)
                   ( bracket delimiter function operator property)))
+
+    (when (treesit-ready-p 'jsdoc t)
+      (setq-local treesit-range-settings
+                  (treesit-range-rules
+                   :embed 'jsdoc
+                   :host 'javascript
+                   `(((comment) @capture (:match ,js--treesit-jsdoc-beginning-regexp @capture))))))
+
+    (setq-local treesit-language-at-point-function #'js-ts-language-at-point)
+
     ;; Imenu
     (setq-local treesit-simple-imenu-settings
                 `(("Function" "\\`function_declaration\\'" nil nil)
@@ -3864,6 +3961,8 @@ Currently there are `js-mode' and `js-ts-mode'."
 
     (add-to-list 'auto-mode-alist
                  '("\\(\\.js[mx]\\|\\.har\\)\\'" . js-ts-mode))))
+
+(derived-mode-add-parents 'js-ts-mode '(js-mode))
 
 (defvar js-ts--s-p-query
   (when (treesit-available-p)
@@ -3890,8 +3989,21 @@ Currently there are `js-mode' and `js-ts-mode'."
         (put-text-property ns (1+ ns) 'syntax-table syntax)
         (put-text-property (1- ne) ne 'syntax-table syntax)))))
 
+(defun js-ts-language-at-point (point)
+  "Return the language at POINT."
+  (let ((node (treesit-node-at point 'javascript)))
+    (if (and (treesit-ready-p 'jsdoc)
+             (equal (treesit-node-type node) "comment")
+             (string-match-p
+              js--treesit-jsdoc-beginning-regexp
+              (treesit-node-text node)))
+        'jsdoc
+      'javascript)))
+
 ;;;###autoload
-(define-derived-mode js-json-mode js-mode "JSON"
+(define-derived-mode js-json-mode prog-mode "JSON"
+  :syntax-table js-mode-syntax-table
+  (js--mode-setup) ;Reuse most of `js-mode', but not as parent (bug#67463).
   (setq-local js-enabled-frameworks nil)
   ;; Speed up `syntax-ppss': JSON files can be big but can't hold
   ;; regexp matchers nor #! thingies (and `js-enabled-frameworks' is nil).

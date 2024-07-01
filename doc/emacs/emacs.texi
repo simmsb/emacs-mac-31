@@ -149,6 +149,7 @@ Important General Concepts
                           editing action.
 * Mouse Input::         Using the mouse and keypads.
 * Commands::            Named functions run by key sequences to do editing.
+* Other Input::         Input besides the mouse, keyboard and keypads.
 * Entering Emacs::      Starting Emacs from the shell.
 * Exiting::             Stopping or killing Emacs.
 
@@ -219,10 +220,11 @@ Appendices
 * GNU Free Documentation License:: The license for this documentation.
 * Emacs Invocation::    Hairy startup options.
 * X Resources::         X resources for customizing Emacs.
-* Antinews::            Information about Emacs version 28.
 * Mac Port::            Using Emacs under macOS with the Mac port.
+* Antinews::            Information about Emacs version 29.
 * Mac OS / GNUstep::     Using Emacs under macOS and GNUstep.
 * Haiku::               Using Emacs on Haiku.
+* Android::             Using Emacs on Android.
 * Microsoft Windows::   Using Emacs on Microsoft Windows and MS-DOS.
 * Manifesto::           What's GNU?  Gnu's Not Unix!
 
@@ -256,6 +258,10 @@ The Organization of the Screen
 * Echo Area::           Short messages appear at the bottom of the screen.
 * Mode Line::           Interpreting the mode line.
 * Menu Bar::            How to use the menu bar.
+
+Touchscreen Input and Virtual Keyboards
+* Touchscreens::        Interacting with Emacs from touchscreens.
+* On-Screen Keyboards:: Text input with virtual keyboards.
 
 Basic Editing Commands
 
@@ -524,6 +530,7 @@ Multiple Windows
 * Temporary Displays::  Displaying non-editable buffers.
 * Window Convenience::  Convenience functions for window handling.
 * Tab Line::            Window tab line.
+* Window Tool Bar::     A tool bar that is attached to windows.
 
 Displaying a Buffer in a Window
 
@@ -1163,6 +1170,10 @@ Local Variables in Files
 * Specifying File Variables:: Specifying file local variables.
 * Safe File Variables::       Making sure file local variables are safe.
 
+Local Variables in Directories
+
+* EditorConfig support::  Per-Directory Variables via EditorConfig
+
 Customizing Key Bindings
 
 * Keymaps::             Generalities.  The global keymap.
@@ -1270,6 +1281,18 @@ Emacs and Haiku
 
 * Haiku Basics::        Basic Emacs usage and installation under Haiku.
 * Haiku Fonts::         The various options for displaying fonts on Haiku.
+
+Emacs and Android
+
+* What is Android?::            Preamble.
+* Android Startup::             Starting up Emacs on Android.
+* Android File System::         The Android file system.
+* Android Document Providers::  Accessing files from other programs.
+* Android Environment::         Running Emacs under Android.
+* Android Windowing::           The Android window system.
+* Android Fonts::               Font selection under Android.
+* Android Troubleshooting::     Dealing with problems.
+* Android Software::            Getting extra software.
 
 Emacs and Microsoft Windows/MS-DOS
 
@@ -1642,6 +1665,7 @@ Lisp programming.
 @include macport.texi
 @include macos.texi
 @include haiku.texi
+@include android.texi
 @c Includes msdos-xtra.
 @include msdos.texi
 @include gnu.texi

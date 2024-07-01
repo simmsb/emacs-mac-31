@@ -4,7 +4,7 @@ The Emacs repository is hosted on Savannah.  The following Git command
 will clone the repository to the 'emacs' subdirectory of the current
 directory on your local machine:
 
-    git clone git://git.sv.gnu.org/emacs.git
+    git clone https://git.savannah.gnu.org/git/emacs.git
 
 To build the repository code, simply run 'make' in the 'emacs'
 directory.  This should work if your files are freshly checked out
@@ -80,7 +80,7 @@ handle.  The most thorough cleaning can be achieved by 'git clean -fdx'
 which will leave you with only files from the git repository.  Here
 are some faster methods for a couple of particular error cases:
 
-    /usr/bin/m4:aclocal.m4:9: cannot open `m4/count-leading-zeros.m4': No such file or directory
+    /usr/bin/m4:aclocal.m4:9: cannot open `m4/stdbit_h.m4': No such file or directory
 
 This can be fixed with 'rm aclocal.m4'.
 

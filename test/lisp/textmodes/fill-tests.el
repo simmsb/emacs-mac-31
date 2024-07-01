@@ -3,7 +3,7 @@
 ;; Copyright (C) 2017-2024 Free Software Foundation, Inc.
 
 ;; Author:     Marcin Borkowski <mbork@mbork.pl>
-;; Keywords:   text, wp
+;; Keywords:   text
 
 ;; This file is part of GNU Emacs.
 

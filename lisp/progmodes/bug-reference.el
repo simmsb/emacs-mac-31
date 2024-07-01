@@ -35,6 +35,8 @@
 
 ;;; Code:
 
+(require 'thingatpt)
+
 (defgroup bug-reference nil
   "Hyperlinking references to bug reports."
   ;; Somewhat arbitrary, by analogy with eg goto-address.
@@ -194,7 +196,10 @@ subexpression 10."
                              (funcall bug-reference-url-format)))))))
       ;; Delete remaining but unused overlays.
       (dolist (ov overlays)
-        (delete-overlay ov)))))
+        (delete-overlay ov))
+      ;; Signal the bounds we actually fontified to jit-lock to allow for
+      ;; optimizations (bug#70796).
+      `(jit-lock-bounds ,beg-line . ,end-line))))
 
 ;; Taken from button.el.
 (defun bug-reference-push-button (&optional pos _use-mouse-action)
@@ -465,10 +470,10 @@ and set it if applicable."
 (defun bug-reference--try-setup-gnus-article ()
   (when (and bug-reference-mode ;; Only if enabled in article buffers.
              (derived-mode-p
-              'gnus-article-mode
-              ;; Apparently, gnus-article-prepare-hook is run in the
-              ;; summary buffer...
-              'gnus-summary-mode)
+              '(gnus-article-mode
+                ;; Apparently, `gnus-article-prepare-hook' is run in the
+                ;; summary buffer...
+                gnus-summary-mode))
              gnus-article-buffer
              gnus-original-article-buffer
              (buffer-live-p (get-buffer gnus-article-buffer))
@@ -491,7 +496,7 @@ and set it if applicable."
         ;; the values of the From, To, and Cc headers.
         (let (header-values)
           (with-current-buffer
-              (get-buffer gnus-original-article-buffer)
+              gnus-original-article-buffer
             (save-excursion
               (goto-char (point-min))
               ;; The Newsgroup is omitted because we already matched
@@ -654,16 +659,50 @@ have been run, the auto-setup is inhibited.")
         (run-hook-with-args-until-success
          'bug-reference-auto-setup-functions)))))
 
+(defun bug-reference--url-at-point ()
+  "`thing-at-point' provider function."
+  (thing-at-point-for-char-property 'bug-reference-url))
+
+(defun bug-reference--forward-url (backward)
+  "`forward-thing' provider function."
+  (forward-thing-for-char-property 'bug-reference-url backward))
+
+(defun bug-reference--bounds-of-url-at-point ()
+  "`bounds-of-thing-at-point' provider function."
+  (bounds-of-thing-at-point-for-char-property 'bug-reference-url))
+
+(defun bug-reference--init (enable)
+  (if enable
+      (progn
+        (jit-lock-register #'bug-reference-fontify)
+        (setq-local thing-at-point-provider-alist
+                    (cons '(url . bug-reference--url-at-point)
+                          thing-at-point-provider-alist))
+        (setq-local forward-thing-provider-alist
+                    (cons '(url . bug-reference--forward-url)
+                          forward-thing-provider-alist))
+        (setq-local bounds-of-thing-at-point-provider-alist
+                    (cons '(url . bug-reference--bounds-of-url-at-point)
+                          bounds-of-thing-at-point-provider-alist)))
+    (jit-lock-unregister #'bug-reference-fontify)
+    (setq thing-at-point-provider-alist
+          (delete '((url . bug-reference--url-at-point))
+                  thing-at-point-provider-alist))
+    (setq forward-thing-provider-alist
+          (delete '((url . bug-reference--forward-url))
+                  forward-thing-provider-alist))
+    (setq bounds-of-thing-at-point-provider-alist
+          (delete '((url . bug-reference--bounds-of-url-at-point))
+                  bounds-of-thing-at-point-provider-alist))
+    (save-restriction
+      (widen)
+      (bug-reference-unfontify (point-min) (point-max)))))
+
 ;;;###autoload
 (define-minor-mode bug-reference-mode
   "Toggle hyperlinking bug references in the buffer (Bug Reference mode)."
   :after-hook (bug-reference--run-auto-setup)
-  (if bug-reference-mode
-      (jit-lock-register #'bug-reference-fontify)
-    (jit-lock-unregister #'bug-reference-fontify)
-    (save-restriction
-      (widen)
-      (bug-reference-unfontify (point-min) (point-max)))))
+  (bug-reference--init bug-reference-mode))
 
 (defun bug-reference-mode-force-auto-setup ()
   "Enable `bug-reference-mode' and force auto-setup.
@@ -673,7 +712,7 @@ set already.  This function sets the latter to nil
 buffer-locally, so that the auto-setup will always run.
 
 This is mostly intended for MUA modes like `rmail-mode' where the
-same buffer is re-used for different contexts."
+same buffer is reused for different contexts."
   (setq-local bug-reference-url-format nil)
   (bug-reference-mode))
 
@@ -681,12 +720,7 @@ same buffer is re-used for different contexts."
 (define-minor-mode bug-reference-prog-mode
   "Like `bug-reference-mode', but only buttonize in comments and strings."
   :after-hook (bug-reference--run-auto-setup)
-  (if bug-reference-prog-mode
-      (jit-lock-register #'bug-reference-fontify)
-    (jit-lock-unregister #'bug-reference-fontify)
-    (save-restriction
-      (widen)
-      (bug-reference-unfontify (point-min) (point-max)))))
+  (bug-reference--init bug-reference-prog-mode))
 
 (provide 'bug-reference)
 ;;; bug-reference.el ends here

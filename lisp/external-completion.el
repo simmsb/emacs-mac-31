@@ -7,6 +7,9 @@
 ;; Maintainer: João Távora <joaotavora@gmail.com>
 ;; Keywords:
 
+;; This is a GNU ELPA :core package.  Avoid functionality that is not
+;; compatible with the version of Emacs recorded above.
+
 ;; This file is part of GNU Emacs.
 
 ;; GNU Emacs is free software: you can redistribute it and/or modify
@@ -123,7 +126,7 @@ EXPANDED-PATTERN."
         (pcase action
           (`metadata
            `(metadata (category . ,category) . ,metadata))
-          ;; Note: the `--tryc' `--allc' suffixes are made akward on
+          ;; Note: the `--tryc' `--allc' suffixes are made awkward on
           ;; purpose, so it's easy to pick them apart from the jungle
           ;; of combinations of "try" and "all" and "completion" that
           ;; inhabit Emacs's completion logic.

@@ -550,6 +550,15 @@ ns_relocate (const char *epath)
 
 
 void
+ns_init_pool (void)
+/* Initialize the 'outerpool' autorelease pool.  This should be called
+   from main before any Objective C code is run.  */
+{
+  outerpool = [[NSAutoreleasePool alloc] init];
+}
+
+
+void
 ns_init_locale (void)
 /* macOS doesn't set any environment variables for the locale when run
    from the GUI. Get the locale from the OS and set LANG.  */
@@ -1627,7 +1636,7 @@ ns_free_frame_resources (struct frame *f)
     [f->output_data.ns->miniimage release];
 
   [[view window] close];
-  [view release];
+  [view removeFromSuperview];
 
   xfree (f->output_data.ns);
   f->output_data.ns = NULL;
@@ -2707,12 +2716,11 @@ ns_scroll_run (struct window *w, struct run *run)
   {
     NSRect srcRect = NSMakeRect (x, from_y, width, height);
     NSPoint dest = NSMakePoint (x, to_y);
-    NSRect destRect = NSMakeRect (x, from_y, width, height);
     EmacsView *view = FRAME_NS_VIEW (f);
 
     [view copyRect:srcRect to:dest];
-#ifdef NS_IMPL_COCOA
-    [view setNeedsDisplayInRect:destRect];
+#if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MAX_ALLOWED < 101400
+    [view setNeedsDisplayInRect:srcRect];
 #endif
   }
 
@@ -2731,6 +2739,7 @@ ns_clear_under_internal_border (struct frame *f)
       int width = FRAME_PIXEL_WIDTH (f);
       int height = FRAME_PIXEL_HEIGHT (f);
       int margin = FRAME_TOP_MARGIN_HEIGHT (f);
+      int bottom_margin = FRAME_BOTTOM_MARGIN_HEIGHT (f);
       int face_id =
         (FRAME_PARENT_FRAME (f)
          ? (!NILP (Vface_remapping_alist)
@@ -2756,7 +2765,8 @@ ns_clear_under_internal_border (struct frame *f)
       NSRectFill (NSMakeRect (0, 0, border, height));
       NSRectFill (NSMakeRect (0, margin, width, border));
       NSRectFill (NSMakeRect (width - border, 0, border, height));
-      NSRectFill (NSMakeRect (0, height - border, width, border));
+      NSRectFill (NSMakeRect (0, height - bottom_margin - border,
+			      width, border));
       ns_unfocus (f);
     }
 }
@@ -3300,7 +3310,66 @@ ns_draw_underwave (struct glyph_string *s, EmacsCGFloat width, EmacsCGFloat x)
   [[NSGraphicsContext currentContext] restoreGraphicsState];
 }
 
+/* Draw a dashed underline of thickness THICKNESS and width WIDTH onto
+   the focused frame at a vertical offset of OFFSET from the position of
+   the glyph string S, with each segment SEGMENT pixels in length.  */
 
+static void
+ns_draw_dash (struct glyph_string *s, int width, int segment,
+	      int offset, int thickness)
+{
+  CGFloat pattern[2], y_center = s->ybase + offset + thickness / 2.0;
+  NSBezierPath *path = [[NSBezierPath alloc] init];
+
+  pattern[0] = segment;
+  pattern[1] = segment;
+
+  [path setLineDash: pattern count: 2 phase: (CGFloat) s->x];
+  [path setLineWidth: thickness];
+  [path moveToPoint: NSMakePoint (s->x, y_center)];
+  [path lineToPoint: NSMakePoint (s->x + width, y_center)];
+  [path stroke];
+  [path release];
+}
+
+/* Draw an underline of STYLE onto the focused frame at an offset of
+   POSITION from the baseline of the glyph string S, S->WIDTH in length,
+   and THICKNESS in height.  */
+
+static void
+ns_fill_underline (struct glyph_string *s, enum face_underline_type style,
+		   int position, int thickness)
+{
+  int segment;
+  NSRect rect;
+
+  segment = thickness * 3;
+
+  switch (style)
+    {
+      /* FACE_UNDERLINE_DOUBLE_LINE is treated identically to SINGLE, as
+	 the second line will be filled by another invocation of this
+	 function.  */
+    case FACE_UNDERLINE_SINGLE:
+    case FACE_UNDERLINE_DOUBLE_LINE:
+      rect = NSMakeRect (s->x, s->ybase + position, s->width, thickness);
+      NSRectFill (rect);
+      break;
+
+    case FACE_UNDERLINE_DOTS:
+      segment = thickness;
+      FALLTHROUGH;
+
+    case FACE_UNDERLINE_DASHES:
+      ns_draw_dash (s, s->width, segment, position, thickness);
+      break;
+
+    case FACE_NO_UNDERLINE:
+    case FACE_UNDERLINE_WAVE:
+    default:
+      emacs_abort ();
+    }
+}
 
 static void
 ns_draw_text_decoration (struct glyph_string *s, struct face *face,
@@ -3320,22 +3389,21 @@ ns_draw_text_decoration (struct glyph_string *s, struct face *face,
   /* Do underline.  */
   if (face->underline)
     {
-      if (s->face->underline == FACE_UNDER_WAVE)
+      if (s->face->underline == FACE_UNDERLINE_WAVE)
         {
           if (!face->underline_defaulted_p)
             [[NSColor colorWithUnsignedLong:face->underline_color] set];
 
           ns_draw_underwave (s, width, x);
         }
-      else if (s->face->underline == FACE_UNDER_LINE)
+      else if (face->underline >= FACE_UNDERLINE_SINGLE)
         {
-
-          NSRect r;
           unsigned long thickness, position;
 
           /* If the prev was underlined, match its appearance.  */
           if (s->prev
-	      && s->prev->face->underline == FACE_UNDER_LINE
+	      && (s->prev->face->underline != FACE_UNDERLINE_WAVE
+		  && s->prev->face->underline >= FACE_UNDERLINE_SINGLE)
               && s->prev->underline_thickness > 0
 	      && (s->prev->face->underline_at_descent_line_p
 		  == s->face->underline_at_descent_line_p)
@@ -3401,12 +3469,22 @@ ns_draw_text_decoration (struct glyph_string *s, struct face *face,
           s->underline_thickness = thickness;
           s->underline_position = position;
 
-          r = NSMakeRect (x, s->ybase + position, width, thickness);
-
           if (!face->underline_defaulted_p)
             [[NSColor colorWithUnsignedLong:face->underline_color] set];
 
-          NSRectFill (r);
+	  ns_fill_underline (s, s->face->underline, position,
+			     thickness);
+
+	  /* Place a second underline above the first if this was
+	     requested in the face specification.  */
+
+	  if (s->face->underline == FACE_UNDERLINE_DOUBLE_LINE)
+	    {
+	      /* Compute the position of the second underline.  */
+	      position = position - thickness - 1;
+	      ns_fill_underline (s, s->face->underline, position,
+				 thickness);
+	    }
         }
     }
   /* Do overline. We follow other terms in using a thickness of 1
@@ -3730,7 +3808,6 @@ ns_dumpglyphs_box_or_relief (struct glyph_string *s)
     }
 }
 
-
 static void
 ns_maybe_dumpglyphs_background (struct glyph_string *s, char force_p)
 /* --------------------------------------------------------------------------
@@ -3738,45 +3815,47 @@ ns_maybe_dumpglyphs_background (struct glyph_string *s, char force_p)
       certain cases.  Others are left to the text rendering routine.
    -------------------------------------------------------------------------- */
 {
+  struct face *face = s->face;
+  NSRect r;
+
   NSTRACE ("ns_maybe_dumpglyphs_background");
 
-  if (!s->background_filled_p/* || s->hl == DRAW_MOUSE_FACE*/)
+  if (!s->background_filled_p)
     {
       int box_line_width = max (s->face->box_horizontal_line_width, 0);
 
-      if (FONT_HEIGHT (s->font) < s->height - 2 * box_line_width
-	  /* When xdisp.c ignores FONT_HEIGHT, we cannot trust font
-	     dimensions, since the actual glyphs might be much
-	     smaller.  So in that case we always clear the rectangle
-	     with background color.  */
-	  || FONT_TOO_HIGH (s->font)
-          || s->font_not_found_p || s->extends_to_end_of_line_p || force_p)
+      if (s->stippled_p)
 	{
-          struct face *face = s->face;
-          if (!face->stipple)
-            {
-              if (s->hl != DRAW_CURSOR)
-                [(NS_FACE_BACKGROUND (face) != 0
-                  ? [NSColor colorWithUnsignedLong:NS_FACE_BACKGROUND (face)]
-                  : FRAME_BACKGROUND_COLOR (s->f)) set];
-              else if (face && (NS_FACE_BACKGROUND (face)
-                                == [(NSColor *) FRAME_CURSOR_COLOR (s->f)
-                                                unsignedLong]))
-                [[NSColor colorWithUnsignedLong:NS_FACE_FOREGROUND (face)] set];
-              else
-                [FRAME_CURSOR_COLOR (s->f) set];
-            }
-          else
-            {
-              struct ns_display_info *dpyinfo = FRAME_DISPLAY_INFO (s->f);
-              [[dpyinfo->bitmaps[face->stipple-1].img stippleMask] set];
-            }
+	  struct ns_display_info *dpyinfo = FRAME_DISPLAY_INFO (s->f);
+	  [[dpyinfo->bitmaps[face->stipple-1].img stippleMask] set];
+	  goto fill;
+	}
+      else if (FONT_HEIGHT (s->font) < s->height - 2 * box_line_width
+	       /* When xdisp.c ignores FONT_HEIGHT, we cannot trust font
+		  dimensions, since the actual glyphs might be much
+		  smaller.  So in that case we always clear the
+		  rectangle with background color.  */
+	       || FONT_TOO_HIGH (s->font)
+	       || s->font_not_found_p
+	       || s->extends_to_end_of_line_p
+	       || force_p)
+	{
+	  if (s->hl != DRAW_CURSOR)
+	    [(NS_FACE_BACKGROUND (face) != 0
+	      ? [NSColor colorWithUnsignedLong:NS_FACE_BACKGROUND (face)]
+	      : FRAME_BACKGROUND_COLOR (s->f)) set];
+	  else if (face && (NS_FACE_BACKGROUND (face)
+			    == [(NSColor *) FRAME_CURSOR_COLOR (s->f)
+					    unsignedLong]))
+	    [[NSColor colorWithUnsignedLong:NS_FACE_FOREGROUND (face)] set];
+	  else
+	    [FRAME_CURSOR_COLOR (s->f) set];
 
-	  NSRect r = NSMakeRect (s->x, s->y + box_line_width,
-				 s->background_width,
-				 s->height - 2 * box_line_width);
+	fill:
+	  r = NSMakeRect (s->x, s->y + box_line_width,
+			  s->background_width,
+			  s->height - 2 * box_line_width);
 	  NSRectFill (r);
-
 	  s->background_filled_p = 1;
 	}
     }
@@ -4005,8 +4084,7 @@ ns_draw_stretch_glyph_string (struct glyph_string *s)
   struct face *face;
   NSColor *fg_color;
 
-  if (s->hl == DRAW_CURSOR
-      && !x_stretch_cursor_p)
+  if (s->hl == DRAW_CURSOR && !x_stretch_cursor_p)
     {
       /* If `x-stretch-cursor' is nil, don't draw a block cursor as
 	 wide as the stretch glyph.  */
@@ -4092,8 +4170,13 @@ ns_draw_stretch_glyph_string (struct glyph_string *s)
 
       if (background_width > 0)
 	{
+	  struct ns_display_info *dpyinfo;
+
+	  dpyinfo = FRAME_DISPLAY_INFO (s->f);
 	  if (s->hl == DRAW_CURSOR)
 	    [FRAME_CURSOR_COLOR (s->f) set];
+	  else if (s->stippled_p)
+	    [[dpyinfo->bitmaps[s->face->stipple - 1].img stippleMask] set];
 	  else
 	    [[NSColor colorWithUnsignedLong: s->face->background] set];
 
@@ -4311,6 +4394,45 @@ ns_draw_glyphless_glyph_string_foreground (struct glyph_string *s)
   s->char2b = NULL;
 }
 
+/* Transfer glyph string parameters from S's face to S itself.
+   Set S->stipple_p as appropriate, taking the draw type into
+   account.  */
+
+static void
+ns_set_glyph_string_gc (struct glyph_string *s)
+{
+  prepare_face_for_display (s->f, s->face);
+
+  if (s->hl == DRAW_NORMAL_TEXT)
+    {
+      /* s->gc = s->face->gc; */
+      s->stippled_p = s->face->stipple != 0;
+    }
+  else if (s->hl == DRAW_INVERSE_VIDEO)
+    {
+      /* x_set_mode_line_face_gc (s); */
+      s->stippled_p = s->face->stipple != 0;
+    }
+  else if (s->hl == DRAW_CURSOR)
+    {
+      /* x_set_cursor_gc (s); */
+      s->stippled_p = false;
+    }
+  else if (s->hl == DRAW_MOUSE_FACE)
+    {
+      /* x_set_mouse_face_gc (s); */
+      s->stippled_p = s->face->stipple != 0;
+    }
+  else if (s->hl == DRAW_IMAGE_RAISED
+	   || s->hl == DRAW_IMAGE_SUNKEN)
+    {
+      /* s->gc = s->face->gc; */
+      s->stippled_p = s->face->stipple != 0;
+    }
+  else
+    emacs_abort ();
+}
+
 static void
 ns_draw_glyph_string (struct glyph_string *s)
 /* --------------------------------------------------------------------------
@@ -4336,6 +4458,7 @@ ns_draw_glyph_string (struct glyph_string *s)
 	   width += next->width, next = next->next)
 	if (next->first_glyph->type != IMAGE_GLYPH)
           {
+	    ns_set_glyph_string_gc (next);
 	    n = ns_get_glyph_string_clip_rect (s->next, r);
 	    ns_focus (s->f, r, n);
             if (next->first_glyph->type != STRETCH_GLYPH)
@@ -4346,6 +4469,8 @@ ns_draw_glyph_string (struct glyph_string *s)
             next->num_clips = 0;
           }
     }
+
+  ns_set_glyph_string_gc (s);
 
   if (!s->for_overlaps && s->face->box != FACE_NO_BOX
         && (s->first_glyph->type == CHAR_GLYPH
@@ -4562,21 +4687,6 @@ ns_send_appdefined (int value)
   /* Only post this event if we haven't already posted one.  This will end
      the [NXApp run] main loop after having processed all events queued at
      this moment.  */
-
-#ifdef NS_IMPL_COCOA
-  if (! send_appdefined)
-    {
-      /* OS X 10.10.1 swallows the AppDefined event we are sending ourselves
-         in certain situations (rapid incoming events).
-         So check if we have one, if not add one.  */
-      NSEvent *appev = [NSApp nextEventMatchingMask:NSEventMaskApplicationDefined
-                                          untilDate:[NSDate distantPast]
-                                             inMode:NSDefaultRunLoopMode
-                                            dequeue:NO];
-      if (! appev) send_appdefined = YES;
-    }
-#endif
-
   if (send_appdefined)
     {
       NSEvent *nxev;
@@ -4611,7 +4721,7 @@ ns_send_appdefined (int value)
 
 #if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MAX_ALLOWED >= 1070
 static void
-check_native_fs ()
+check_native_fs (void)
 {
   Lisp_Object frame, tail;
 
@@ -4744,12 +4854,15 @@ ns_select_1 (int nfds, fd_set *readfds, fd_set *writefds,
   check_native_fs ();
 #endif
 
-  if (hold_event_q.nr > 0 && !run_loop_only)
+  /* If there are input events pending, store them so that Emacs can
+     recognize C-g.  (And we must make sure [NSApp run] is called in
+     this function, so that C-g has a chance to land in
+     hold_event_q.)  */
+  if (hold_event_q.nr > 0)
     {
-      /* We already have events pending.  */
-      raise (SIGIO);
-      errno = EINTR;
-      return -1;
+      for (int i = 0; i < hold_event_q.nr; ++i)
+        kbd_buffer_store_event_hold (&hold_event_q.q[i], NULL);
+      hold_event_q.nr = 0;
     }
 
   eassert (nfds <= FD_SETSIZE);
@@ -4759,11 +4872,15 @@ ns_select_1 (int nfds, fd_set *readfds, fd_set *writefds,
       if (writefds && FD_ISSET(k, writefds)) ++nr;
     }
 
-  if (NSApp == nil
-      || ![NSThread isMainThread]
+  /* emacs -nw doesn't have an NSApp, so we're done.  */
+  if (NSApp == nil)
+    return thread_select (pselect, nfds, readfds, writefds, exceptfds,
+			  timeout, sigmask);
+
+  if (![NSThread isMainThread]
       || (timeout && timeout->tv_sec == 0 && timeout->tv_nsec == 0))
-    return thread_select (pselect, nfds, readfds, writefds,
-			  exceptfds, timeout, sigmask);
+    thread_select (pselect, nfds, readfds, writefds,
+		   exceptfds, timeout, sigmask);
   else
     {
       struct timespec t = {0, 0};
@@ -5321,7 +5438,6 @@ ns_flush_display (struct frame *f)
    redisplay interface.  In addition, many of the ns_ methods have
    code that is shared with all terms, indicating need for further
    refactoring.  */
-extern frame_parm_handler ns_frame_parm_handlers[];
 static struct redisplay_interface ns_redisplay_interface =
 {
   ns_frame_parm_handlers,
@@ -6716,16 +6832,8 @@ ns_create_font_panel_buttons (id target, SEL select, SEL cancel_action)
 
 - (void)resetCursorRects
 {
-  NSRect visible;
-  NSCursor *currentCursor;
-
-  /* On macOS 13, [resetCursorRects:] could be called even after the
-     window is closed. */
-  if (! emacsframe || ! FRAME_OUTPUT_DATA (emacsframe))
-    return;
-
-  visible = [self visibleRect];
-  currentCursor = FRAME_POINTER_TYPE (emacsframe);
+  NSRect visible = [self visibleRect];
+  NSCursor *currentCursor = FRAME_POINTER_TYPE (emacsframe);
   NSTRACE ("[EmacsView resetCursorRects]");
 
   if (currentCursor == nil)
@@ -7080,13 +7188,9 @@ ns_create_font_panel_buttons (id target, SEL select, SEL cancel_action)
 static Lisp_Object
 ns_in_echo_area_1 (void *ptr)
 {
-  Lisp_Object in_echo_area;
-  specpdl_ref count;
-
-  count = SPECPDL_INDEX ();
+  const specpdl_ref count = SPECPDL_INDEX ();
   specbind (Qinhibit_quit, Qt);
-  in_echo_area = safe_call (1, Qns_in_echo_area);
-
+  const Lisp_Object in_echo_area = safe_calln (Qns_in_echo_area);
   return unbind_to (count, in_echo_area);
 }
 
@@ -7434,7 +7538,7 @@ ns_in_echo_area (void)
 	  int x = lrint (p.x);
 	  int y = lrint (p.y);
 
-	  window = window_from_coordinates (emacsframe, x, y, 0, true, true);
+	  window = window_from_coordinates (emacsframe, x, y, 0, true, true, true);
 	  tab_bar_p = EQ (window, emacsframe->tab_bar_window);
 
 	  if (tab_bar_p)
@@ -7540,7 +7644,7 @@ ns_in_echo_area (void)
       NSTRACE_MSG ("mouse_autoselect_window");
       static Lisp_Object last_mouse_window;
       Lisp_Object window
-	= window_from_coordinates (emacsframe, pt.x, pt.y, 0, 0, 0);
+	= window_from_coordinates (emacsframe, pt.x, pt.y, 0, 0, 0, 0);
 
       if (WINDOWP (window)
           && !EQ (window, last_mouse_window)
@@ -7936,8 +8040,6 @@ ns_in_echo_area (void)
   maximizing_resize = NO;
 #endif
 
-  [[EmacsWindow alloc] initWithEmacsFrame:f];
-
 #if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
   /* These settings mean AppKit will retain the contents of the frame
      on resize.  Unfortunately it also means the frame will not be
@@ -7948,9 +8050,16 @@ ns_in_echo_area (void)
           NSViewLayerContentsRedrawOnSetNeedsDisplay];
   [self setLayerContentsPlacement:NSViewLayerContentsPlacementTopLeft];
 
-  /* initWithEmacsFrame can't create the toolbar before the layer is
-     set, so have another go at creating the toolbar here.  */
-  [(EmacsWindow*)[self window] createToolbar:f];
+  [[EmacsWindow alloc] initWithEmacsFrame:f];
+
+  /* Now the NSWindow has been created, we can finish up configuring
+     the layer.  */
+  [(EmacsLayer *)[self layer] setColorSpace:
+                   [[[self window] colorSpace] CGColorSpace]];
+  [(EmacsLayer *)[self layer] setContentsScale:
+                   [[self window] backingScaleFactor]];
+#else
+  [[EmacsWindow alloc] initWithEmacsFrame:f];
 #endif
 
   if (ns_drag_types)
@@ -8621,9 +8730,9 @@ ns_in_echo_area (void)
 - (CALayer *)makeBackingLayer
 {
   EmacsLayer *l = [[EmacsLayer alloc]
-                    initWithColorSpace:[[[self window] colorSpace] CGColorSpace]];
+                    initWithDoubleBuffered:FRAME_DOUBLE_BUFFERED (emacsframe)];
+
   [l setDelegate:(id)self];
-  [l setContentsScale:[[self window] backingScaleFactor]];
 
   return l;
 }
@@ -8678,8 +8787,10 @@ ns_in_echo_area (void)
                                NSHeight (srcRect));
 
 #if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
-  double scale = [[self window] backingScaleFactor];
   CGContextRef context = [(EmacsLayer *)[self layer] getContext];
+  CGContextFlush (context);
+
+  double scale = [[self window] backingScaleFactor];
   int bpp = CGBitmapContextGetBitsPerPixel (context) / 8;
   void *pixels = CGBitmapContextGetData (context);
   int rowSize = CGBitmapContextGetBytesPerRow (context);
@@ -8844,8 +8955,8 @@ ns_in_echo_area (void)
      so call this function instead.  */
   XSETFRAME (frame, emacsframe);
 
-  safe_call (4, Vns_drag_motion_function, frame,
-	     make_fixnum (x), make_fixnum (y));
+  safe_calln (Vns_drag_motion_function, frame,
+	      make_fixnum (x), make_fixnum (y));
 
   redisplay ();
 #endif
@@ -10449,22 +10560,19 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
    cache.  If no free surfaces are found in the cache then a new one
    is created.  */
 
-#define CACHE_MAX_SIZE 2
-
-- (id) initWithColorSpace: (CGColorSpaceRef)cs
+- (id) initWithDoubleBuffered: (bool)db
 {
-  NSTRACE ("[EmacsLayer initWithColorSpace:]");
+  NSTRACE ("[EmacsLayer initWithDoubleBuffered:]");
 
   self = [super init];
   if (self)
     {
-      cache = [[NSMutableArray arrayWithCapacity:CACHE_MAX_SIZE] retain];
-      [self setColorSpace:cs];
+      [self setColorSpace:nil];
+      [self setDoubleBuffered:db];
+      cache = [[NSMutableArray arrayWithCapacity:(doubleBuffered ? 2 : 1)] retain];
     }
   else
-    {
-      return nil;
-    }
+    return nil;
 
   return self;
 }
@@ -10478,6 +10586,15 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
     colorSpace = cs;
   else
     colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGB);
+}
+
+
+- (void) setDoubleBuffered: (bool)db
+{
+  if (doubleBuffered != db)
+    [self releaseSurfaces];
+
+  doubleBuffered = db;
 }
 
 
@@ -10552,7 +10669,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
             }
         }
 
-      if (!surface && [cache count] >= CACHE_MAX_SIZE)
+      if (!surface && [cache count] >= (doubleBuffered ? 2 : 1))
         {
           /* Just grab the first one off the cache.  This may result
              in tearing effects.  The alternative is to wait for one
@@ -10605,7 +10722,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
           return nil;
         }
 
-      CGContextTranslateCTM(context, 0, IOSurfaceGetHeight (currentSurface));
+      CGContextTranslateCTM(context, 0, IOSurfaceGetHeight (surface));
       CGContextScaleCTM(context, scale, -scale);
     }
 
@@ -10622,6 +10739,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
   if (!context)
     return;
 
+  CGContextFlush (context);
   CGContextRelease (context);
   context = NULL;
 
@@ -10635,26 +10753,18 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
 {
   NSTRACE_WHEN (NSTRACE_GROUP_FOCUS, "[EmacsLayer display]");
 
-  if (context)
+  if (context && context != [[NSGraphicsContext currentContext] CGContext])
     {
       [self releaseContext];
 
-#if CACHE_MAX_SIZE == 1
-      /* This forces the layer to see the surface as updated.  */
+      /* This forces the layer to see the surface as updated even if
+         we replace it with itself.  */
       [self setContents:nil];
-#endif
-
       [self setContents:(id)currentSurface];
 
       /* Put currentSurface back on the end of the cache.  */
       [cache addObject:(id)currentSurface];
       currentSurface = NULL;
-
-      /* Schedule a run of getContext so that if Emacs is idle it will
-         perform the buffer copy, etc.  */
-      [self performSelectorOnMainThread:@selector (getContext)
-                             withObject:nil
-                          waitUntilDone:NO];
     }
 }
 

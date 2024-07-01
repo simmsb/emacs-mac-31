@@ -277,9 +277,9 @@ other sexp entries are enumerated in any case."
                                 :value 10)
                        (set :tag "Alarm type"
                             (list :tag "Audio"
-                                  (const audio :tag "Audio"))
+                                  (const :tag "Audio" audio))
                             (list :tag "Display"
-                                  (const display :tag "Display"))
+                                  (const :tag "Display" display))
                             (list :tag "Email"
                                   (const email)
                                   (repeat :tag "Attendees"
@@ -895,8 +895,8 @@ it uses the current calendar date style."
     (save-match-data
       (cond ( ;; iso-style numeric date
              (string-match (concat "\\s-*"
-                                   "\\([0-9]\\{4\\}\\)[ \t/]\\s-*"
-                                   "0?\\([1-9][0-9]?\\)[ \t/]\\s-*"
+                                   "\\([0-9]\\{4\\}\\)[ \t/-]\\s-*"
+                                   "0?\\([1-9][0-9]?\\)[ \t/-]\\s-*"
                                    "0?\\([1-9][0-9]?\\)")
                            datestring)
              (setq year (read (substring datestring (match-beginning 1)

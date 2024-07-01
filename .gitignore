@@ -18,14 +18,15 @@
 # along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# Currently we assume only Git 1.7.1 (April 2010) or later, so this
-# file does not rely on "**" in patterns.  The "**" feature was added
-# in Git 1.8.2 (March 2013).
-
-
-# Personal customization.
-.dir-locals-2.el
-.no-advice-on-failure
+# Ignore all dot-files except for those under version control.
+.*
+!.clang-format
+!.clangd
+!.dir-locals.el
+!.gitattributes
+!.gitignore
+!.gitlab-ci.yml
+!.mailmap
 
 # Built by 'autogen.sh'.
 /aclocal.m4
@@ -52,11 +53,33 @@ src/config.h
 src/epaths.h
 src/emacs-module.h
 
+# Built by recursive call to `configure'.
+*.android
+!INSTALL.android
+!verbose.mk.android
+
+# Built by `javac'.
+java/install_temp/*
+java/*.apk*
+java/*.dex
+java/org/gnu/emacs/*.class
+
+# Built by `aapt'.
+java/org/gnu/emacs/R.java
+
+# Built by `make'.
+java/org/gnu/emacs/EmacsConfig.java
+java/cf-stamp
+
+# Built by `config.status'.
+java/AndroidManifest.xml
+
 # C-level sources built by 'make'.
 lib/alloca.h
 lib/assert.h
 lib/byteswap.h
 lib/dirent.h
+lib/endian.h
 lib/errno.h
 lib/execinfo.h
 lib/fcntl.h
@@ -70,8 +93,10 @@ lib/limits.h
 lib/malloc/*.gl.h
 lib/signal.h
 lib/std*.h
+lib/math.h
 !lib/std*.in.h
 !lib/stdio-impl.h
+!lib/_Noreturn.h
 lib/string.h
 lib/sys/
 lib/time.h
@@ -81,9 +106,22 @@ src/globals.h
 src/lisp.mk
 src/verbose.mk
 
+# Stuff built during cross compilation
+cross/lib/*
+cross/src/*
+cross/lib-src/*
+cross/sys/*
+cross/config.status
+cross/*.bak
+cross/etc/DOC
+
+cross/ndk-build/Makefile
+cross/ndk-build/ndk-build.mk
+cross/ndk-build/*.o
+
 # Lisp-level sources built by 'make'.
-*cus-load.el
-*loaddefs.el
+lisp/**/*cus-load.el
+lisp/**/*loaddefs.el
 lisp/cedet/semantic/bovine/c-by.el
 lisp/cedet/semantic/bovine/make-by.el
 lisp/cedet/semantic/bovine/scm-by.el
@@ -92,7 +130,7 @@ lisp/cedet/semantic/wisent/js-wy.el
 lisp/cedet/semantic/wisent/python-wy.el
 lisp/cedet/srecode/srt-wy.el
 lisp/cedet/semantic/grammar-wy.el
-lisp/eshell/esh-groups.el
+lisp/eshell/esh-module-loaddefs.el
 lisp/finder-inf.el
 lisp/leim/ja-dic/
 leim/small-ja-dic-option
@@ -187,6 +225,7 @@ ID
 # Executables.
 *.exe
 a.out
+lib-src/asset-directory-tool
 lib-src/be-resources
 lib-src/blessmail
 lib-src/ctags
@@ -210,6 +249,7 @@ nextstep/GNUstep/Emacs.base/Resources/Info-gnustep.plist
 src/bootstrap-emacs
 src/emacs
 src/emacs-[0-9]*
+src/sfnt
 src/Emacs
 src/temacs
 src/dmpstruct.h
@@ -281,7 +321,6 @@ gnustmp*
 *.orig
 *.swp
 *~
-.#*
 \#*\#
 ChangeLog
 [0-9]*.patch
@@ -330,13 +369,22 @@ lib-src/seccomp-filter-exec.pfc
 # Ignore directory made by admin/make-manuals.
 /manual/
 
-# Ignore Finder files on MacOS.
-.DS_Store
-
-# Ignore a directory used by dap-mode.
-.vscode
 /test/gmp.h
 
-# GDB history
-.gdb_history
-_gdb_history
+# Files ignored in exec/.
+exec/aclocal.m4
+exec/config.guess
+exec/config.sub
+exec/config.status
+exec/install-sh
+exec/loader
+exec/test
+exec/exec1
+exec/deps/*
+exec/aclocal.m4
+exec/autom4te.cache
+exec/config.h
+exec/config.h.in
+exec/config-mips.m4
+exec/configure
+exec/*.s.s

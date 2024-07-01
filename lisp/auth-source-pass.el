@@ -122,9 +122,9 @@ HOSTS can be a string or a list of strings."
 
 (defun auth-source-pass--build-result-many (hosts ports users require max)
   "Return multiple `auth-source-pass--build-result' values."
-  (unless (listp hosts) (setq hosts (list hosts)))
-  (unless (listp users) (setq users (list users)))
-  (unless (listp ports) (setq ports (list ports)))
+  (setq hosts (ensure-list hosts))
+  (setq users (ensure-list users))
+  (setq ports (ensure-list ports))
   (let* ((auth-source-pass--match-regexp (auth-source-pass--match-regexp
                                           auth-source-pass-port-separator))
          (rv (auth-source-pass--find-match-many hosts users ports

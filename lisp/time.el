@@ -139,6 +139,12 @@ make the mail indicator stand out on a color display."
   :version "22.1"
   :type '(choice (const :tag "None" nil) face))
 
+(defface display-time-date-and-time
+  '((t nil))
+  "Face for `display-time-format'."
+  :group 'mode-line-faces
+  :version "30.1")
+
 (defvar display-time-mail-icon
   (find-image '((:type xpm :file "letter.xpm" :ascent center)
 		(:type pbm :file "letter.pbm" :ascent center)))
@@ -179,6 +185,7 @@ depend on `display-time-day-and-date' and `display-time-24hr-format'."
      (format-time-string (or display-time-format
 			     (if display-time-24hr-format "%H:%M" "%-I:%M%p"))
 			 now)
+     'face 'display-time-date-and-time
      'help-echo (format-time-string "%a %b %e, %Y" now))
     load
     (if mail
@@ -589,7 +596,7 @@ See `world-clock'."
 (defun world-clock ()
   "Display a world clock buffer with times in various time zones.
 The variable `world-clock-list' specifies which time zones to use.
-To turn off the world time display, go to the window and type `\\[quit-window]'."
+To turn off the world time display, go to the window and type \\[quit-window]."
   (interactive)
   (if-let ((buffer (get-buffer world-clock-buffer-name)))
       (pop-to-buffer buffer)
@@ -611,7 +618,7 @@ To turn off the world time display, go to the window and type `\\[quit-window]'.
 (defun world-clock-update (&optional _arg _noconfirm)
   "Update the `world-clock' buffer."
   (if (get-buffer world-clock-buffer-name)
-      (with-current-buffer (get-buffer world-clock-buffer-name)
+      (with-current-buffer world-clock-buffer-name
         (let ((op (point)))
           (world-clock-display (time--display-world-list))
           (goto-char op)))

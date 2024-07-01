@@ -168,25 +168,19 @@ Valid states are `closed', `initial', `nonauth', and `auth'.")
 
 ;; Internal utility functions
 (defun sieve-manage--append-to-log (&rest args)
-  "Append ARGS to `sieve-manage-log' buffer.
+  "Append ARGS to sieve-manage log buffer.
 
 ARGS can be a string or a list of strings.
 The buffer to use for logging is specified via `sieve-manage-log'.
-If it is nil, logging is disabled.
-
-When the `sieve-manage-log' buffer doesn't exist, it gets created (and
-configured with some initial settings)."
+If it is nil, logging is disabled."
   (when sieve-manage-log
-    (let* ((existing-log-buffer (get-buffer sieve-manage-log))
-           (log-buffer (or existing-log-buffer
-                           (get-buffer-create sieve-manage-log))))
-      (with-current-buffer log-buffer
-        (unless existing-log-buffer
-          ;; Do this only once, when creating the log buffer.
-          (set-buffer-multibyte nil)
-          (buffer-disable-undo))
-        (goto-char (point-max))
-        (apply #'insert args)))))
+    (with-current-buffer (or (get-buffer sieve-manage-log)
+                             (with-current-buffer
+                                 (get-buffer-create sieve-manage-log)
+                               (set-buffer-multibyte nil)
+                               (buffer-disable-undo)))
+      (goto-char (point-max))
+      (apply #'insert args))))
 
 (defun sieve-manage--message (format-string &rest args)
   "Wrapper around `message' which also logs to sieve manage log.
@@ -517,7 +511,7 @@ If NAME is nil, return the full server list of capabilities."
     (while (not pos)
       (setq pos (search-forward-regexp pattern nil t))
       (goto-char (point-min))
-      (sleep-for 0 50))
+      (sleep-for 0.05))
     pos))
 
 (defun sieve-manage-drop-next-answer ()

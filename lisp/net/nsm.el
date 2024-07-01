@@ -149,10 +149,11 @@ unencrypted."
     (dhe-prime-kx           medium)
     (sha1-sig               medium)
     (ecdsa-cbc-cipher       medium)
+    ;; Deprecated by NIST from 2016/2023 (see also CVE-2016-2183).
+    (3des-cipher            medium)
     ;; Towards TLS 1.3
     (dhe-kx                 high)
     (rsa-kx                 high)
-    (3des-cipher            high)
     (cbc-cipher             high))
   "This variable specifies what TLS connection checks to perform.
 It's an alist where the key is the name of the check, and the
@@ -169,13 +170,13 @@ otherwise.
 
 See also: `nsm-check-tls-connection', `nsm-save-host-names',
 `nsm-settings-file'"
-  :version "27.1"
   :type '(repeat (list (symbol :tag "Check function")
                        (choice :tag "Level"
                                :value medium
                                (const :tag "Low" low)
                                (const :tag "Medium" medium)
-                               (const :tag "High" high)))))
+                               (const :tag "High" high))))
+  :version "30.1")
 
 (defun nsm-save-fingerprint-maybe (host port status &rest _)
   "Save the certificate's fingerprint.
@@ -386,12 +387,11 @@ between the user and the server, to downgrade vulnerable TLS
 connections to insecure 512-bit export grade cryptography.
 
 The Logjam paper suggests using 1024-bit prime on the client to
-mitigate some effects of this attack, and upgrade to 2048-bit as
-soon as server configurations allow.  According to SSLLabs' SSL
-Pulse tracker, only about 75% of server support 2048-bit key
-exchange in June 2018[2].  To provide a balance between
-compatibility and security, this function only checks for a
-minimum key strength of 1024-bit.
+mitigate some effects of this attack, and upgrading to 2048-bit
+as soon as server configurations allow.  According to SSLLabs'
+SSL Pulse tracker the overwhelming majority of servers support
+2048-bit key exchange in October 2023[2].  This function
+therefore checks for a minimum key strength of 2048 bits.
 
 See also: `nsm-protocol-check--dhe-kx'
 
@@ -403,10 +403,10 @@ Diffie-Hellman Fails in Practice\", `https://weakdh.org/'
 `https://www.ssllabs.com/ssl-pulse/'"
   (let ((prime-bits (plist-get status :diffie-hellman-prime-bits)))
     (if (and (string-match "^\\bDHE\\b" (plist-get status :key-exchange))
-             (< prime-bits 1024))
+             (< prime-bits 2048))
         (format-message
          "Diffie-Hellman key strength (%s bits) too weak (%s bits)"
-         prime-bits 1024))))
+         prime-bits 2048))))
 
 (defun nsm-protocol-check--dhe-kx (_host _port status &optional _settings)
   "Check for existence of DH key exchange based on integer factorization.
@@ -484,7 +484,7 @@ because of MAC-then-encrypt.  This construction is vulnerable to
 padding oracle attacks[1].
 
 Since GnuTLS 3.4.0, the TLS encrypt-then-MAC extension[2] has
-been enabled by default[3]. If encrypt-then-MAC is negotiated,
+been enabled by default[3].  If encrypt-then-MAC is negotiated,
 this check has no effect.
 
 Reference:
@@ -826,7 +826,10 @@ protocol."
            (?n "next" "Next certificate")
            (?p "previous" "Previous certificate")
            (?q "quit" "Quit details view")))
-        (done nil))
+        (done nil)
+	(old-use-dialog-box use-dialog-box)
+	(use-dialog-box use-dialog-box)
+	(use-dialog-box-override use-dialog-box-override))
     (save-window-excursion
       ;; First format the certificate and warnings.
       (pop-to-buffer buffer)
@@ -859,14 +862,18 @@ protocol."
                              (read-multiple-choice "Continue connecting?"
                                                    accept-choices)))
               (setq buf (if show-details cert-buffer buffer))
-
               (cl-case (car answer)
                 (?q
+		 (setq use-dialog-box old-use-dialog-box)
                  ;; Exit the details window.
                  (set-window-buffer (get-buffer-window cert-buffer) buffer)
                  (setq show-details nil))
 
                 (?d
+		 ;; Dialog boxes should be suppressed, as they
+		 ;; obstruct the certificate details buffer.
+		 (setq use-dialog-box nil
+		       use-dialog-box-override nil)
                  ;; Enter the details window.
                  (set-window-buffer (get-buffer-window buffer) cert-buffer)
                  (with-current-buffer cert-buffer
@@ -1030,10 +1037,14 @@ protocol."
 	 "  Hostname:"
 	 (nsm-certificate-part (plist-get cert :subject) "CN" t) "\n")
 	(when (and (plist-get cert :public-key-algorithm)
-		   (plist-get cert :signature-algorithm))
+		   (plist-get cert :signature-algorithm)
+		   (or (plist-get cert :public-key-id-sha256)
+		       (plist-get cert :public-key-id)))
 	  (insert
 	   "  Public key:" (plist-get cert :public-key-algorithm)
-	   ", signature: " (plist-get cert :signature-algorithm) "\n"))
+	   ", signature: " (plist-get cert :signature-algorithm) "\n"
+	   "  Public key ID:" (or (plist-get cert :public-key-id-sha256)
+				  (plist-get cert :public-key-id)) "\n"))
         (when (and (plist-get status :key-exchange)
 		   (plist-get status :cipher)
 		   (plist-get status :mac)

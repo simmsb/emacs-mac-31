@@ -167,8 +167,8 @@ form of ((MONTH DAY YEAR) STRING), where string is the diary
 entry for the given date.  This can be used, for example, to
 produce a different buffer for display (perhaps combined with
 holidays), or hard copy output."
-  :type '(choice (const diary-fancy-display :tag "Fancy display")
-                 (const diary-simple-display :tag "Basic display")
+  :type '(choice (const :tag "Fancy display" diary-fancy-display)
+                 (const :tag "Basic display" diary-simple-display)
                  (const :tag "No display" ignore)
                  (function :tag "User-specified function"))
   :initialize 'custom-initialize-default
@@ -339,7 +339,7 @@ Returns a string using match elements 1-5, where:
                     (t "\\1 \\2 \\3"))) ; MDY
             "\n \\4 %s, \\5")))
 ;; TODO Sometimes the time is in a different time-zone to the one you
-;; are in.  Eg in PST, you might still get an email referring to:
+;; are in.  E.g., in Los Angeles, you might still get an email referring to:
 ;; "7:00 PM-8:00 PM. Greenwich Standard Time".
 ;; Note that it doesn't use a standard abbreviation for the timezone,
 ;; or anything helpful like that.

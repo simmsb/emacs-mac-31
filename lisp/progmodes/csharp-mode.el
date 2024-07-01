@@ -972,6 +972,13 @@ Key bindings:
   ;; Comments.
   (c-ts-common-comment-setup)
 
+  (setq-local treesit-thing-settings
+              `((c-sharp
+                 (text
+                  ,(regexp-opt '("comment"
+                                 "verbatim_string-literal"
+                                 "interpolated_verbatim_string-text"))))))
+
   ;; Indent.
   (setq-local treesit-simple-indent-rules csharp-ts-mode--indent-rules)
 
@@ -1003,6 +1010,8 @@ Key bindings:
   (treesit-major-mode-setup)
 
   (add-to-list 'auto-mode-alist '("\\.cs\\'" . csharp-ts-mode)))
+
+(derived-mode-add-parents 'csharp-ts-mode '(csharp-mode))
 
 (provide 'csharp-mode)
 

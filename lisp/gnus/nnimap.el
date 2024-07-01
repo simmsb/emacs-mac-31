@@ -97,7 +97,7 @@ Uses the same syntax as `nnmail-split-methods'.")
 (defvoo nnimap-authenticator nil
   "How nnimap authenticate itself to the server.
 Possible choices are nil (use default methods), `anonymous',
-`login', `plain' and `cram-md5'.")
+`login', `plain', `cram-md5' and `xoauth2'.")
 
 (defvoo nnimap-expunge 'on-exit
   "When to expunge deleted messages.
@@ -1908,19 +1908,7 @@ If LIMIT, first try to limit the search to the N last articles."
 
 (autoload 'nnselect-search-thread "nnselect")
 
-(deffoo nnimap-request-thread (header &optional group server)
-  (if gnus-refer-thread-use-search
-      (nnselect-search-thread header)
-    (when (nnimap-change-group group server)
-      (let* ((cmd (nnimap-make-thread-query header))
-             (result (with-current-buffer (nnimap-buffer)
-                       (nnimap-command  "UID SEARCH %s" cmd))))
-        (when result
-          (gnus-fetch-headers
-           (and (car result)
-		(delete 0 (mapcar #'string-to-number
-				  (cdr (assoc "SEARCH" (cdr result))))))
-           nil t))))))
+(make-obsolete 'nnimap-request-thread 'gnus-search-thread "29.1")
 
 (defun nnimap-change-group (group &optional server no-reconnect read-only)
   "Change group to GROUP if non-nil.

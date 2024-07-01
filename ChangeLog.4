@@ -309,7 +309,7 @@
 
 2024-03-31  Michael Albinus  <michael.albinus@gmx.de>
 
-	Adapt Tramp versio (don't merge)
+	Adapt Tramp version (don't merge)
 
 	* doc/misc/trampver.texi:
 	* lisp/net/trampver.el: Change version to "2.6.3".
@@ -2920,7 +2920,7 @@
 	value of SMALL_JA_DIC option used to produce ja-dic.el.
 	* leim/Makefile.in (small-ja-dic-option): New target, triggers
 	regeneration of ja-dic.el when the value of SMALL_JA_DIC option
-	changes by the configure script.  Suggested by Ulrich Mueller
+	changes by the configure script.  Suggested by Ulrich Müller
 	<ulm@gentoo.org>.
 	(${leimdir}/ja-dic/ja-dic.el): Depend on 'small-ja-dic-option'.
 	(Bug#66125)
@@ -4748,7 +4748,7 @@
 
 2023-07-20  Po Lu  <luangruo@yahoo.com>
 
-	Fix typos and ommissions in cus-edit.el
+	Fix typos and omissions in cus-edit.el
 
 	* lisp/cus-edit.el (custom-display): Add missing display types.
 
@@ -8476,10 +8476,10 @@
 	changes, make hint overlays span one character (instead of being
 	length 0).  Give the overlays an "evaporate" property.
 
-	Given an inlay hints at position POS, its attached to [POS, POS+1] if
-	it's kind=1 (usually type hints) and [POS-1, POS] otherwise.  For
+	Given an inlay hints at position POS, it's attached to [POS, POS+1] if
+	its kind=1 (usually type hints) and [POS-1, POS] otherwise.  For
 	kind=1 hints, the 'cursor position of the first such overlay is also
-	tweaked, so that's it's less akward to edit around it.
+	tweaked, so that's it's less awkward to edit around it.
 
 	* lisp/progmodes/eglot.el (eglot--before-change): Don't delete hints
 	  here.
@@ -9313,7 +9313,7 @@
 	Not the subject of it, but mentioned in bug#61893.
 
 	* lisp/progmodes/c-ts-mode.el (c-ts-mode--anchor-prev-sibling): Skip
-	the sibling if it doesn't start on it's own line.
+	the sibling if it doesn't start on its own line.
 	* test/lisp/progmodes/c-ts-mode-resources/indent.erts: New test.
 
 2023-03-05  Kyle Meyer  <kyle@kyleam.com>
@@ -24470,7 +24470,7 @@
 	(treesit-major-mode-setup): Instead of binding
 	font-lock-fontify-region-function, now bind to
 	font-lock-fontify-syntactically-function.  And we can let font-lock do
-	it's thing.
+	its thing.
 
 2022-10-31  Yuan Fu  <casouri@gmail.com>
 
@@ -28715,7 +28715,7 @@
 	Fix Tramp completion on MS Windows
 
 	* lisp/net/tramp.el (tramp-build-remote-file-name-spec-regexp):
-	Revert previous change, it's too complicate.
+	Revert previous change, it's too complicated.
 	(tramp-build-completion-file-name-regexp):
 	Use `tramp-prefix-format' instead of `tramp-prefix-regexp'.  (Bug#558133)
 
@@ -36373,7 +36373,7 @@
 	Merge from origin/emacs-28
 
 	395760dcd3 Update ChangeLog and AUTHORS for Emacs 28.2
-	ddabb03a01 * doc/misc/idlwave.texi (Troubleshooting): Don't say "Emac...
+	ddabb03a01 * doc/misc/idlwave.texi (Troubleshooting): Don't say "Emacs...
 	724444f3d5 ; * doc/emacs/misc.texi (emacsclient Options): Fix typo.
 	b96257162d Don't mention very old Emacs versions in docs
 
@@ -37079,7 +37079,7 @@
 
 	* src/xselect.c (lisp_data_to_selection_data): Assume an empty
 	vector represents INTEGER data, instead of blindly trying to
-	aref it's first element.
+	aref its first element.
 
 2022-09-04  Jim Porter  <jporterbugs@gmail.com>
 
@@ -40542,7 +40542,7 @@
 
 	* doc/misc/gnus.texi (The problem of spam): Don't explain what
 	spam is; there is no need for that in 2022.  Don't explain
-	limitations of obsolete software TMDA; it's website has stopped
+	limitations of obsolete software TMDA; its website has stopped
 	working but seems to have been updated last in 2007.
 	(Thwarting Email Spam, Anti-Spam Basics)
 	(Spam Package Configuration Examples): Prefer "spam" to "UCE".
@@ -56762,7 +56762,7 @@
 
 2022-06-14  Mattias Engdegård  <mattiase@acm.org>
 
-	Simplify byte-compiler assuming cconv normalisations
+	Simplify byte-compiler assuming cconv normalizations
 
 	* lisp/emacs-lisp/byte-opt.el (byte-optimize-form-code-walker)
 	(byte-optimize-let-form, byte-optimize-letX):
@@ -56776,7 +56776,7 @@
 
 	Make cconv work for dynamically bound code and always run it.
 	This allows later stages to benefit from transformations and
-	normalisations in cconv.
+	normalizations in cconv.
 
 	* lisp/emacs-lisp/bytecomp.el (byte-compile-preprocess): Always run
 	cconv.
@@ -63333,7 +63333,7 @@
 	Correct indentation of opening brace in xdisp.c, which isn't at start of defun
 
 	* xdisp.c (calc_pixel_width_or_height): indent the opening brace of a
-	substatement correctly.  It's previous position, in column 0, caused
+	substatement correctly.  Its previous position, in column 0, caused
 	indentation errors in C Mode.
 
 2022-05-17  Po Lu  <luangruo@yahoo.com>
@@ -82203,7 +82203,7 @@
 
 	* src/xfns.c (x_make_gc): Don't set FillOpaqueStippled on cursor
 	GC.  The reason is that some X servers break on such a fill
-	style if the operation being performed is not a stiple
+	style if the operation being performed is not a stipple
 	operation.
 
 2022-02-09  Po Lu  <luangruo@yahoo.com>
@@ -104703,7 +104703,7 @@
 	Merge from origin/emacs-28
 
 	f1c9286 ; * doc/misc/org.org: fix capture context example
-	af67ce6 Merge branch 'emacs-28' of git.savannah.gnu.org:/srv/git/emac...
+	af67ce6 Merge branch 'emacs-28' of git.savannah.gnu.org:/srv/git/emacs...
 	610680a Fix rendering of title-less <abbr> tags in shr
 	2ba4ccf ; * lisp/files.el (make-nearby-temp-file): Doc fix.
 
@@ -120832,7 +120832,7 @@
 
 	Do not quote lambda expressions
 
-	http://emacs.stackexchange.com/a/3596
+	https://emacs.stackexchange.com/a/3596
 
 	Quoting lambda expressions is at best redundant and at worst
 	detrimental; this commit removes all use of the sharp-quote to reduce
@@ -121566,7 +121566,7 @@
 
 	This change follows the regexp for require on emacs truck. See line
 	2327 on font-lock.el in the following patch.
-	http://bzr.savannah.gnu.org/lh/emacs/trunk/revision/111821
+	https://bzr.savannah.gnu.org/lh/emacs/trunk/revision/111821
 
 2013-09-04  John Wiegley  <johnw@newartisans.com>
 

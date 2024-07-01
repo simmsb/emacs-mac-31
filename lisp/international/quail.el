@@ -804,13 +804,12 @@ The format of KBD-LAYOUT is the same as `quail-keyboard-layout'."
       (setq i (1+ i)))
 
     (let ((pos (point))
-	  (bar "|")
+	  (bar (propertize "|" 'face 'bold))
 	  lower upper row)
       ;; Make table without horizontal lines.  Each column for a key
       ;; has the form "| LU |" where L is for lower key and U is
       ;; for a upper key.  If width of L (U) is greater than 1,
       ;; preceding (following) space is not inserted.
-      (put-text-property 0 1 'face 'bold bar)
       (setq i 0)
       (while (< i quail-keyboard-layout-len)
 	(when (= (% i 30) 0)
@@ -1325,17 +1324,23 @@ If STR has `advice' text property, append the following special event:
                ;; binding in `universal-argument-map' just return
                ;; (list KEY), otherwise act as if there was no
                ;; overriding map.
-               (or (not (eq (cadr overriding-terminal-local-map)
-                            universal-argument-map))
-                   (lookup-key overriding-terminal-local-map (vector key))))
+               ;; We used to do that only for `universal-argument-map',
+               ;; but according to bug#68338 this should also apply to
+               ;; other transient maps.  Let's hope it's OK to apply it
+               ;; to all `overriding-terminal-local-map's.
+               (lookup-key overriding-terminal-local-map (vector key)))
 	  overriding-local-map)
       (list key)
     (quail-setup-overlays (quail-conversion-keymap))
     (with-silent-modifications
       (unwind-protect
-	  (let ((input-string (if (quail-conversion-keymap)
+	  (let* (;; `with-silent-modifications' inhibits the modification
+                 ;; hooks, but that's a part of `with-silent-modifications'
+                 ;; we don't actually want here (bug#70541).
+		 (inhibit-modification-hooks nil)
+		 (input-string (if (quail-conversion-keymap)
 				  (quail-start-conversion key)
-				(quail-start-translation key))))
+				  (quail-start-translation key))))
 	    (setq quail-guidance-str "")
 	    (when (and (stringp input-string)
 		       (> (length input-string) 0))
@@ -1870,10 +1875,9 @@ sequence counting from the head."
 
 (defsubst quail-point-in-conversion-region ()
   "Return non-nil value if the point is in conversion region of Quail mode."
-  (let (start pos)
-    (and (setq start (overlay-start quail-conv-overlay))
-	 (>= (setq pos (point)) start)
-	 (<= pos (overlay-end quail-conv-overlay)))))
+  (let ((start (overlay-start quail-conv-overlay)))
+    (and start
+	 (<= start (point) (overlay-end quail-conv-overlay)))))
 
 (defun quail-conversion-backward-char ()
   (interactive)

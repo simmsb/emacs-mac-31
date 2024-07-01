@@ -20,8 +20,18 @@
 #ifndef _GL_CAREADLINKAT_H
 #define _GL_CAREADLINKAT_H
 
+/* This file uses HAVE_READLINKAT.  */
+#if !_GL_CONFIG_H_INCLUDED
+ #error "Please include config.h first."
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 struct allocator;
 
@@ -62,6 +72,11 @@ char *careadlinkat (int fd, char const *filename,
 # ifndef AT_FDCWD
 #  define AT_FDCWD (-3041965)
 # endif
+#endif
+
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* _GL_CAREADLINKAT_H */

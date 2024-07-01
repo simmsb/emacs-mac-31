@@ -667,6 +667,8 @@ If NOSET is non-nil, don't bother autoloading LOAD when setting the variable."
 A customizable variable is either (i) a variable whose property
 list contains a non-nil `standard-value' or `custom-autoload'
 property, or (ii) an alias for another customizable variable."
+  (declare (ftype (function (symbol) t))
+           (side-effect-free t))
   (when (symbolp variable)
     (setq variable (indirect-variable variable))
     (or (get variable 'standard-value)
@@ -1207,7 +1209,7 @@ The command `customize-create-theme' writes theme files into this
 directory.  By default, Emacs searches for custom themes in this
 directory first---see `custom-theme-load-path'."
   :initialize #'custom-initialize-delay
-  :type 'string
+  :type 'directory
   :group 'customize
   :version "22.1")
 

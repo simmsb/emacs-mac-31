@@ -149,6 +149,10 @@ This requires either the macOS \"open\" command, or the freedesktop
                (goto-char (point-min))
                (buffer-substring (line-beginning-position)
                                  (line-end-position))))))
+        ((eq system-type 'android)
+         ;; This is a short string containing the Android version,
+         ;; build number, and window system distributor.
+         (symbol-value 'android-build-fingerprint))
         ;; TODO Cygwin, Solaris (usg-unix-v).
         (t
          (or (let ((file "/etc/os-release"))
@@ -240,7 +244,7 @@ Already submitted bugs can be found in the Emacs bug tracker:
     (compose-mail reporting-address topic)
     ;; The rest of this does not execute if the user was asked to
     ;; confirm and said no.
-    (when (eq major-mode 'message-mode)
+    (when (derived-mode-p 'message-mode)
       ;; Message-mode sorts the headers before sending.  We sort now so
       ;; that report-emacs-bug-orig-text remains valid.  (Bug#5178)
       (message-sort-headers)
@@ -522,7 +526,7 @@ Message buffer where you can explain more about the patch."
      (list (read-string (format-prompt "This patch is about" guess)
                         nil nil guess)
            file)))
-  (switch-to-buffer "*Patch Help*")
+  (pop-to-buffer-same-window "*Patch Help*")
   (let ((inhibit-read-only t))
     (erase-buffer)
     (insert "Thank you for considering submitting a patch to the Emacs project.\n\n"

@@ -864,14 +864,15 @@ and CVS."
 (defvar vc-rcs-rcs2log-program
   (let (exe)
     (cond ((file-executable-p
-            (setq exe (expand-file-name "rcs2log" exec-directory)))
+            (setq exe (expand-file-name rcs2log-program-name
+                                        exec-directory)))
            exe)
           ;; In the unlikely event that someone is running an
           ;; uninstalled Emacs and wants to do something RCS-related.
           ((file-executable-p
             (setq exe (expand-file-name "lib-src/rcs2log" source-directory)))
            exe)
-          (t "rcs2log")))
+          (t rcs2log-program-name)))
   "Path to the `rcs2log' program (normally in `exec-directory').")
 
 (autoload 'vc-buffer-sync "vc-dispatcher")
@@ -1176,7 +1177,7 @@ variable `vc-rcs-release' is set to the returned value."
   (or vc-rcs-release
       (setq vc-rcs-release
 	    (or (and (zerop (vc-do-command "*vc*" nil "rcs" nil "-V"))
-		     (with-current-buffer (get-buffer "*vc*")
+		     (with-current-buffer "*vc*"
 		       (vc-parse-buffer "^RCS version \\([0-9.]+ *.*\\)" 1)))
 		'unknown))))
 

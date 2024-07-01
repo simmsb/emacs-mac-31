@@ -3,7 +3,7 @@
 ;; Copyright (C) 2000-2024 Free Software Foundation, Inc.
 
 ;; Author: Vinicius Jose Latorre <viniciusjl.gnu@gmail.com>
-;; Keywords: wp, print, PostScript
+;; Keywords: text, print, PostScript
 ;; Old-Version: 6.9.3
 ;; URL: https://www.emacswiki.org/cgi-bin/wiki/ViniciusJoseLatorre
 
@@ -1148,8 +1148,7 @@ Used by `pr-menu-bind' and `pr-update-menus'.")
 
 (defun pr-menu-get-item (name-list)
   ;; NAME-LIST is a string or a list of strings.
-  (or (listp name-list)
-      (setq name-list (list name-list)))
+  (setq name-list (ensure-list name-list))
   (and name-list
        (let* ((reversed (reverse name-list))
 	      (name (easy-menu-intern (car reversed)))
@@ -1321,10 +1320,10 @@ ENTRY		It's a symbol, used to identify this entry.
 			Unix system.
 
 		`cygwin'	this entry is used when Emacs is running on Windows
-			95/98/NT/2000 with Cygwin.
+                        98/NT/2000 with Cygwin.
 
 		`windows'	this entry is used when Emacs is running on Windows
-			95/98/NT/2000.
+                        98/NT/2000.
 
 DIRECTORY	It should be a string or a symbol.  If it's a symbol, it should
 		exist an equal entry in `pr-path-alist'.  If it's a string,
@@ -5463,7 +5462,7 @@ otherwise, gives an error.
 When using `pr-path-alist' to find COMMAND, the entries `cygwin', `windows' and
 `unix' are used (see `pr-path-alist' for documentation).
 
-If Emacs is running on Windows 95/98/NT/2000, tries to find COMMAND,
+If Emacs is running on Windows 98/NT/2000, tries to find COMMAND,
 COMMAND.exe, COMMAND.bat and COMMAND.com in this order."
   (if (string= command "")
       command

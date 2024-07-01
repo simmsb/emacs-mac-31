@@ -31,6 +31,11 @@
    the *_unlocked functions directly.  On hosts that lack those
    functions, invoke the non-thread-safe versions instead.  */
 
+/* This file uses HAVE_DECL_*_UNLOCKED.  */
+# if !_GL_CONFIG_H_INCLUDED
+#  error "Please include config.h first."
+# endif
+
 # include <stdio.h>
 
 # if HAVE_DECL_CLEARERR_UNLOCKED || defined clearerr_unlocked
@@ -96,7 +101,7 @@
 #  define fwrite_unlocked(w,x,y,z) fwrite (w,x,y,z)
 # endif
 
-# if HAVE_DECL_GETC_UNLOCKED || defined get_unlocked
+# if HAVE_DECL_GETC_UNLOCKED || defined getc_unlocked
 #  undef getc
 #  define getc(x) getc_unlocked (x)
 # else

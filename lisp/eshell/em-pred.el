@@ -48,7 +48,7 @@
 
 (require 'esh-mode)
 
-;;;###autoload
+;;;###esh-module-autoload
 (progn
 (defgroup eshell-pred nil
   "This module allows for predicates to be applied to globbing
@@ -87,11 +87,11 @@ ordinary strings."
     (?U . (lambda (file)                   ; owned by effective uid
             (if (file-exists-p file)
                 (= (file-attribute-user-id (file-attributes file))
-                   (user-uid)))))
+                   (file-user-uid)))))
     (?G . (lambda (file)               ; owned by effective gid
             (if (file-exists-p file)
                 (= (file-attribute-group-id (file-attributes file))
-                   (group-gid)))))
+                   (file-group-gid)))))
     (?* . (lambda (file)
             (and (file-regular-p file)
                  (not (file-symlink-p file))
@@ -293,7 +293,7 @@ This function is specially for adding onto `eshell-parse-argument-hook'."
     (forward-char)
     (let ((end (eshell-find-delimiter ?\( ?\))))
       (if (not end)
-	  (throw 'eshell-incomplete ?\()
+          (throw 'eshell-incomplete "(")
 	(when (eshell-arg-delimiter (1+ end))
 	  (save-restriction
 	    (narrow-to-region (point) end)
@@ -301,16 +301,15 @@ This function is specially for adding onto `eshell-parse-argument-hook'."
                    (modifiers (eshell-parse-modifiers))
 		   (preds (car modifiers))
 		   (mods (cdr modifiers)))
-	      (if (or preds mods)
-		  ;; has to go at the end, which is only natural since
-		  ;; syntactically it can only occur at the end
-		  (setq eshell-current-modifiers
-			(append
-			 eshell-current-modifiers
-			 (list
-			  (lambda (lst)
-			    (eshell-apply-modifiers
-			     lst preds mods modifier-string))))))))
+              (when (or preds mods)
+                ;; Has to go near the end (but before
+                ;; `eshell-splice-args'), which is only natural since
+                ;; syntactically it can only occur at the end.
+                (add-hook 'eshell-current-modifiers
+                          (lambda (lst)
+                            (eshell-apply-modifiers
+                             lst preds mods modifier-string))
+                          90))))
 	  (goto-char (1+ end))
 	  (eshell-finish-arg))))))
 
@@ -577,9 +576,4 @@ If INVERT-P is non-nil, include only members not matching a regexp."
        lst))))
 
 (provide 'em-pred)
-
-;; Local Variables:
-;; generated-autoload-file: "esh-groups.el"
-;; End:
-
 ;;; em-pred.el ends here

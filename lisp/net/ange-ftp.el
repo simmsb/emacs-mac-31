@@ -781,7 +781,7 @@ If nil, the value of `ange-ftp-netrc-default-user' is used.
 If that is nil too, then your login name is used.
 
 Once a connection to a given host has been initiated, the user name
-and password information for that host are cached and re-used by
+and password information for that host are cached and reused by
 ange-ftp.  Use \\[ange-ftp-set-user] to change the cached values,
 since setting `ange-ftp-default-user' directly does not affect
 the cached information."
@@ -2850,7 +2850,8 @@ NO-ERROR, if a listing for DIRECTORY cannot be obtained."
 				   (ange-ftp-switches-ok dired-actual-switches))
 			      (and (boundp 'dired-listing-switches)
 				   (ange-ftp-switches-ok
-				    dired-listing-switches))
+				    (connection-local-value
+                                     dired-listing-switches)))
 			      "-al")
 			  t no-error)
 	     (gethash directory ange-ftp-files-hashtable)))))
@@ -3534,7 +3535,8 @@ system TYPE.")
   (setq file (expand-file-name file))
   (let ((parsed (ange-ftp-ftp-name file)))
     (if parsed
-        (if (and delete-by-moving-to-trash trash)
+        (if (and delete-by-moving-to-trash trash
+	         (not remote-file-name-inhibit-delete-by-moving-to-trash))
 	    (move-file-to-trash file)
 	  (let* ((host (nth 0 parsed))
 	         (user (nth 1 parsed))
@@ -4129,7 +4131,7 @@ directory, so that Emacs will know its current contents."
 	(or (file-exists-p parent)
 	    (ange-ftp-make-directory parent parents))))
   (if (file-exists-p dir)
-      (unless parents
+      (if parents t
 	(signal
          'file-already-exists
          (list "Cannot make directory: file already exists" dir)))
@@ -4158,7 +4160,8 @@ directory, so that Emacs will know its current contents."
 				(format "Could not make directory %s: %s"
 					dir
 					(cdr result))))
-	    (ange-ftp-add-file-entry dir t))
+	    (ange-ftp-add-file-entry dir t)
+            nil)
 	(ange-ftp-real-make-directory dir)))))
 
 (defun ange-ftp-delete-directory (dir &optional recursive trash)
@@ -4231,7 +4234,7 @@ directory, so that Emacs will know its current contents."
 	 (host (nth 0 parsed))
 	 (user (nth 1 parsed))
 	 (localname (nth 2 parsed)))
-    (and (or (not connected)
+    (and (or (memq connected '(nil never))
 	     (let ((proc (get-process (ange-ftp-ftp-process-buffer host user))))
 	       (and proc (processp proc)
 		    (memq (process-status proc) '(run open)))))
@@ -4240,6 +4243,7 @@ directory, so that Emacs will know its current contents."
 	  ((eq identification 'user) user)
 	  ((eq identification 'host) host)
 	  ((eq identification 'localname) localname)
+	  ((eq identification 'hop) nil)
 	  (t (ange-ftp-replace-name-component file ""))))))
 
 (defun ange-ftp-load (file &optional noerror nomessage nosuffix must-suffix)
@@ -4377,6 +4381,14 @@ NEWNAME should be the name to give the new compressed or uncompressed file.")
   ;; or return nil meaning don't make a backup.
   (if ange-ftp-make-backup-files
       (ange-ftp-real-find-backup-file-name fn)))
+
+(defun ange-ftp-file-user-uid ()
+  ;; Return "don't know" value.
+  -1)
+
+(defun ange-ftp-file-group-gid ()
+  ;; Return "don't know" value.
+  -1)
 
 ;;; Define the handler for special file names
 ;;; that causes ange-ftp to be invoked.
@@ -4391,40 +4403,6 @@ NEWNAME should be the name to give the new compressed or uncompressed file.")
 	      (save-match-data (apply fn args)))
 	  (error (signal (car err) (cdr err))))
       (ange-ftp-run-real-handler operation args))))
-
-;; The following code is commented out because Tramp now deals with
-;; Ange-FTP filenames, too.
-
-;;-;;; This regexp takes care of real ange-ftp file names (with a slash
-;;-;;; and colon).
-;;-;;; Don't allow the host name to end in a period--some systems use /.:
-;;-;;;###autoload
-;;-(or (assoc "^/[^/:]*[^/:.]:" file-name-handler-alist)
-;;-    (setq file-name-handler-alist
-;;-	  (cons '("^/[^/:]*[^/:.]:" . ange-ftp-hook-function)
-;;-		file-name-handler-alist)))
-;;-
-;;-;;; This regexp recognizes absolute filenames with only one component,
-;;-;;; for the sake of hostname completion.
-;;-;;;###autoload
-;;-(or (assoc "^/[^/:]*\\'" file-name-handler-alist)
-;;-    (setq file-name-handler-alist
-;;-	  (cons '("^/[^/:]*\\'" . ange-ftp-completion-hook-function)
-;;-		file-name-handler-alist)))
-;;-
-;;-;;; This regexp recognizes absolute filenames with only one component
-;;-;;; on Windows, for the sake of hostname completion.
-;;-;;; NB. Do not mark this as autoload, because it is very common to
-;;-;;; do completions in the root directory of drives on Windows.
-;;-(and (memq system-type '(ms-dos windows-nt))
-;;-     (or (assoc "^[a-zA-Z]:/[^/:]*\\'" file-name-handler-alist)
-;;-	 (setq file-name-handler-alist
-;;-	       (cons '("^[a-zA-Z]:/[^/:]*\\'" .
-;;-		       ange-ftp-completion-hook-function)
-;;-		     file-name-handler-alist))))
-
-;;; The above two forms are sufficient to cause this file to be loaded
-;;; if the user ever uses a file name with a colon in it.
 
 ;;; This sets the mode
 (add-hook 'find-file-hook 'ange-ftp-set-buffer-mode)
@@ -4498,6 +4476,29 @@ NEWNAME should be the name to give the new compressed or uncompressed file.")
 (put 'process-file 'ange-ftp 'ange-ftp-process-file)
 (put 'start-file-process 'ange-ftp 'ignore)
 (put 'shell-command 'ange-ftp 'ange-ftp-shell-command)
+
+;; Do not execute system information functions.
+(put 'file-system-info 'ange-ftp 'ignore)
+(put 'list-system-processes 'ange-ftp 'ignore)
+(put 'memory-info 'ange-ftp 'ignore)
+(put 'process-attributes 'ange-ftp 'ignore)
+
+;; There aren't ACLs.  `file-selinux-context' shall return '(nil nil
+;; nil nil) if the file is nonexistent, so we let the default file
+;; name handler do the job.
+(put 'file-acl 'ange-ftp 'ignore)
+;; (put 'file-selinux-context 'ange-ftp 'ignore)
+(put 'set-file-acl 'ange-ftp 'ignore)
+(put 'set-file-selinux-context 'ange-ftp 'ignore)
+
+;; There aren't file notifications.
+(put 'file-notify-add-watch 'ange-ftp 'ignore)
+(put 'file-notify-rm-watch 'ange-ftp 'ignore)
+(put 'file-notify-valid-p 'ange-ftp 'ignore)
+
+;; Return the "don't know" value for remote user uid and group gid.
+(put 'file-user-uid 'ange-ftp 'ange-ftp-file-user-uid)
+(put 'file-group-gid 'ange-ftp 'ange-ftp-file-group-gid)
 
 ;;; Define ways of getting at unmodified Emacs primitives,
 ;;; turning off our handler.

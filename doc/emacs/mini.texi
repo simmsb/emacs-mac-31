@@ -353,7 +353,8 @@ arguments that often include spaces, such as file names.
 Submit the text in the minibuffer as the argument, possibly completing
 first (@code{minibuffer-complete-and-exit}).  @xref{Completion Exit}.
 @item ?
-Display a list of completions (@code{minibuffer-completion-help}).
+Display a list of completions and a few useful key bindings
+(@code{minibuffer-completion-help}).
 @end table
 
 @kindex TAB @r{(completion)}
@@ -375,11 +376,12 @@ all the way to @samp{auto-fill-mode}.
 
 @kindex ? @r{(completion)}
 @cindex completion list
-  If @key{TAB} or @key{SPC} is unable to complete, it displays a list
-of matching completion alternatives (if there are any) in another
-window.  You can display the same list with @kbd{?}
-(@code{minibuffer-completion-help}).  The following commands can be
-used with the completion list:
+  If @key{TAB} or @key{SPC} is unable to complete, it displays in
+another window a list of matching completion alternatives (if there are
+any) and a few useful commands to select a completion candidate.  You
+can display the same completion list and help with @kbd{?}
+(@code{minibuffer-completion-help}).  The following commands can be used
+with the completion list:
 
 @table @kbd
 @vindex minibuffer-completion-auto-choose
@@ -391,7 +393,7 @@ used with the completion list:
 @findex minibuffer-choose-completion
 @item M-@key{DOWN}
 @itemx M-@key{UP}
-While in the minibuffer, @kbd{M-@key{DOWN}}
+While in the minibuffer or in the completion list buffer, @kbd{M-@key{DOWN}}
 (@code{minibuffer-next-completion} and @kbd{M-@key{UP}}
 (@code{minibuffer-previous-completion}) navigate through the
 completions and displayed in the completions buffer.  When
@@ -449,6 +451,15 @@ and selects the window showing the minibuffer (@code{quit-window}).
 While in the completion list buffer, kill it and delete the window
 showing it (@code{kill-current-buffer}).
 @end table
+
+@vindex minibuffer-visible-completions
+  If the variable @code{minibuffer-visible-completions} is customized to
+a non-@code{nil} value, it changes the commands bound to the arrow keys:
+instead of moving in the minibuffer, they move between completion
+candidates, like meta-arrow keys do by default.  Similarly,
+@kbd{@key{RET}} selects the current candidate, like @kbd{M-@key{RET}}
+does normally.  @code{C-g} hides the completion window, but leaves the
+minibuffer active, so you can continue typing at the prompt.
 
 @node Completion Exit
 @subsection Completion Exit
@@ -683,6 +694,17 @@ then move to a candidate by cursor motion commands and select it with
 @code{second-tab}, then the first @kbd{@key{TAB}} will pop up the
 completions list buffer, and the second one will switch to it.
 
+@findex previous-line-completion
+@findex next-line-completion
+@vindex completion-auto-wrap
+  When the window showing the completions is selected, either because
+you customized @code{completion-auto-select} or because you switched to
+it by typing @kbd{C-x o}, the @kbd{@key{UP}} and @kbd{@key{DOWN}} arrow
+keys move by lines between completion candidates; with a prefix numeric
+argument, they move that many lines.  If @code{completion-auto-wrap} is
+non-@code{nil}, these commands will wrap at bottom and top of the
+candidate list.
+
 @vindex completion-cycle-threshold
   If @code{completion-cycle-threshold} is non-@code{nil}, completion
 commands can cycle through completion alternatives.  Normally, if
@@ -709,7 +731,9 @@ will use just one column.
   The @code{completions-sort} user option controls the order in which
 the completions are sorted in the @samp{*Completions*} buffer.  The
 default is @code{alphabetical}, which sorts in alphabetical order.
-The value @code{nil} disables sorting.  The value can also be a
+The value @code{nil} disables sorting; the value @code{historical}
+sorts alphabetically first, and then rearranges according to the order
+of the candidates in the minibuffer history.  The value can also be a
 function, which will be called with the list of completions, and
 should return the list in the desired order.
 
@@ -970,12 +994,14 @@ File ‘foo.el’ exists; overwrite? (y or n)
 @end smallexample
 
 @cindex yes or no prompt
+@vindex yes-or-no-prompt
   The second type of yes-or-no query is typically employed if giving
 the wrong answer would have serious consequences; it thus features a
-longer prompt ending with @samp{(yes or no)}.  For example, if you
-invoke @kbd{C-x k} (@code{kill-buffer}) on a file-visiting buffer with
-unsaved changes, Emacs activates the minibuffer with a prompt like
-this:
+longer prompt ending with @samp{(yes or no)} (or the value of
+@code{yes-or-no-prompt} if you've customized that).  For example, if
+you invoke @kbd{C-x k} (@code{kill-buffer}) on a file-visiting buffer
+with unsaved changes, Emacs activates the minibuffer with a prompt
+like this:
 
 @smallexample
 Buffer foo.el modified; kill anyway? (yes or no)

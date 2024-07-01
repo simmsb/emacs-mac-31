@@ -58,7 +58,7 @@ enum lgstring_direction
   };
 
 #define MAC_FONT_CHARACTER_SET_STRING_ATTRIBUTE \
-  (CFSTR ("MAC_FONT_CHARACTER_SET_STRING_ATTRIBUTE"))
+  CFSTR ("MAC_FONT_CHARACTER_SET_STRING_ATTRIBUTE")
 
 typedef const struct _EmacsScreenFont *ScreenFontRef; /* opaque */
 

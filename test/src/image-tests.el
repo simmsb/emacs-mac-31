@@ -44,16 +44,16 @@
     (xpm . ,(find-image '((:file "splash.xpm" :type xpm))))))
 
 (ert-deftest image-tests-image-size/error-on-nongraphical-display ()
-  (skip-unless (not (display-images-p)))
+  (skip-when (display-images-p))
   (should-error (image-size 'invalid-spec)))
 
 (ert-deftest image-tests-image-mask-p/error-on-nongraphical-display ()
-  (skip-unless (not (display-images-p)))
-  (should-error (image-mask-p (cdr (assq 'xpm image-tests--images)))))
+  (skip-when (display-images-p))
+  (should-error (image-mask-p (cdr (assq 'xbm image-tests--images)))))
 
 (ert-deftest image-tests-image-metadata/error-on-nongraphical-display ()
-  (skip-unless (not (display-images-p)))
-  (should-error (image-metadata (cdr (assq 'xpm image-tests--images)))))
+  (skip-when (display-images-p))
+  (should-error (image-metadata (cdr (assq 'xbm image-tests--images)))))
 
 (ert-deftest image-tests-imagemagick-types ()
   (skip-unless (fboundp 'imagemagick-types))

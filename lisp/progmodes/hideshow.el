@@ -254,6 +254,9 @@ This has effect only if `search-invisible' is set to `open'."
 
 ;;;###autoload
 (defvar hs-special-modes-alist
+  ;; FIXME: Currently the check is made via
+  ;; (assoc major-mode hs-special-modes-alist) so it doesn't pay attention
+  ;; to the mode hierarchy.
   (mapcar #'purecopy
   '((c-mode "{" "}" "/[*/]" nil nil)
     (c-ts-mode "{" "}" "/[*/]" nil nil)
@@ -264,6 +267,7 @@ This has effect only if `search-invisible' is set to `open'."
     (java-ts-mode "{" "}" "/[*/]" nil nil)
     (js-mode "{" "}" "/[*/]" nil)
     (js-ts-mode "{" "}" "/[*/]" nil)
+    (lua-ts-mode "{\\|\\[\\[" "}\\|\\]\\]" "--" nil)
     (mhtml-mode "{\\|<[^/>]*?" "}\\|</[^/>]*[^/]>" "<!--" mhtml-forward nil)
     ;; Add more support here.
     ))

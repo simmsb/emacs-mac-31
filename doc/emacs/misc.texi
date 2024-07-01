@@ -399,18 +399,18 @@ vulnerable to a variety of attacks, and you may want to avoid using
 these if what you're doing requires higher security.  (This is the
 @code{ssl} check in @code{network-security-protocol-checks}).
 
+@item Triple DES (or @acronym{3DES}) cipher
+The @acronym{3DES} stream cipher provides at most 112 bits of
+effective security, and a major security vulnerability in it was
+disclosed in 2016 (CVE-2016-2183).  It has been deprecated by NIST in
+all applications from late 2023 onwards.  (This is the
+@code{3des-cipher} check in @code{network-security-protocol-checks}).
 @end table
 
 If @code{network-security-level} is @code{high}, the following checks
 will be made, in addition to the above:
 
 @table @asis
-@item @acronym{3DES} cipher
-The @acronym{3DES} stream cipher provides at most 112 bits of
-effective security, which is considered to be towards the low end.
-(This is the @code{3des} check in
-@code{network-security-protocol-checks}).
-
 @item a validated certificate changes the public key
 Servers change their keys occasionally, and that is normally nothing
 to be concerned about.  However, if you are worried that your network
@@ -590,7 +590,7 @@ even when @command{mutool} can be found on your system, customize the
 variable @code{doc-view-imenu-enabled} to the @code{nil} value.  You
 can further customize how @code{imenu} items are formatted and
 displayed using the variables @code{doc-view-imenu-format} and
-@code{doc-view-flatten}.
+@code{doc-view-imenu-flatten}.
 
 @node DocView Searching
 @subsection DocView Searching
@@ -1331,16 +1331,18 @@ buffer, or even killing large parts of it, does not affect the history
 that these commands access.
 
 @vindex comint-input-ring-file-name
+@vindex shell-history-file-name
+@cindex @env{HISTFILE} environment variable
   Some shells store their command histories in files so that you can
-refer to commands from previous shell sessions.  Emacs reads
-the command history file for your chosen shell, to initialize its own
-command history.  The file name is @file{~/.bash_history} for bash,
-@file{~/.sh_history} for ksh, and @file{~/.history} for other shells.
-
-@vindex tramp-histfile-override
-  If you run the shell on a remote host, this setting might be
-overwritten by the variable @code{tramp-histfile-override}.  It is
-recommended to set this variable to @code{nil}.
+refer to commands from previous shell sessions.  Emacs reads the command
+history file for your chosen shell, to initialize its own command
+history.  The history file name is the string specified in
+@code{shell-history-file-name}.  If that user option is @code{t}, the
+command history is not read.  If the value is @code{nil}, the command
+history is read from the file specified in environment variable
+@env{HISTFILE}, or from @file{~/.bash_history} for bash,
+@file{~/.sh_history} for ksh, @file{~/.zsh_history"} for zsh, or
+@file{~/.history} for other shells.
 
 @node Shell History Copying
 @subsubsection Shell History Copying
@@ -1810,31 +1812,28 @@ you can give each daemon its own server name like this:
   emacs --daemon=foo
 @end example
 
-@findex server-stop-automatically
+@vindex server-stop-automatically
   The Emacs server can optionally be stopped automatically when
-certain conditions are met.  To do this, call the function
-@code{server-stop-automatically} in your init file (@pxref{Init
-File}), with one of the following arguments:
+certain conditions are met.  To do this, set the option
+@code{server-stop-automatically} to one of the following values:
 
-@itemize
-@item
-With the argument @code{empty}, the server is stopped when it has no
-clients, no unsaved file-visiting buffers and no running processes
-anymore.
+@table @code
+@item empty
+This value causes the server to be stopped when it has no clients, no
+unsaved file-visiting buffers and no running processes anymore.
 
-@item
-With the argument @code{delete-frame}, when the last client frame is
-being closed, you are asked whether each unsaved file-visiting buffer
-must be saved and each unfinished process can be stopped, and if so,
-the server is stopped.
-
-@item
-With the argument @code{kill-terminal}, when the last client frame is
-being closed with @kbd{C-x C-c} (@code{save-buffers-kill-terminal}),
-you are asked whether each unsaved file-visiting buffer must be saved
-and each unfinished process can be stopped, and if so, the server is
+@item delete-frame
+This value means that when the last client frame is being closed, you
+are asked whether each unsaved file-visiting buffer must be saved and
+each unfinished process can be stopped, and if so, the server is
 stopped.
-@end itemize
+
+@item kill-terminal
+This value means that when the last client frame is being closed with
+@kbd{C-x C-c} (@code{save-buffers-kill-terminal}), you are asked
+whether each unsaved file-visiting buffer must be saved and each
+unfinished process can be stopped, and if so, the server is stopped.
+@end table
 
 @findex server-eval-at
   If you have defined a server by a unique server name, it is possible
@@ -2081,6 +2080,18 @@ files.  When this option is given, the arguments to
 @command{emacsclient} are interpreted as a list of expressions to
 evaluate, @emph{not} as a list of files to visit.
 
+@vindex server-eval-args-left
+Passing complex Lisp expression via the @option{--eval} command-line
+option sometimes requires elaborate escaping of characters special to
+the shell.  To avoid this, you can pass arguments to Lisp functions in
+your expression as additional separate arguments to
+@command{emacsclient}, and use @var{server-eval-args-left} in the
+expression to access those arguments.  Be careful to have your
+expression remove the processed arguments from
+@var{server-eval-args-left} regardless of whether your code succeeds,
+for example by using @code{pop}, otherwise Emacs will attempt to
+evaluate those arguments as separate Lisp expressions.
+
 @item -f @var{server-file}
 @itemx --server-file=@var{server-file}
 Specify a server file (@pxref{TCP Emacs server}) for connecting to an
@@ -2146,6 +2157,7 @@ overrides the environment variable.)
 @item -t
 @itemx --tty
 @itemx -nw
+@itemx --no-window-system
 Create a new client frame on the current text terminal, instead of
 using an existing Emacs frame.  This behaves just like the @samp{-c}
 option, described above, except that it creates a text terminal frame
@@ -2200,6 +2212,14 @@ remote$ export EMACSCLIENT_TRAMP=/ssh:remote:
 remote$ export EDITOR=emacsclient
 remote$ $EDITOR /tmp/foo.txt #Should open in local emacs.
 @end example
+
+@item -V
+@itemx --version
+Print version information and exit.
+
+@item -H
+@itemx --help
+Print usage information message and exit.
 
 @end table
 
@@ -2829,9 +2849,13 @@ frame parameters you don't want to be restored; they will then be set
 according to your customizations in the init file.
 
 @vindex desktop-files-not-to-save
+@vindex remote-file-name-access-timeout
   Information about buffers visiting remote files is not saved by
 default.  Customize the variable @code{desktop-files-not-to-save} to
-change this.
+change this.  In this case, you might also consider customizing
+@code{remote-file-name-access-timeout}, which is the number of
+seconds after which buffer restoration of a remote file is
+stopped.  This prevents Emacs being blocked.
 
 @vindex desktop-restore-eager
   By default, all the buffers in the desktop are restored in one go.
@@ -3009,6 +3033,15 @@ containing a list of pages previously loaded by the current WebKit
 buffer, and lets you navigate to those pages by hitting @kbd{RET}.
 
 It is bound to @kbd{H}.
+
+@vindex xwidget-webkit-disable-javascript
+@cindex disabling javascript in webkit buffers
+  JavaScript is enabled by default inside WebKit buffers, which could be
+undesirable, as Web sites often use it to track your online activity.
+You can disable JavaScript in WebKit buffers by customizing the variable
+@code{xwidget-webkit-disable-javascript} to a non-@code{nil} value.
+You must kill all WebKit buffers for this setting to take effect, after
+it is changed.
 
 @node Browse-URL
 @subsection  Following URLs

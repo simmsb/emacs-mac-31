@@ -278,7 +278,7 @@ check_subtree (struct itree_node *node,
 
    This runs in constant time when ENABLE_OVERLAY_CHECKING is 0
    (i.e. Emacs is not configured with
-   "--enable_checking=yes,overlays").  In this mode it can't check all
+   "--enable-checking=yes,overlays").  In this mode it can't check all
    the invariants.  When ENABLE_OVERLAY_CHECKING is 1 it checks the
    entire tree and validates all invariants.
 */
@@ -817,14 +817,13 @@ itree_remove_fix (struct itree_tree *tree,
 	{
 	  struct itree_node *other = parent->right;
 
-	  if (null_safe_is_red (other)) /* case 1.a */
+	  if (other->red) /* case 1.a */
 	    {
 	      other->red = false;
 	      parent->red = true;
 	      itree_rotate_left (tree, parent);
 	      other = parent->right;
 	    }
-	  eassume (other != NULL);
 
 	  if (null_safe_is_black (other->left) /* 2.a */
 	      && null_safe_is_black (other->right))
@@ -855,14 +854,13 @@ itree_remove_fix (struct itree_tree *tree,
 	{
 	  struct itree_node *other = parent->left;
 
-	  if (null_safe_is_red (other)) /* 1.b */
+	  if (other->red) /* 1.b */
 	    {
 	      other->red = false;
 	      parent->red = true;
 	      itree_rotate_right (tree, parent);
 	      other = parent->left;
 	    }
-	  eassume (other != NULL);
 
 	  if (null_safe_is_black (other->right) /* 2.b */
 	      && null_safe_is_black (other->left))
@@ -1213,7 +1211,7 @@ itree_node_intersects (const struct itree_node *node,
    `ITER->begin..ITER->end`) so it will also return some nodes which aren't in
    that narrowing simply because they may have children which are.
 
-   The code itself is very unsatifactory because the code of each one
+   The code itself is very unsatisfactory because the code of each one
    of the supported traversals seems completely different from the others.
    If someone knows how to make it more uniform and "obviously correct",
    please make yourself heard.  */
@@ -1376,7 +1374,7 @@ itree_iterator_first_node (struct itree_tree *tree,
   return node;
 }
 
-/* Start a iterator enumerating all intervals in [BEGIN,END) in the
+/* Start an iterator enumerating all intervals in [BEGIN,END) in the
    given ORDER.  */
 
 struct itree_iterator *

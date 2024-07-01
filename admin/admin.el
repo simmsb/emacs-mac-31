@@ -843,8 +843,11 @@ $Date: %s $
       (package-install pkg)
       (require pkg nil t))))
 
+(declare-function org-html-export-as-html "ox-html.el")
 (defvar org-html-postamble)
 (defvar org-html-mathjax-template)
+(defvar htmlize-output-type)
+
 (defun make-news-html-file (root version)
   "Convert the NEWS file into an HTML file."
   (interactive (let ((root
@@ -1035,8 +1038,7 @@ If optional argument OLD is non-nil, also scan for `defvar's."
 		  (and grp
 		       (setq grp (car (cdr-safe grp))) ; (quote foo) -> foo
 		       (setq ver (assq grp glist))))
-		(setq alist (cons (cons var ver) alist))))
-          (if form (format-message "Malformed defcustom: `%s'" form)))))
+		(setq alist (cons (cons var ver) alist)))))))
     (message "%sdone" m)
     alist))
 

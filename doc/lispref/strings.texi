@@ -473,28 +473,12 @@ needed, but we recommend to always make sure @var{string} is multibyte
 Representations}), if @var{char} is a non-@acronym{ASCII} character, not
 a raw byte.
 
-  A more powerful function is @code{store-substring}:
-
-@defun store-substring string idx obj
-This function alters part of the contents of the specified @var{string},
-by storing @var{obj} starting at character index @var{idx}.  The
-argument @var{obj} may be either a character (in which case the function
-behaves exactly as @code{aset}) or a (smaller) string.  If @var{obj}
-is a multibyte string, we recommend to make sure @var{string} is also
-multibyte, even if it's pure-@acronym{ASCII}.
-
-Since it is impossible to change the number of characters in an
-existing string, it is an error if @var{obj} consists of more
-characters than would fit in @var{string} starting at character index
-@var{idx}.
-@end defun
-
   To clear out a string that contained a password, use
 @code{clear-string}:
 
 @defun clear-string string
 This makes @var{string} a unibyte string and clears its contents to
-zeros.  It may also change @var{string}'s length.
+null characters.  It may also change @var{string}'s length.
 @end defun
 
 @need 2000
@@ -612,6 +596,7 @@ that collation implements.
 @end defun
 
 @cindex lexical comparison of strings
+@anchor{definition of string<}
 @defun string< string1 string2
 @c (findex string< causes problems for permuted index!!)
 This function compares two strings a character at a time.  It
@@ -691,7 +676,8 @@ for sorting (@pxref{Sequence Functions}):
 
 @example
 @group
-(sort (list "11" "12" "1 1" "1 2" "1.1" "1.2") 'string-collate-lessp)
+(sort '("11" "12" "1 1" "1 2" "1.1" "1.2")
+       :lessp #'string-collate-lessp)
      @result{} ("11" "1 1" "1.1" "12" "1 2" "1.2")
 @end group
 @end example
@@ -708,8 +694,8 @@ systems.  The @var{locale} value of @code{"POSIX"} or @code{"C"} lets
 
 @example
 @group
-(sort (list "11" "12" "1 1" "1 2" "1.1" "1.2")
-      (lambda (s1 s2) (string-collate-lessp s1 s2 "POSIX")))
+(sort '("11" "12" "1 1" "1 2" "1.1" "1.2")
+      :lessp (lambda (s1 s2) (string-collate-lessp s1 s2 "POSIX")))
      @result{} ("1 1" "1 2" "1.1" "1.2" "11" "12")
 @end group
 @end example
@@ -1508,9 +1494,12 @@ has been capitalized.  This means that the first character of each
 word is converted to upper case, and the rest are converted to lower
 case.
 
+@vindex case-symbols-as-words
 The definition of a word is any sequence of consecutive characters that
 are assigned to the word constituent syntax class in the current syntax
-table (@pxref{Syntax Class Table}).
+table (@pxref{Syntax Class Table}); if @code{case-symbols-as-words}
+is non-nil, characters assigned to the symbol constituent syntax
+class are also considered as word constituent.
 
 When @var{string-or-char} is a character, this function does the same
 thing as @code{upcase}.
@@ -1540,9 +1529,9 @@ letters other than the initials.  It returns a new string whose
 contents are a copy of @var{string-or-char}, in which each word has
 had its initial letter converted to upper case.
 
-The definition of a word is any sequence of consecutive characters that
-are assigned to the word constituent syntax class in the current syntax
-table (@pxref{Syntax Class Table}).
+The definition of a word for this function is the same as described
+for @code{capitalize} above, and @code{case-symbols-as-words} has the
+same effect on word constituent characters.
 
 When the argument to @code{upcase-initials} is a character,
 @code{upcase-initials} has the same result as @code{upcase}.

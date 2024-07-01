@@ -8,7 +8,6 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; GNU Emacs is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -57,6 +56,24 @@ buffer's content."
     (whitespace-cleanup)
     (buffer-string)))
 
+(ert-deftest whitespace-tests--global ()
+  (let ((backup global-whitespace-mode)
+        (noninteractive nil)
+        (whitespace-enable-predicate (lambda () t)))
+    (unwind-protect
+        (progn
+          (global-whitespace-mode 1)
+          (ert-with-test-buffer-selected ()
+            (normal-mode)
+            (should whitespace-mode)
+            (global-whitespace-mode -1)
+            (should (null whitespace-mode))
+            (whitespace-mode 1)
+            (should whitespace-mode)
+            (global-whitespace-mode 1)
+            (should whitespace-mode)))
+      (global-whitespace-mode (if backup 1 -1)))))
+
 (ert-deftest whitespace-cleanup-eob ()
   (let ((whitespace-style '(empty)))
     (should (equal (whitespace-tests--cleanup-string "a\n")
@@ -76,6 +93,20 @@ buffer's content."
     (should (equal (whitespace-tests--cleanup-string "a  \n\t \n\n")
                    "a  \n"))))
 
+(ert-deftest whitespace-cleanup-missing-newline-at-eof ()
+  (let ((whitespace-style '(empty missing-newline-at-eof)))
+    (should (equal (whitespace-tests--cleanup-string "")
+                   ""))
+    (should (equal (whitespace-tests--cleanup-string "a")
+                   "a\n"))
+    (should (equal (whitespace-tests--cleanup-string "a\n\t")
+                   "a\n"))
+    (should (equal (whitespace-tests--cleanup-string "a\n\t ")
+                   "a\n"))
+    (should (equal (whitespace-tests--cleanup-string "a\n\t ")
+                   "a\n"))
+    (should (equal (whitespace-tests--cleanup-string "\n\t")
+                   ""))))
 
 ;; We cannot call whitespace-mode because it will do nothing in batch
 ;; mode.  So we call its innards instead.

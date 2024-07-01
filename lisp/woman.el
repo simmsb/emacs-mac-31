@@ -1346,8 +1346,8 @@ PATH-DIRS should be a list of general manual directories (like
 manual directory regexps (like `woman-path').
 Ignore any paths that are unreadable or not directories."
   ;; Allow each path to be a single string or a list of strings:
-  (if (not (listp path-dirs)) (setq path-dirs (list path-dirs)))
-  (if (not (listp path-regexps)) (setq path-regexps (list path-regexps)))
+  (setq path-dirs (ensure-list path-dirs))
+  (setq path-regexps (ensure-list path-regexps))
   (let (head dirs path)
     (dolist (dir path-dirs)
       (when (consp dir)
@@ -1698,11 +1698,11 @@ Do not call directly!"
       (progn
 	(goto-char (point-min))
 	(while (search-forward "__\b\b" nil t)
-	  (backward-delete-char 4)
+	  (delete-char -4)
 	  (woman-set-face (point) (1+ (point)) 'woman-italic))
 	(goto-char (point-min))
 	(while (search-forward "\b\b__" nil t)
-	  (backward-delete-char 4)
+	  (delete-char -4)
 	  (woman-set-face (1- (point)) (point) 'woman-italic))))
 
   ;; Interpret overprinting to indicate bold face:
@@ -1854,7 +1854,6 @@ Argument EVENT is the invoking mouse event."
 
 (defun woman-reset-emulation (value)
   "Reset `woman-emulation' to VALUE and reformat, for menu use."
-  (interactive)
   (setq woman-emulation value)
   (woman-reformat-last-file))
 
@@ -2089,8 +2088,6 @@ European characters."
 
 
 ;;; The main decoding driver:
-
-(defvar font-lock-mode)			; for the compiler
 
 (defun woman-decode-buffer ()
   "Decode a buffer in UN*X man-page source format.
@@ -2569,7 +2566,8 @@ If DELETE is non-nil then delete from point."
 		       ;; "\\(\\\\{\\)\\|\\(\n[.']\\)?[ \t]*\\\\}[ \t]*"
 		       ;; Interpret bogus `el \}' as `el \{',
 		       ;; especially for Tcl/Tk man pages:
-		       "\\(\\\\{\\|el[ \t]*\\\\}\\)\\|\\(\n[.']\\)?[ \t]*\\\\}[ \t]*")
+		       "\\(\\\\{\\|el[ \t]*\\\\}\\)\\|\\(\n[.']\\)?[ \t]*\\\\}[ \t]*"
+                       nil t)
 		      (match-beginning 1))
 	       (re-search-forward "\\\\}"))
 	     (delete-region (if delete from (match-beginning 0)) (point))

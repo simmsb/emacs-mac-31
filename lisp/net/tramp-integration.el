@@ -42,9 +42,10 @@
 (declare-function shortdoc-add-function "shortdoc")
 (declare-function tramp-dissect-file-name "tramp")
 (declare-function tramp-file-name-equal-p "tramp")
-(declare-function tramp-tramp-file-p "tramp")
 (declare-function tramp-rename-files "tramp-cmds")
 (declare-function tramp-rename-these-files "tramp-cmds")
+(declare-function tramp-set-connection-local-variables-for-buffer "tramp")
+(declare-function tramp-tramp-file-p "tramp")
 (defvar eshell-path-env)
 (defvar ido-read-file-name-non-ido)
 (defvar info-lookup-alist)
@@ -53,7 +54,7 @@
 (defvar shortdoc--groups)
 (defvar tramp-current-connection)
 (defvar tramp-postfix-host-format)
-(defvar tramp-use-ssh-controlmaster-options)
+(defvar tramp-use-connection-share)
 
 ;;; Fontification of `read-file-name':
 
@@ -64,10 +65,11 @@
   "Set up a minibuffer for `file-name-shadow-mode'.
 Adds another overlay hiding filename parts according to Tramp's
 special handling of `substitute-in-file-name'."
+  (declare (tramp-suppress-trace t))
   (when minibuffer-completing-file-name
     (setq tramp-rfn-eshadow-overlay
 	  (make-overlay (minibuffer-prompt-end) (minibuffer-prompt-end)))
-    ;; Copy rfn-eshadow-overlay properties.
+    ;; Copy `rfn-eshadow-overlay' properties.
     (let ((props (overlay-properties rfn-eshadow-overlay)))
       (while props
         ;; The `field' property prevents correct minibuffer
@@ -85,6 +87,7 @@ special handling of `substitute-in-file-name'."
 
 (defun tramp-rfn-eshadow-update-overlay-regexp ()
   "An overlay covering the shadowed part of the filename."
+  (declare (tramp-suppress-trace t))
   (rx-to-string
    `(: (* (not (any ,tramp-postfix-host-format "/~"))) (| "/" "~"))))
 
@@ -93,6 +96,7 @@ special handling of `substitute-in-file-name'."
 This is intended to be used as a minibuffer `post-command-hook' for
 `file-name-shadow-mode'; the minibuffer should have already
 been set up by `rfn-eshadow-setup-minibuffer'."
+  (declare (tramp-suppress-trace t))
   ;; In remote files name, there is a shadowing just for the local part.
   (ignore-errors
     (let ((end (or (overlay-end rfn-eshadow-overlay)
@@ -132,9 +136,8 @@ been set up by `rfn-eshadow-setup-minibuffer'."
   ;; Remove last element of `(exec-path)', which is `exec-directory'.
   ;; Use `path-separator' as it does eshell.
   (setq eshell-path-env
-        (if (file-remote-p default-directory)
-            (mapconcat
-	     #'identity (butlast (tramp-compat-exec-path)) path-separator)
+        (if (tramp-tramp-file-p default-directory)
+            (string-join (butlast (exec-path)) path-separator)
           (getenv "PATH"))))
 
 (with-eval-after-load 'esh-util
@@ -155,7 +158,7 @@ been set up by `rfn-eshadow-setup-minibuffer'."
 (defun tramp-recentf-exclude-predicate (name)
   "Predicate to exclude a remote file name from recentf.
 NAME must be equal to `tramp-current-connection'."
-  (when (file-remote-p name)
+  (when (tramp-tramp-file-p name)
     (tramp-file-name-equal-p
      (tramp-dissect-file-name name) (car tramp-current-connection))))
 
@@ -303,7 +306,7 @@ NAME must be equal to `tramp-current-connection'."
 ;; Bug#45518.  So we don't use ssh ControlMaster options.
 (defun tramp-compile-disable-ssh-controlmaster-options ()
   "Don't allow ssh ControlMaster while compiling."
-  (setq-local tramp-use-ssh-controlmaster-options nil))
+  (setq-local tramp-use-connection-share 'suppress))
 
 (with-eval-after-load 'compile
   (add-hook 'compilation-mode-hook
@@ -346,8 +349,7 @@ NAME must be equal to `tramp-current-connection'."
 (defconst tramp-bsd-process-attributes-ps-args
   `("-acxww"
     "-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("pid"
         "euid"
         "user"
@@ -356,8 +358,7 @@ NAME must be equal to `tramp-current-connection'."
         "comm=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
       ",")
     "-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("state"
         "ppid"
         "pgid"
@@ -420,8 +421,7 @@ See `tramp-process-attributes-ps-format'.")
 ;; Tested with BusyBox v1.24.1.
 (defconst tramp-busybox-process-attributes-ps-args
   `("-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("pid"
         "user"
         "group"
@@ -429,8 +429,7 @@ See `tramp-process-attributes-ps-format'.")
       ",")
     "-o" "stat=abcde"
     "-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("ppid"
         "pgid"
         "tty"
@@ -473,8 +472,7 @@ See `tramp-process-attributes-ps-format'.")
 (defconst tramp-darwin-process-attributes-ps-args
   `("-acxww"
     "-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("pid"
         "uid"
         "user"
@@ -483,8 +481,7 @@ See `tramp-process-attributes-ps-format'.")
       ",")
     "-o" "state=abcde"
     "-o"
-    ,(mapconcat
-      #'identity
+    ,(string-join
       '("ppid"
         "pgid"
         "sess"
@@ -555,6 +552,14 @@ See `tramp-process-attributes-ps-format'.")
   (connection-local-set-profiles
    '(:application tramp :machine "localhost")
    local-profile))
+
+;; Set connection-local variables for buffers visiting a file.
+
+(add-hook 'find-file-hook #'tramp-set-connection-local-variables-for-buffer -50)
+(add-hook 'tramp-unload-hook
+	  (lambda ()
+	    (remove-hook
+             'find-file-hook #'tramp-set-connection-local-variables-for-buffer)))
 
 (add-hook 'tramp-unload-hook
 	  (lambda () (unload-feature 'tramp-integration 'force)))

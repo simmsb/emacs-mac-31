@@ -1002,10 +1002,11 @@ Responsible for handling and, or, and parenthetical expressions.")
 
 (defsubst gnus-search-single-p (query)
   "Return t if QUERY is a search for a single message."
-  (let ((q (alist-get 'parsed-query query)))
-    (and (= (length q ) 1)
-	 (consp (car-safe q))
-	 (eq (caar q) 'id))))
+  (unless (alist-get 'thread query)
+    (let ((q (alist-get 'parsed-query query)))
+      (and (= (length q ) 1)
+	   (consp (car-safe q))
+	   (eq (caar q) 'id)))))
 
 (cl-defmethod gnus-search-transform ((engine gnus-search-engine)
 				     (query list))
@@ -1066,7 +1067,9 @@ Responsible for handling and, or, and parenthetical expressions.")
 				      _srv query-spec groups)
   (let ((artlist []))
     (dolist (group groups)
-      (let* ((gnus-newsgroup-selection (nnselect-get-artlist group))
+      (let* ((gnus-newsgroup-selection
+              (or
+               (nnselect-get-artlist group) (nnselect-generate-artlist group)))
              (group-spec
               (nnselect-categorize
                (mapcar 'car
@@ -1330,9 +1333,10 @@ elements are present."
 		      (1- nyear)
 		    nyear))
 	  (setq dmonth 1))))
-    (format-time-string
-     "%e-%b-%Y"
-     (encode-time 0 0 0 dday dmonth dyear))))
+    (with-locale-environment "C"
+     (format-time-string
+      "%e-%b-%Y"
+      (encode-time 0 0 0 dday dmonth dyear)))))
 
 (cl-defmethod gnus-search-imap-handle-string ((engine gnus-search-imap)
 					      (str string))
@@ -1431,6 +1435,9 @@ Returns a list of [group article score] vectors."
                     ""))
         (groups (mapcar #'gnus-group-short-name groups))
 	artlist article group)
+    (when (>= gnus-verbose 7)
+      (gnus-message 7 "Search engine returned %d results"
+                    (car (buffer-line-statistics))))
     (goto-char (point-min))
     ;; Prep prefix, we want to at least be removing the root
     ;; filesystem separator.
@@ -1482,6 +1489,10 @@ Returns a list of [group article score] vectors."
     ;; Are we running an additional grep query?
     (when-let ((grep-reg (alist-get 'grep query)))
       (setq artlist (gnus-search-grep-search engine artlist grep-reg)))
+
+    (when (>= gnus-verbose 7)
+      (gnus-message 7 "Gnus search returning %d results"
+                    (length artlist)))
     ;; Munge into the list of vectors expected by nnselect.
     (mapcar (pcase-lambda (`(,_ ,article ,group ,score))
               (vector
@@ -2173,37 +2184,80 @@ remaining string, then adds all that to the top-level spec."
 
 (declare-function gnus-registry-get-id-key "gnus-registry" (id key))
 
-(defun gnus-search-thread (header)
-  "Make an nnselect group based on the thread containing the article
-header. The current server will be searched. If the registry is
-installed, the server that the registry reports the current
-article came from is also searched."
-  (let* ((ids (cons (mail-header-id header)
-		    (split-string
-		     (or (mail-header-references header)
-			 ""))))
-	 (query
-	  (list (cons 'query (mapconcat (lambda (i)
-					  (format "id:%s" i))
-					ids " or "))
-		(cons 'thread t)))
-	 (server
-	  (list (list (gnus-method-to-server
-		       (gnus-find-method-for-group gnus-newsgroup-name)))))
-	 (registry-group (and
-			  (bound-and-true-p gnus-registry-enabled)
-			  (car (gnus-registry-get-id-key
-				(mail-header-id header) 'group))))
-	 (registry-server
-	  (and registry-group
-	       (gnus-method-to-server
-		(gnus-find-method-for-group registry-group)))))
-    (when registry-server
-      (cl-pushnew (list registry-server) server :test #'equal))
-    (gnus-group-make-search-group nil (list
-				       (cons 'search-query-spec query)
-				       (cons 'search-group-spec server)))
-    (gnus-summary-goto-subject (gnus-id-to-article (mail-header-id header)))))
+(defun gnus-search-thread (header &optional group server)
+  "Find articles in the thread containing HEADER from GROUP on SERVER.
+If gnus-refer-thread-use-search is nil only the current group is
+checked for articles; if t all groups on the server containing
+the article's group will be searched; if a list then all servers
+in this list will be searched.  If possible the newly found
+articles are added to the summary buffer; otherwise the full
+thread along with the original articles are displayed in a new
+ephemeral nnselect buffer."
+  (let* ((group (or group gnus-newsgroup-name))
+         (server (or server (gnus-group-server group)))
+         (query
+          (list
+           (cons 'query
+                 (mapconcat (lambda (i) (format "id:%s" i))
+                            (cons (mail-header-id header)
+                                  (split-string
+                                   (or (mail-header-references header) "")))
+                            " or "))
+           (cons 'thread t)))
+         (gnus-search-use-parsed-queries t))
+    (if (not gnus-refer-thread-use-search)
+        ;; Search only the current group and send the headers back to
+        ;; the caller to add to the summary buffer.
+        (gnus-fetch-headers
+         (sort
+          (mapcar (lambda (x) (elt x 1))
+                  (gnus-search-run-query
+                   (list (cons 'search-query-spec query)
+                         (cons 'search-group-spec
+                               (list (list server group))))))
+          #'<) nil t)
+      ;; Otherwise create an ephemeral search group: record the
+      ;; current summary contents; exit the current group (so that
+      ;; changes are saved); then create a new ephemeral group with
+      ;; the original articles plus those of the thread.
+      (let ((selection (seq-map (lambda (x) (vector group x 100))
+                                gnus-newsgroup-articles))
+            (thread  (gnus-search-run-query
+                      (list (cons 'search-query-spec query)
+                            (cons 'search-group-spec
+                                  (if (listp gnus-refer-thread-use-search)
+                                      gnus-refer-thread-use-search
+                                    (list (list server))))))))
+        (if (< (nnselect-artlist-length thread) 2)
+            (message "No other articles in thread")
+          (setq selection
+                (seq-into
+                 (seq-union selection thread
+                            (lambda (x y)
+                              (and (equal (nnselect-artitem-group x)
+                                          (nnselect-artitem-group y))
+                                   (eql (nnselect-artitem-number x)
+                                        (nnselect-artitem-number y)))))
+                 'vector))
+          (gnus-summary-exit)
+          (gnus-group-read-ephemeral-group
+           (concat "nnselect-" (message-unique-id))
+           (list 'nnselect "nnselect")
+           nil
+           (cons (current-buffer) gnus-current-window-configuration)
+           nil nil
+           (list
+            (cons 'nnselect-specs
+                  (list
+                   (cons 'nnselect-function 'identity)
+                   (cons 'nnselect-args
+                         selection)))
+            (cons 'nnselect-artlist nil))
+           (nnselect-artlist-length selection))
+          (if (gnus-id-to-article (mail-header-id header))
+              (gnus-summary-goto-subject
+               (gnus-id-to-article (mail-header-id header)))
+            (message "Thread search failed")))))))
 
 (defun gnus-search-get-active (srv)
   (let ((method (gnus-server-to-method srv))

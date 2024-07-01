@@ -187,11 +187,16 @@ typedef enum { RECC_ERROR = 0,
 	       RECC_DIGIT, RECC_XDIGIT,
 	       RECC_BLANK, RECC_SPACE,
 	       RECC_MULTIBYTE, RECC_NONASCII,
-	       RECC_ASCII, RECC_UNIBYTE
+	       RECC_ASCII, RECC_UNIBYTE,
+	       RECC_NUM_CLASSES = RECC_UNIBYTE
 } re_wctype_t;
 
 extern bool re_iswctype (int ch, re_wctype_t cc);
 extern re_wctype_t re_wctype_parse (const unsigned char **strp,
 				    ptrdiff_t limit);
+
+#if ENABLE_CHECKING
+extern void print_compiled_pattern (FILE *dest, struct re_pattern_buffer *bufp);
+#endif
 
 #endif /* EMACS_REGEX_H */
