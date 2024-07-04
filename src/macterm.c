@@ -23,12 +23,14 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "lisp.h"
 #include "blockinput.h"
+#include "macgui.h"
 #include "sysstdio.h"
 
 #include "macterm.h"
 
 #include "systime.h"
 
+#include <CoreGraphics/CoreGraphics.h>
 #include <errno.h>
 #include <sys/stat.h>
 
@@ -1803,6 +1805,103 @@ mac_draw_box_rect (struct glyph_string *s,
   mac_reset_clip_rectangles (s->f, s->gc);
 }
 
+static void
+mac_draw_rounded_rect (struct glyph_string *s,
+		   int left_x, int top_y, int right_x, int bottom_y, int width,
+		   bool left_p, bool right_p,
+		   NativeRectangle *clip_rect)
+{
+  int hwidth = right_x - left_x + 1;
+  int vwidth = bottom_y - top_y + 1;
+
+  CGFloat radius = 3.0;
+
+  GC gc = s->gc;
+
+  XGCValues xgcv;
+
+  mac_get_gc_values (gc, GCForeground, &xgcv);
+  mac_set_foreground (gc, s->face->box_color);
+
+  CGRect rect = CGRectMake (left_x, top_y, hwidth, vwidth);
+  struct frame *f = s->f;
+
+  unsigned int background = FRAME_BACKGROUND_PIXEL(s->f);
+
+  MAC_BEGIN_DRAW_TO_FRAME (f, gc, rect, context);
+
+  CGRect mrect = CGRectMake (0, 0, hwidth, vwidth);
+  CGFloat minx = CGRectGetMinX(mrect), midx = CGRectGetMidX(mrect), maxx = CGRectGetMaxX(mrect);
+  CGFloat miny = CGRectGetMinY(mrect), midy = CGRectGetMidY(mrect), maxy = CGRectGetMaxY(mrect);
+
+  CGContextRef tc = CGBitmapContextCreate(NULL, hwidth, vwidth, 8, 0, NULL, kCGImageAlphaOnly);
+  CGColorRef alpha = CGColorCreateGenericGray(1.0, 1.0);
+  CGContextSetFillColorWithColor(tc, alpha);
+  CGContextMoveToPoint(tc, minx, midy);
+  CGContextAddArcToPoint(tc, minx, miny, midx, miny, left_p ? radius : 0);
+  CGContextAddArcToPoint(tc, maxx, miny, maxx, midy, right_p ? radius : 0);
+  CGContextAddArcToPoint(tc, maxx, maxy, midx, maxy, right_p ? radius : 0);
+  CGContextAddArcToPoint(tc, minx, maxy, minx, midy, left_p ? radius : 0);
+  CGContextClosePath(tc);
+  CGContextDrawPath(tc, kCGPathFill);
+
+  CGColorRelease(alpha);
+
+  CGImageRef maskImg = CGBitmapContextCreateImage(tc);
+  CGContextRelease(tc);
+
+  CGImageRef finalMaskImage = CGImageMaskCreate(CGImageGetWidth(maskImg),
+						CGImageGetHeight(maskImg),
+						CGImageGetBitsPerComponent(maskImg),
+						CGImageGetBitsPerPixel(maskImg),
+						CGImageGetBytesPerRow(maskImg),
+						CGImageGetDataProvider(maskImg), NULL, false);
+  CGImageRelease(maskImg);
+
+  CGContextSaveGState(context);
+  CGContextClipToMask(context, rect, finalMaskImage);
+  CGColorRef color = mac_cg_color_create(background, 0);
+  CGContextSetFillColorWithColor(context, color);
+  CGContextFillRects(context, &rect, 1);
+  CGImageRelease(finalMaskImage);
+  CGColorRelease(color);
+  CGContextRestoreGState(context);
+
+  minx = CGRectGetMinX(rect), midx = CGRectGetMidX(rect), maxx = CGRectGetMaxX(rect);
+  miny = CGRectGetMinY(rect), midy = CGRectGetMidY(rect), maxy = CGRectGetMaxY(rect);
+
+  CGContextSetStrokeColorWithColor(context, gc->cg_fore_color);
+
+  CGFloat radius = 2.5;
+
+  CGContextMoveToPoint(context, midx, maxy);
+  if (left_p) {
+    CGContextAddArcToPoint(context, minx, maxy, minx, midy, radius);
+    CGContextAddArcToPoint(context, minx, miny, midx, miny, radius);
+  } else {
+    CGContextAddLineToPoint(context, minx, maxy);
+    CGContextMoveToPoint(context, minx, miny);
+    /* CGContextAddLineToPoint(context, minx, miny); */
+    CGContextAddLineToPoint(context, midx, miny);
+  }
+
+  if (right_p) {
+    CGContextAddArcToPoint(context, maxx, miny, maxx, midy, radius);
+    CGContextAddArcToPoint(context, maxx, maxy, midx, maxy, radius);
+  } else {
+    CGContextAddLineToPoint(context, maxx, miny);
+    CGContextMoveToPoint(context, maxx, maxy);
+    /* CGContextAddLineToPoint(context, maxx, maxy); */
+  }
+  CGContextAddLineToPoint(context, midx, maxy);
+  CGContextDrawPath(context, kCGPathStroke);
+
+  MAC_END_DRAW_TO_FRAME (f);
+
+  mac_set_foreground (s->gc, xgcv.foreground);
+
+}
+
 
 /* Draw a box around glyph string S.  */
 
@@ -1861,8 +1960,10 @@ mac_draw_glyph_string_box (struct glyph_string *s)
   get_glyph_string_clip_rect (s, &clip_rect);
 
   if (s->face->box == FACE_SIMPLE_BOX)
-    mac_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
-		       vwidth, left_p, right_p, &clip_rect);
+    mac_draw_rounded_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
+		       left_p, right_p, &clip_rect);
+    /* mac_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth, */
+    /* 		       vwidth, left_p, right_p, &clip_rect); */
   else
     {
       mac_setup_relief_colors (s);
