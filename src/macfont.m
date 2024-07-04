@@ -2968,6 +2968,10 @@ macfont_draw (struct glyph_string *s, int from, int to, int x, int y,
 	  CGContextSetLineWidth (context, bold_factor * font_size);
 	  CGContextSetStrokeColorWithColor (context, gc->cg_fore_color);
 	}
+
+      CGContextSetShouldSmoothFonts(context, YES);
+      CGContextSetFontSmoothingStyle(context, 16);
+
       if (no_antialias_p)
 	CGContextSetShouldAntialias (context, false);
 
