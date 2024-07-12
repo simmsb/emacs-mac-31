@@ -197,11 +197,17 @@ AS_IF([test "$XCONFIGURE" = "android"],[
 
   AC_MSG_NOTICE([configuring in `exec'])
 
+  # Derive a name for a cache file for this configure script from the
+  # current, if specified.
+  exec_cache_file=
+  AS_CASE([$cache_file], [/dev/null | ""], [],
+    [[[\\/]* | ?:[\\/]*]], [exec_cache_file="--cache-file=$cache_file.2"],
+    [*], [exec_cache_file="--cache-file=../$cache_file.2"])
   OLDCWD=`pwd`
   cd exec
   $CONFIG_SHELL $emacs_srcdir/exec/configure		\
 		--host=$host "CC=$CC" "LD=$CC" "AS=$CC"	\
-		"AR=$AR" "CFLAGS=$CFLAGS"
+		"AR=$AR" "CFLAGS=$CFLAGS" $exec_cache_file
   emacs_val=$?
   cd $OLDCWD
 
@@ -1278,7 +1284,7 @@ packages targeting Android 2.2.])])
 
   # And derive a name for the recursive configure invocation's cache
   # file if one should be specified for this.
-  AS_IF([test -n "$cache_file"],
+  AS_IF([test -n "$cache_file" && test "$cache_file" != "/dev/null"],
     [passthrough="$passthrough --cache-file=$cache_file.1"])
 
   AS_IF([test "x$with_mailutils" = "xyes"], [emacs_use_mailutils=yes])
@@ -1617,6 +1623,30 @@ AC_DEFUN_ONCE([gl_STDLIB_H],
 AC_DEFUN([gl_TYPE_OFF64_T],
   [HAVE_OFF64_T=1
    AC_SUBST([HAVE_OFF64_T])])
+
+# `strnlen' cannot accept nlen greater than the size of the object S
+# on Android 5.0 and earlier.
+m4_define([ORIGINAL_AC_FUNC_STRNLEN], m4_defn([AC_FUNC_STRNLEN]))
+AC_DEFUN([AC_FUNC_STRNLEN], [
+AC_REQUIRE([AC_USE_SYSTEM_EXTENSIONS])dnl
+AC_REQUIRE([AC_CANONICAL_HOST])dnl
+AC_CACHE_CHECK([for strnlen capable of accepting large limits],
+  [emacs_cv_func_strnlen_working],
+  [AC_RUN_IFELSE([AC_LANG_PROGRAM([AC_INCLUDES_DEFAULT], [[
+  volatile size_t (*strnlen_pointer) (const char *s, size_t) = &strnlen;
+  if ((*strnlen_pointer) ("", -1) != 0)
+    return 1;
+  return 0;
+]])],[emacs_cv_func_strnlen_working=yes],
+     [emacs_cv_func_strnlen_working=no],
+     [# Guess no on Android 21 and earlier, yes elsewhere.
+      AS_IF([test -n "$ANDROID_SDK" && test "$ANDROID_SDK" -lt 22],
+        [emacs_cv_func_strnlen_working=no],
+	[emacs_cv_func_strnlen_working='guessing yes'])])])
+AS_IF([test "$emacs_cv_func_strnlen_working" != "no"],
+  [ORIGINAL_AC_FUNC_STRNLEN],
+  [ac_cv_func_strnlen_working=no
+   AC_LIBOBJ([strnlen])])])
 
 # Initialize gnulib right after choosing the compiler.
 dnl Amongst other things, this sets AR and ARFLAGS.
@@ -3986,6 +4016,8 @@ if test "${with_dbus}" = "yes"; then
      dnl dbus_watch_get_unix_fd has been introduced in D-Bus 1.1.1.
      dnl dbus_type_is_valid and dbus_validate_* have been introduced in
      dnl D-Bus 1.5.12.
+     dnl dbus_message_set_allow_interactive_authorization was introduced
+     dnl in D-Bus 1.8.10.
      OLD_LIBS=$LIBS
      LIBS="$LIBS $DBUS_LIBS"
      AC_CHECK_FUNCS([dbus_watch_get_unix_fd \
@@ -3993,7 +4025,8 @@ if test "${with_dbus}" = "yes"; then
 		    dbus_validate_bus_name \
                     dbus_validate_path \
 		    dbus_validate_interface \
-		    dbus_validate_member])
+		    dbus_validate_member \
+                    dbus_message_set_allow_interactive_authorization])
      LIBS=$OLD_LIBS
      DBUS_OBJ=dbusbind.o
    fi

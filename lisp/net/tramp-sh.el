@@ -107,7 +107,7 @@ detected as prompt when being sent on echoing hosts, therefore.")
 
 (defcustom tramp-use-connection-share (not (eq system-type 'windows-nt))
   "Whether to use connection share in ssh or PuTTY.
-Set it to t, if you want Tramp to apply respective options. These
+Set it to t, if you want Tramp to apply respective options.  These
 are `tramp-ssh-controlmaster-options' for ssh, and \"-share\" for PuTTY.
 Set it to nil, if you use Control* or Proxy* options in your ssh
 configuration.
@@ -509,8 +509,9 @@ The string is used in `tramp-methods'.")
   "Enable \"run0\" method."
  (add-to-list 'tramp-methods
               `("run0"
-                (tramp-login-program        "systemd-run")
-                (tramp-login-args           (("--uid" "%u") ("-t") ("%l")))
+                (tramp-login-program        "run0")
+                (tramp-login-args           (("--user" "%u")
+					     ("--background" "''") ("%l")))
                 (tramp-remote-shell         ,tramp-default-remote-shell)
                 (tramp-remote-shell-args    ("-c"))
                 (tramp-connection-timeout   10)
