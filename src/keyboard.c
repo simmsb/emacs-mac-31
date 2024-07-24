@@ -4702,15 +4702,6 @@ decode_timer (Lisp_Object timer)
 static struct timespec
 timer_check_2 (Lisp_Object timers, Lisp_Object idle_timers)
 {
-  struct timespec nexttime;
-  struct timespec now;
-  struct timespec idleness_now;
-  Lisp_Object chosen_timer;
-
-  nexttime = invalid_timespec ();
-
-  chosen_timer = Qnil;
-
   /* First run the code that was delayed.  */
   while (CONSP (pending_funcalls))
     {
@@ -4719,17 +4710,18 @@ timer_check_2 (Lisp_Object timers, Lisp_Object idle_timers)
       safe_calln (Qapply, XCAR (funcall), XCDR (funcall));
     }
 
-  if (CONSP (timers) || CONSP (idle_timers))
-    {
-      now = current_timespec ();
-      idleness_now = (timespec_valid_p (timer_idleness_start_time)
-		      ? timespec_sub (now, timer_idleness_start_time)
-		      : make_timespec (0, 0));
-    }
+  if (! (CONSP (timers) || CONSP (idle_timers)))
+    return invalid_timespec ();
 
-  while (CONSP (timers) || CONSP (idle_timers))
+  struct timespec
+    now = current_timespec (),
+    idleness_now = (timespec_valid_p (timer_idleness_start_time)
+		    ? timespec_sub (now, timer_idleness_start_time)
+		    : make_timespec (0, 0));
+
+  do
     {
-      Lisp_Object timer = Qnil, idle_timer = Qnil;
+      Lisp_Object chosen_timer, timer = Qnil, idle_timer = Qnil;
       struct timespec difference;
       struct timespec timer_difference = invalid_timespec ();
       struct timespec idle_timer_difference = invalid_timespec ();
@@ -4833,8 +4825,7 @@ timer_check_2 (Lisp_Object timers, Lisp_Object idle_timers)
 		 return 0 to indicate that.  */
 	    }
 
-	  nexttime = make_timespec (0, 0);
-          break;
+	  return make_timespec (0, 0);
 	}
       else
 	/* When we encounter a timer that is still waiting,
@@ -4843,10 +4834,10 @@ timer_check_2 (Lisp_Object timers, Lisp_Object idle_timers)
 	  return difference;
 	}
     }
+  while (CONSP (timers) || CONSP (idle_timers));
 
   /* No timers are pending in the future.  */
-  /* Return 0 if we generated an event, and -1 if not.  */
-  return nexttime;
+  return invalid_timespec ();
 }
 
 
@@ -7800,7 +7791,7 @@ This function potentially generates an artificial switch-frame event.  */)
   if (!EQ (CAR_SAFE (event), Qfocus_in) ||
       !CONSP (XCDR (event)) ||
       !FRAMEP ((frame = XCAR (XCDR (event)))))
-    error ("invalid focus-in event");
+    error ("Invalid focus-in event");
 
   /* Conceptually, the concept of window manager focus on a particular
      frame and the Emacs selected frame shouldn't be related, but for

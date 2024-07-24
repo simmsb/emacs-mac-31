@@ -199,6 +199,7 @@
         (tai-tham #x1A20 #x1A55 #x1A61 #x1A80)
 	(symbol . [#x201C #x2200 #x2500])
 	(braille #x2800)
+        (tifinagh #x2D30 #x2D60)
 	(ideographic-description #x2FF0)
         ;; Noto Sans Phags Pa is broken and reuses the CJK misc code
         ;; points for some of its own characters.  Add one actual CJK
@@ -207,7 +208,9 @@
 	(kana #x304B)
 	(bopomofo #x3105)
 	(kanbun #x319D)
-	(han #x5B57)
+	(han #x2e90 #x2f00 #x3010 #x3200 #x3300 #x3400 #x31c0 #x4e10
+             #x5B57 #xfe30 #xf900
+             #x1f210 #x20000 #x2a700 #x2b740 #x2b820 #x2ceb0 #x2f804)
 	(yi #xA288)
         (syloti-nagri #xA807 #xA823 #xA82C)
         (rejang #xA930 #xA947 #xA95F)
@@ -860,6 +863,7 @@
                     nag-mundari
                     mende-kikakui
 		    adlam
+                    tifinagh
                     tai-tham
                     indic-siyaq-number
                     ottoman-siyaq-number

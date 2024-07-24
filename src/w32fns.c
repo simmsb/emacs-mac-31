@@ -10472,7 +10472,7 @@ DEFUN ("w32-notification-close",
 {
   struct frame *f = SELECTED_FRAME ();
 
-  if (FIXNUMP (id) && !pfnShell_NotifyIconW)
+  if (FIXNUMP (id) && pfnShell_NotifyIconW)
     delete_tray_notification (f, XFIXNUM (id));
 
   return Qnil;
@@ -10583,7 +10583,7 @@ to be converted to forward slashes by the caller.  */)
   else if (EQ (root, QHKCC))
     rootkey = HKEY_CURRENT_CONFIG;
   else if (!NILP (root))
-    error ("unknown root key: %s", SDATA (SYMBOL_NAME (root)));
+    error ("Unknown root key: %s", SDATA (SYMBOL_NAME (root)));
 
   Lisp_Object val = w32_read_registry (rootkey, key, name);
   if (NILP (val) && NILP (root))
@@ -11614,7 +11614,7 @@ void
 load_unicows_dll_for_w32fns (HMODULE unicows)
 {
   if (!unicows)
-    /* The functions following are defined by SHELL32.DLL onw Windows
+    /* The functions following are defined by SHELL32.DLL on Windows
        NT.  */
     unicows = GetModuleHandle ("shell32");
 

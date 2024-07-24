@@ -271,6 +271,10 @@ Image filename chosen can be customized by setting
 ~org-yank-image-file-name-function~ which by default autogenerates a
 filename based on the current time.
 
+Note that ~yank-media~, as of Emacs 30, does not yet support Windows
+(Emacs bug#71909) and may not be always reliable on Mac (Emacs
+bug#71731).
+
 *** Files and images can be attached by dropping onto Emacs
 
 By default, Org asks the user what to do with the dropped file like
@@ -556,7 +560,7 @@ The old name is obsolete.
 
 ** New and changed options
 
-# Chanes deadling with changing default values of customizations,
+# Changes dealing with changing default values of customizations,
 # adding new customizations, or changing the interpretation of the
 # existing customizations.
 
@@ -619,7 +623,7 @@ This new hook runs when a note has been stored.
 Sorting of agenda items, tables, menus, headlines, etc can now be
 controlled using a new custom option ~org-sort-function~.
 
-By default, Org mode sorts things according to the operation system
+By default, Org mode sorts things according to the operating system
 language.  However, language sorting rules may or may not produce good
 results depending on the use case.  For example, multi-language
 documents may be sorted weirdly when sorting rules for system language

@@ -3009,6 +3009,32 @@ remember_mouse_glyph (struct frame *f, int gx, int gy, NativeRectangle *rect)
 #endif
 }
 
+DEFUN ("remember-mouse-glyph", Fremember_mouse_glyph, Sremember_mouse_glyph,
+       3, 3, 0,
+       doc: /* Return the extents of glyph in FRAME for mouse event generation.
+Return a rectangle (X Y WIDTH HEIGHT) representing the confines, in
+pixel coordinates, of the glyph at X, Y and in FRAME, or, should
+`mouse-fine-grained-tracking' or `window-resize-pixelwise` be enabled,
+an approximation thereof.  All coordinates are relative to the origin
+point of FRAME.  */)
+  (Lisp_Object frame, Lisp_Object x, Lisp_Object y)
+{
+  struct frame *f = decode_window_system_frame (frame);
+  NativeRectangle rect;
+#ifdef CONVERT_TO_EMACS_RECT
+  Emacs_Rectangle xrect;
+#endif /* CONVERT_TO_EMACS_RECT */
+
+  CHECK_FIXNUM (x);
+  CHECK_FIXNUM (y);
+  remember_mouse_glyph (f, XFIXNUM (x), XFIXNUM (y), &rect);
+#ifdef CONVERT_TO_EMACS_RECT
+  CONVERT_TO_EMACS_RECT (xrect, rect);
+  return list4i (xrect.x, xrect.y, xrect.width, xrect.height);
+#else /* !defined CONVERT_TO_EMACS_RECT */
+  return list4i (rect.x, rect.y, rect.width, rect.height);
+#endif /* !defined CONVERT_TO_EMACS_RECT */
+}
 
 #endif /* HAVE_WINDOW_SYSTEM */
 
@@ -28179,7 +28205,7 @@ store_mode_line_string (const char *string, Lisp_Object lisp_string,
 
 DEFUN ("format-mode-line", Fformat_mode_line, Sformat_mode_line,
        1, 4, 0,
-       doc: /* Format a string out of a mode line format specification.
+       doc: /* Return a string formatted according to mode-line format specification.
 First arg FORMAT specifies the mode line format (see `mode-line-format'
 for details) to use.
 
@@ -37328,6 +37354,7 @@ be let-bound around code that needs to disable messages temporarily. */);
   defsubr (&Strace_to_stderr);
 #endif
 #ifdef HAVE_WINDOW_SYSTEM
+  defsubr (&Sremember_mouse_glyph);
   defsubr (&Stab_bar_height);
   defsubr (&Stool_bar_height);
   defsubr (&Slookup_image_map);
