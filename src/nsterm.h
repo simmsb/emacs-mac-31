@@ -463,7 +463,7 @@ enum ns_return_frame_mode
 @class EmacsLayer;
 
 #ifdef NS_IMPL_COCOA
-@interface EmacsView : NSView <NSTextInput, NSWindowDelegate>
+@interface EmacsView : NSView <NSTextInput, NSTextInputClient, NSWindowDelegate>
 #else
 @interface EmacsView : NSView <NSTextInput>
 #endif
@@ -522,6 +522,7 @@ enum ns_return_frame_mode
 - (void)copyRect:(NSRect)srcRect to:(NSPoint)dest;
 
 /* Non-notification versions of NSView methods. Used for direct calls.  */
+- (void)adjustEmacsFrameRect;
 - (void)windowWillEnterFullScreen;
 - (void)windowDidEnterFullScreen;
 - (void)windowWillExitFullScreen;
@@ -1067,22 +1068,6 @@ struct x_output
                      [[FRAME_NS_VIEW (f) window] frame]                 \
                      styleMask:[[FRAME_NS_VIEW (f) window] styleMask]]) \
            - NSHeight([[[FRAME_NS_VIEW (f) window] contentView] frame])))
-
-/* Compute pixel size for vertical scroll bars.  */
-#define NS_SCROLL_BAR_WIDTH(f)						\
-  (FRAME_HAS_VERTICAL_SCROLL_BARS (f)					\
-   ? rint (FRAME_CONFIG_SCROLL_BAR_WIDTH (f) > 0			\
-	   ? FRAME_CONFIG_SCROLL_BAR_WIDTH (f)				\
-	   : (FRAME_SCROLL_BAR_COLS (f) * FRAME_COLUMN_WIDTH (f)))	\
-   : 0)
-
-/* Compute pixel size for horizontal scroll bars.  */
-#define NS_SCROLL_BAR_HEIGHT(f)						\
-  (FRAME_HAS_HORIZONTAL_SCROLL_BARS (f)					\
-   ? rint (FRAME_CONFIG_SCROLL_BAR_HEIGHT (f) > 0			\
-	   ? FRAME_CONFIG_SCROLL_BAR_HEIGHT (f)				\
-	   : (FRAME_SCROLL_BAR_LINES (f) * FRAME_LINE_HEIGHT (f)))	\
-   : 0)
 
 /* Difference between char-column-calculated and actual SB widths.
    This is only a concern for rendering when SB on left.  */

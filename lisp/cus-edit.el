@@ -175,16 +175,9 @@
   "Support for editing files."
   :group 'emacs)
 
-(defgroup wp nil
-  "Support for editing text files.
-Use group `text' for this instead.  This group is obsolete."
-  :group 'emacs)
-
 (defgroup text nil
   "Support for editing text files."
-  :group 'emacs
-  ;; Inherit from deprecated `wp' for compatibility, for now.
-  :group 'wp)
+  :group 'emacs)
 
 (defgroup data nil
   "Support for editing binary data files."
@@ -1067,6 +1060,11 @@ This is like `setq', but is meant for user options instead of
 plain variables.  This means that `setopt' will execute any
 `custom-set' form associated with VARIABLE.
 
+Note that `setopt' will emit a warning if the type of a VALUE
+does not match the type of the corresponding VARIABLE as
+declared by `defcustom'.  (VARIABLE will be assigned the value
+even if it doesn't match the type.)
+
 \(fn [VARIABLE VALUE]...)"
   (declare (debug setq))
   (unless (zerop (mod (length pairs) 2))
@@ -1086,7 +1084,8 @@ plain variables.  This means that `setopt' will execute any
   ;; Check that the type is correct.
   (when-let ((type (get variable 'custom-type)))
     (unless (widget-apply (widget-convert type) :match value)
-      (warn "Value `%S' does not match type %s" value type)))
+      (warn "Value `%S' for variable `%s' does not match its type \"%s\""
+            value variable type)))
   (put variable 'custom-check-value (list value))
   (funcall (or (get variable 'custom-set) #'set-default) variable value))
 

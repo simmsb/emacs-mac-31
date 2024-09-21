@@ -895,7 +895,7 @@ uniscribe_check_otf_1 (HDC context, Lisp_Object script, Lisp_Object lang,
 		       Lisp_Object features[2], int *retval)
 {
   SCRIPT_CACHE cache = NULL;
-  OPENTYPE_TAG tags[32], script_tag, lang_tag;
+  OPENTYPE_TAG tags[128], script_tag, lang_tag;
   int max_tags = ARRAYELTS (tags);
   int ntags, i, ret = 0;
   HRESULT rslt;
@@ -1573,9 +1573,9 @@ syms_of_w32uniscribe_for_pdumper (void)
   pfnScriptGetGlyphABCWidth = &ScriptGetGlyphABCWidth;
   pfnScriptFreeCache = &ScriptFreeCache;
   pfnScriptGetCMap = &ScriptGetCMap;
+#endif /* Cygwin */
 
   uniscribe_available = 1;
-#endif /* Cygwin */
 
   register_font_driver (&uniscribe_font_driver, NULL);
 

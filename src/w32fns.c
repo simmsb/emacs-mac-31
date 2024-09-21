@@ -937,13 +937,13 @@ x_to_w32_color (const char * colorname)
     {
       int len = strlen (colorname);
 
-      if (isdigit (colorname[len - 1]))
+      if (c_isdigit (colorname[len - 1]))
 	{
 	  char *ptr, *approx = alloca (len + 1);
 
 	  strcpy (approx, colorname);
 	  ptr = &approx[len - 1];
-	  while (ptr > approx && isdigit (*ptr))
+	  while (ptr > approx && c_isdigit (*ptr))
 	      *ptr-- = '\0';
 
 	  ret = w32_color_map_lookup (approx);
@@ -3725,7 +3725,7 @@ post_character_message (HWND hwnd, UINT msg,
      message that has no particular effect.  */
   {
     int c = wParam;
-    if (isalpha (c) && wmsg.dwModifiers == ctrl_modifier)
+    if (c_isalpha (c) && wmsg.dwModifiers == ctrl_modifier)
       c = make_ctrl_char (c) & 0377;
     if (c == quit_char
 	|| (wmsg.dwModifiers == 0
@@ -3901,7 +3901,7 @@ deliver_wm_chars (int do_translate, HWND hwnd, UINT msg, UINT wParam,
      most probably, not needed -- and harms a lot).
 
      So, with the usual message pump, the following call to TranslateMessage()
-     is not needed (and is going to be VERY harmful).  With Emacs' message
+     is not needed (and is going to be VERY harmful).  With Emacs's message
      pump, the call is needed.  */
   if (do_translate)
     {
@@ -8748,7 +8748,7 @@ lookup_vk_code (char *key)
 	    || (key[0] >= '0' && key[0] <= '9'))
 	  return key[0];
 	if (key[0] >= 'a' && key[0] <= 'z')
-	  return toupper(key[0]);
+	  return c_toupper (key[0]);
       }
     }
 
@@ -9321,7 +9321,7 @@ w32_frame_list_z_order (struct w32_display_info *dpyinfo, HWND window)
 
 DEFUN ("w32-frame-list-z-order", Fw32_frame_list_z_order,
        Sw32_frame_list_z_order, 0, 1, 0,
-       doc: /* Return list of Emacs' frames, in Z (stacking) order.
+       doc: /* Return list of Emacs's frames, in Z (stacking) order.
 The optional argument DISPLAY specifies which display to ask about.
 DISPLAY should be either a frame or a display name (a string).  If
 omitted or nil, that stands for the selected frame's display.
@@ -9518,7 +9518,7 @@ DEFUN ("file-system-info", Ffile_system_info, Sfile_system_info, 1, 1, 0,
     BOOL result;
 
     /* find the root name of the volume if given */
-    if (isalpha (name[0]) && name[1] == ':')
+    if (c_isalpha (name[0]) && name[1] == ':')
       {
 	rootname[0] = name[0];
 	rootname[1] = name[1];

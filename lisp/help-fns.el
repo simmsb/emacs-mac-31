@@ -85,14 +85,14 @@ current help buffer.")
 
 (defun help-definition-prefixes ()
   "Return the up-to-date radix-tree form of `definition-prefixes'."
-  (when (> (hash-table-count definition-prefixes) 0)
+  (when (and (null help-definition-prefixes)
+             (> (hash-table-count definition-prefixes) 0))
     (maphash (lambda (prefix files)
                (let ((old (radix-tree-lookup help-definition-prefixes prefix)))
                  (setq help-definition-prefixes
                        (radix-tree-insert help-definition-prefixes
                                           prefix (append old files)))))
-             definition-prefixes)
-    (clrhash definition-prefixes))
+             definition-prefixes))
   help-definition-prefixes)
 
 (defun help--loaded-p (file)
@@ -869,6 +869,21 @@ the C sources, too."
     ))
 
 
+(defun help-fns--first-release-override (symbol type)
+  "The first release defining SYMBOL of TYPE, or nil.
+TYPE indicates the namespace and is `fun' or `var'."
+  (let* ((sym-rel-file (expand-file-name "symbol-releases.eld" data-directory))
+         (tuples
+          (with-temp-buffer
+            (ignore-errors
+              (insert-file-contents sym-rel-file)
+              (goto-char (point-min))
+              (read (current-buffer))))))
+    (unless (cl-every (lambda (x) (and (= (length x) 3) (stringp (car x))))
+                      tuples)
+      (error "Bad %s format" sym-rel-file))
+    (car (rassoc (list type symbol) tuples))))
+
 (defun help-fns--first-release (symbol)
   "Return the likely first release that defined SYMBOL, or nil."
   ;; Code below relies on the etc/NEWS* files.
@@ -949,16 +964,24 @@ the C sources, too."
 ;;       (display-buffer (current-buffer)))))
 
 (add-hook 'help-fns-describe-function-functions
-          #'help-fns--mention-first-release)
+          #'help-fns--mention-first-function-release)
 (add-hook 'help-fns-describe-variable-functions
-          #'help-fns--mention-first-release)
-(defun help-fns--mention-first-release (object)
+          #'help-fns--mention-first-variable-release)
+
+(defun help-fns--mention-first-function-release (object)
+  (help-fns--mention-first-release object 'fun))
+
+(defun help-fns--mention-first-variable-release (object)
   ;; Don't output anything if we've already output the :version from
   ;; the `defcustom'.
   (unless (memq 'help-fns--customize-variable-version
                 help-fns--activated-functions)
-    (when-let ((first (and (symbolp object)
-                           (help-fns--first-release object))))
+    (help-fns--mention-first-release object 'var)))
+
+(defun help-fns--mention-first-release (object type)
+  (when (symbolp object)
+    (when-let ((first (or (help-fns--first-release-override object type)
+                          (help-fns--first-release object))))
       (with-current-buffer standard-output
         (insert (format "  Probably introduced at or before Emacs version %s.\n"
                         first))))))
@@ -1502,8 +1525,6 @@ it is displayed along with the global value."
                      :parent button-map
                      "e" #'help-fns-edit-variable)))))
 
-(defvar help-fns--edit-variable)
-
 (put 'help-fns-edit-variable 'disabled t)
 (defun help-fns-edit-variable ()
   "Edit the variable under point."
@@ -1512,50 +1533,10 @@ it is displayed along with the global value."
   (let ((var (get-text-property (point) 'help-fns--edit-variable)))
     (unless var
       (error "No variable under point"))
-    (pop-to-buffer-same-window (format "*edit %s*" (nth 0 var)))
-    (prin1 (nth 1 var) (current-buffer))
-    (pp-buffer)
-    (goto-char (point-min))
-    (help-fns--edit-value-mode)
-    (insert (format ";; Edit the `%s' variable.\n" (nth 0 var))
-            (substitute-command-keys
-             ";; `\\[help-fns-edit-mode-done]' to update the value and exit; \
-`\\[help-fns-edit-mode-cancel]' to cancel.\n\n"))
-    (setq-local help-fns--edit-variable var)))
-
-(defvar-keymap help-fns--edit-value-mode-map
-  "C-c C-c" #'help-fns-edit-mode-done
-  "C-c C-k" #'help-fns-edit-mode-cancel)
-
-(define-derived-mode help-fns--edit-value-mode emacs-lisp-mode "Elisp"
-  :interactive nil)
-
-(defun help-fns-edit-mode-done (&optional kill)
-  "Update the value of the variable being edited and kill the edit buffer.
-If KILL (the prefix), don't update the value, but just kill the
-current buffer."
-  (interactive "P" help-fns--edit-value-mode)
-  (unless help-fns--edit-variable
-    (error "Invalid buffer"))
-  (goto-char (point-min))
-  (cl-destructuring-bind (variable _ buffer help-buffer)
-      help-fns--edit-variable
-    (unless (buffer-live-p buffer)
-      (error "Original buffer is gone; can't update"))
-    (unless kill
-      (let ((value (read (current-buffer))))
-        (with-current-buffer buffer
-          (set variable value))))
-    (kill-buffer (current-buffer))
-    (when (buffer-live-p help-buffer)
-      (with-current-buffer help-buffer
-        (revert-buffer)))))
-
-(defun help-fns-edit-mode-cancel ()
-  "Kill the edit buffer and cancel editing of the value.
-This cancels value editing without updating the value."
-  (interactive nil help-fns--edit-value-mode)
-  (help-fns-edit-mode-done t))
+    (let ((str (read-string-from-buffer
+                (format ";; Edit the `%s' variable." (nth 0 var))
+                (prin1-to-string (nth 1 var)))))
+      (set (nth 0 var) (read str)))))
 
 (defun help-fns--run-describe-functions (functions &rest args)
   (with-current-buffer standard-output

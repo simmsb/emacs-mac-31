@@ -966,7 +966,7 @@ a valid path to android.jar.  See config.log for more details.])
   fi
 
   AC_CACHE_CHECK([whether android.jar is new enough],
-    [emacs_cv_android_u_or_later],
+    [emacs_cv_android_v_or_later],
     AS_IF([rm -f conftest.class
 cat << EOF > conftest.java
 
@@ -974,18 +974,18 @@ import android.os.Build;
 
 class conftest
 {
-  private static int test = Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+  private static int test = Build.VERSION_CODES.VANILLA_ICE_CREAM;
 }
 
 EOF
 ("$JAVAC" -classpath "$with_android" -target 1.7 -source 1.7 conftest.java \
   -d . >&AS_MESSAGE_LOG_FD 2>&1) && test -s conftest.class && rm -f conftest.class],
-          [emacs_cv_android_u_or_later=yes],
-          [emacs_cv_android_u_or_later=no]))
+          [emacs_cv_android_v_or_later=yes],
+          [emacs_cv_android_v_or_later=no]))
 
-  if test "$emacs_cv_android_u_or_later" = "no"; then
+  if test "$emacs_cv_android_v_or_later" = "no"; then
     AC_MSG_ERROR([Emacs must be built with an android.jar file produced for \
-Android 14 (Upside Down Cake) or later.])
+Android 15 (Vanilla Ice Cream) or later.])
   fi
 
   dnl See if the Java compiler supports the `--release' option which
@@ -1194,6 +1194,8 @@ main (void)
    foo = "emacs_api_33";
 #elif __ANDROID_API__ < 35
    foo = "emacs_api_34";
+#elif __ANDROID_API__ < 36
+   foo = "emacs_api_35";
 #else
    foo = "emacs_api_future";
 #endif
@@ -2378,7 +2380,7 @@ AC_CACHE_CHECK([for flags to work around GCC bug 58416],
 		    20240607 (Red Hat 14.1.1-5) on x86-64.  */
 		 #include <float.h>
 		 #if \
-		     (4 <= __GNUC__ && !defined __clang__ \
+		     (4 <= __GNUC__ && __GNUC__ <= 14 && !defined __clang__ \
 		      && (defined __i386__ || defined __x86_64__) \
 		      && ! (0 <= FLT_EVAL_METHOD && FLT_EVAL_METHOD <= 1))
 		 # error "GCC bug 58416 is possibly present"
@@ -7802,8 +7804,7 @@ send your change to bug-gnu-emacs@gnu.org])])])
 
 AH_TOP([/* GNU Emacs site configuration template file.
 
-Copyright (C) 1988, 1993-1994, 1999-2002, 2004-2021
-  Free Software Foundation, Inc.
+Copyright (C) 1988-2024 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 

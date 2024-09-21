@@ -3359,7 +3359,7 @@ Here is the full set of built-in link types:
 
 - =gnus=, =rmail=, =mhe= ::
 
-  Link to messages or folders from a given Emacs' MUA.
+  Link to messages or folders from a given Emacs MUA.
 
 - =help= ::
 
@@ -3788,8 +3788,8 @@ argument.
 
 With the above setting, you could link to a specific bug with
 =[[bugzilla:129]]=, search the web for =OrgMode= with =[[duckduckgo:OrgMode]]=,
-show the map location of the Free Software Foundation =[[gmap:51
-Franklin Street, Boston]]= or of Carsten office =[[omap:Science Park 904,
+show the map location of the Free Software Foundation =[[omap:31
+Milk Street, Boston]]= or of Carsten's office =[[omap:Science Park 904,
 Amsterdam, The Netherlands]]= and find out what the Org author is doing
 besides Emacs hacking with =[[ads:Dominik,C]]=.
 
@@ -23201,7 +23201,7 @@ than 30 stars.  This is a hard-coded limitation of ~lmax~ in
 2003, not the beginning of time.
 
 [fn:29] On computers using macOS, idleness is based on actual user
-idleness, not just Emacs' idle time.  For X11, you can install a
+idleness, not just Emacs's idle time.  For X11, you can install a
 utility program =x11idle.c=, available in the =org-contrib/=
 repository, or install the xprintidle package and set it to the
 variable ~org-clock-x11idle-program-name~ if you are running Debian,

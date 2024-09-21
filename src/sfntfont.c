@@ -20,7 +20,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <config.h>
 
 #include <fcntl.h>
-#include <ctype.h>
+#include <c-ctype.h>
 
 #include "lisp.h"
 
@@ -534,12 +534,12 @@ sfnt_parse_style (Lisp_Object style_name, struct sfnt_font_desc *desc)
 	}
 
       /* This token is extraneous or was not recognized.  Capitalize
-	 the first letter and set it as the adstyle.  */
+	 the first letter if it's ASCII lowercase, then set the token as
+	 the adstyle.  */
 
       if (strlen (single))
 	{
-	  if (islower (single[0]))
-	    single[0] = toupper (single[0]);
+	  single[0] = c_toupper (single[0]);
 
 	  if (NILP (desc->adstyle))
 	    desc->adstyle = build_string (single);
@@ -1643,6 +1643,7 @@ sfntfont_list_1 (struct sfnt_font_desc *desc, Lisp_Object spec,
   struct sfnt_cmap_encoding_subtable subtable;
   int instance, num_instance;
   Lisp_Object item;
+  bool matching;
 
   /* cmap and subtable are caches for sfntfont_lookup_char.  */
 
@@ -1788,19 +1789,21 @@ sfntfont_list_1 (struct sfnt_font_desc *desc, Lisp_Object spec,
 
 	  /* The vector contains characters, of which one must be
 	     present in the font.  */
+	  matching = false;
 	  for (i = 0; i < ASIZE (tem); ++i)
 	    {
 	      if (FIXNUMP (AREF (tem, i)))
 		{
-		  if (!sfntfont_lookup_char (desc, AREF (tem, i),
-					     &cmap, &subtable))
-		    goto fail;
-
-		  /* One character is enough to pass a font.  Don't
-		     look at too many.  */
-		  break;
+		  if (sfntfont_lookup_char (desc, AREF (tem, i),
+					    &cmap, &subtable))
+		    {
+		      matching = true;
+		      break;
+		    }
 		}
 	    }
+	  if (!matching)
+	    goto fail;
 	}
       else if (CONSP (tem) && CONSP (XCDR (tem)))
 	{

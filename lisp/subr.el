@@ -463,8 +463,7 @@ Also see `ignore'."
   (declare (pure t) (side-effect-free error-free))
   t)
 
-;; Signal a compile-error if the first arg is missing.
-(defun error (&rest args)
+(defun error (string &rest args)
   "Signal an error, making a message by passing ARGS to `format-message'.
 Errors cause entry to the debugger when `debug-on-error' is non-nil.
 This can be overridden by `debug-ignored-errors'.
@@ -481,9 +480,8 @@ for the sake of consistency.
 
 To alter the look of the displayed error messages, you can use
 the `command-error-function' variable."
-  (declare (ftype (function (&rest t) nil))
-           (advertised-calling-convention (string &rest args) "23.1"))
-  (signal 'error (list (apply #'format-message args))))
+  (declare (ftype (function (string &rest t) nil)))
+  (signal 'error (list (apply #'format-message string args))))
 
 (defun user-error (format &rest args)
   "Signal a user error, making a message by passing ARGS to `format-message'.
@@ -2386,9 +2384,11 @@ LIST-VAR should not refer to a lexical variable.
 
 The return value is the new value of LIST-VAR.
 
-This is handy to add some elements to configuration variables,
-but please do not abuse it in Elisp code, where you are usually
-better off using `push' or `cl-pushnew'.
+This is meant to be used for adding elements to configuration
+variables, such as adding a directory to a path variable
+like `load-path', but please do not abuse it to construct
+arbitrary lists in Elisp code, where using `push' or `cl-pushnew'
+will get you more efficient code.
 
 If you want to use `add-to-list' on a variable that is not
 defined until a certain package is loaded, you should put the
@@ -4487,8 +4487,8 @@ Otherwise, return nil."
   "Return the SHA-1 (Secure Hash Algorithm) of an OBJECT.
 OBJECT is either a string or a buffer.  Optional arguments START and
 END are character positions specifying which portion of OBJECT for
-computing the hash.  If BINARY is non-nil, return a 40-byte unibyte
-string; otherwise returna 40-character string.
+computing the hash.  If BINARY is non-nil, return a 20-byte unibyte
+string; otherwise return a 40-character string.
 
 Note that SHA-1 is not collision resistant and should not be used
 for anything security-related.  See `secure-hash' for

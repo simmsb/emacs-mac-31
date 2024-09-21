@@ -24,11 +24,12 @@ applies, and please also update docstrings as needed.
 
 * Installation Changes in Emacs 31.1
 
-** When using GCC 4 or later to build Emacs on 32-bit x86 systems,
-'configure' now defaults to using the GCC options -mfpmath=sse (if the
-host system supports SSE2) or -fno-tree-sra (if not).  These GCC options
-work around GCC bug 58416, which can cause Emacs to behave incorrectly
-in rare cases.
+** Changed GCC default options on 32-bit x86 systems.
+When using GCC 4 or later to build Emacs on 32-bit x86 systems,
+'configure' now defaults to using the GCC options '-mfpmath=sse' (if the
+host system supports SSE2) or '-fno-tree-sra' (if not).  These GCC
+options work around GCC bug 58416, which can cause Emacs to behave
+incorrectly in rare cases.
 
 
 * Startup Changes in Emacs 31.1
@@ -37,13 +38,120 @@ in rare cases.
 * Changes in Emacs 31.1
 
 ---
-** "find-func.el" commands now have history enabled.
+** find-func.el commands now have history enabled.
 The 'find-function', 'find-library', 'find-face-definition', and
 'find-variable' commands now allow retrieving previous input using the
 usual minibuffer history commands.  Each command has a separate history.
 
+** Minibuffer and Completions
+
++++
+*** New user option 'completion-pcm-leading-wildcard'.
+This option configures how the partial-completion style does completion.
+It defaults to nil, which preserves the existing behavior.  When it is set
+to t, the partial-completion style behaves more like the substring
+style, in that a string being completed can match against a candidate
+anywhere in the candidate string.
+
++++
+*** 'completion-styles' now can contain lists of bindings.
+In addition to being a symbol naming a completion style, an element of
+'completion-styles' can now be a list of the form '(STYLE ((VARIABLE
+VALUE) ...))' where STYLE is a symbol naming a completion style.
+VARIABLE will be bound to VALUE (without evaluating it) while the style
+is executing.  This allows multiple references to the same style with
+different values for completion-affecting variables like
+'completion-pcm-leading-wildcard' or 'completion-ignore-case'.  This also
+applies for the styles configuration in 'completion-category-overrides'
+and 'completion-category-defaults'.
+
+** Windows
+
++++
+*** New hook 'window-deletable-functions'.
+This abnormal hook gives its client a way to save a window from getting
+deleted implicitly by functions like 'kill-buffer', 'bury-buffer' and
+'quit-restore-window'.
+
++++
+*** New user option 'kill-buffer-quit-windows'.
+This option has 'kill-buffer' call 'quit-restore-window' to handle the
+further destiny of any window showing the buffer to be killed.
+
++++
+*** New window parameter 'quit-restore-prev'.
+This parameter is set up by 'display-buffer' when it detects that the
+window used already has a 'quit-restore' parameter.  Its presence gives
+'quit-restore-window' a way to undo a sequence of buffer display
+operations more intuitively.
+
++++
+*** 'quit-restore-window' handles new values for BURY-OR-KILL argument.
+The values 'killing' and 'burying' are like 'kill' and 'bury' but assume
+that the actual killing or burying of the buffer is done by the caller.
+
++++
+*** New user option 'quit-restore-window-no-switch'.
+With this option set, 'quit-restore-window' will delete its window more
+aggressively rather than switching to some other buffer in it.
+
+** Frames
+
++++
+*** New function 'frame-deletable-p'.
+Calling this function before 'delete-frame' is useful to avoid that the
+latter throws an error when the argument FRAME cannot be deleted.
+
+** Tab Bars and Tab Lines
+
+---
+*** New abnormal hook 'tab-bar-auto-width-functions'.
+This hook allows you to control which tab-bar tabs are auto-resized.
+
+** Project
+
+---
+*** New command 'project-root-find-file'.
+It is equivalent to running ‘project-any-command’ with ‘find-file’.
+
 
 * Editing Changes in Emacs 31.1
+
+** Internationalization
+
+---
+*** Emacs now supports Unicode version 16.0.
+
+---
+*** New language-environment and input method for Tifinagh.
+The Tifinagh script is used to write the Berber languages.
+
+---
+** 'visual-wrap-prefix-mode' now supports variable-pitch fonts.
+When using 'visual-wrap-prefix-mode' in buffers with variable-pitch
+fonts, the wrapped text will now be lined up correctly so that it's
+exactly below the text after the prefix on the first line.
+
+---
+** New commands 'unix-word-rubout' and 'unix-filename-rubout'.
+Unix-words are words separated by whitespace regardless of the buffer's
+syntax table.  In a Unix terminal or shell, C-w kills by Unix-word.
+The new commands 'unix-word-rubout' and 'unix-filename-rubout' allow
+you to bind keys to operate more similarly to the terminal.
+
+---
+** New user option 'kill-region-dwim'.
+This option, if non-nil, modifies the fall-back behavior of
+'kill-region' ('C-w') if no region is active, and will kill the last word
+instead of raising an error.  Note that if you have disabled Transient
+Mark mode you might prefer to use 'unix-word-rubout', as this feature
+relies on there being an active region.
+
+---
+** New user option 'delete-pair-push-mark'.
+This option, if non-nil, makes 'delete-pair' push a mark at the end of
+the region enclosed by the deleted delimiters.  This makes it easy to
+act on that region.  For example, we can highlight it using 'C-x C-x'.
 
 
 * Changes in Specialized Modes and Packages in Emacs 31.1
@@ -52,13 +160,21 @@ usual minibuffer history commands.  Each command has a separate history.
 
 ---
 *** 'whitespace-cleanup' now adds missing newline at end of file.
-If 'whitespace-style' includes 'missing-newline-at-eof (which is the
+If 'whitespace-style' includes 'missing-newline-at-eof' (which is the
 default), the 'whitespace-cleanup' function will now add the newline.
+
+** Gnus
+
+---
+*** Replying to icalendar events now supports specifying a comment.
+When called with a prefix argument, accepting, declining, or tentatively
+accepting an icalendar event will prompt for a comment to add to the
+response.
 
 ** Eshell
 
 ---
-*** New option 'eshell-command-async-buffer'.
+*** New user option 'eshell-command-async-buffer'.
 This option lets you tell 'eshell-command' how to respond if its output
 buffer is already in use by another invocation of 'eshell-command', much
 like 'async-shell-command-buffer' does for 'shell-command'.  By default,
@@ -68,7 +184,7 @@ necessary.  To restore the previous behavior, set this option to
 
 +++
 *** 'eshell-execute-file' is now an interactive command.
-Interactively, this now prompts for a script file to execute. With the
+Interactively, this now prompts for a script file to execute.  With the
 prefix argument, it will also insert any output into the current buffer
 at point.
 
@@ -79,8 +195,8 @@ where to send the standard error output.  See the "(eshell) Entry
 Points" node in the Eshell manual for more details.
 
 +++
-*** Eshell's built-in "wait" command now accepts a timeout.
-By passing "-t" or "--timeout", you can specify a maximum time to wait
+*** Eshell's built-in 'wait' command now accepts a timeout.
+By passing '-t' or '--timeout', you can specify a maximum time to wait
 for the processes to exit.  Additionally, you can now wait for external
 processes by passing their PIDs.
 
@@ -91,7 +207,7 @@ processes by passing their PIDs.
 Sliced images allow for more intuitive scrolling up/down by letting you
 scroll past each slice, instead of jumping past the entire image.
 Previously, SHR sliced images when zoomed to their original size, no
-matter how large or small that was).  Now, SHR slices any images taller
+matter how large or small that was.  Now, SHR slices any images taller
 than 'shr-sliced-image-height'.  For more information, see the "(eww)
 Advanced" node in the EWW manual.
 
@@ -99,6 +215,25 @@ Advanced" node in the EWW manual.
 *** You can now customize the image zoom levels to cycle through.
 By customizing 'shr-image-zoom-levels', you can change the list of zoom
 levels that SHR cycles through when calling 'shr-zoom-image'.
+
+---
+*** New user option 'shr-fill-text'.
+When 'shr-fill-text' is non-nil (the default), SHR will fill text
+according to the width of the window.  If you customize it to nil, SHR
+will leave the text as-is; in that case, EWW will automatically enable
+'visual-line-mode' when displaying a page so that long lines are
+visually wrapped at word boundaries.
+
+** EWW
+
+---
+*** EWW now enables 'visual-wrap-prefix-mode' when 'shr-fill-text' is nil.
+By default, 'shr-fill-text' is t, and EWW fills the text according to
+the width of the window.  If you customize 'shr-fill-text' to nil, EWW
+will now automatically turn on 'visual-wrap-prefix-mode' in addition to
+'visual-line-mode', so that long lines are wrapped at word boundaries
+near window edge and the continuation lines are indented using prefixes
+computed from surrounding context.
 
 ** Go-ts mode
 
@@ -111,13 +246,31 @@ point.  If a region is active, it runs all the unit tests under the
 region.  It is bound to 'C-c C-t t' in 'go-ts-mode'.
 
 The 'go-ts-mode-test-this-file' command runs all unit tests in the current
-file. It is bound to 'C-c C-t f' in 'go-ts-mode'.
+file.  It is bound to 'C-c C-t f' in 'go-ts-mode'.
 
 The 'go-ts-mode-test-this-package' command runs all unit tests under the
 package of the current buffer.  It is bound to 'C-c C-t p' in 'go-ts-mode'.
 
-The 'go-ts-mode-build-tags' variable is available to set a list of build
-tags for the test commands.
+The 'go-ts-mode-build-tags' user option is available to set a list of
+build tags for the test commands.
+
+** C-ts mode
+
++++
+*** New user option 'c-ts-mode-enable-doxygen'.
+By default, this is nil, and the Doxygen comment blocks in C/C++ source
+are highlighted like other comments.  When non-nil, Doxygen comment
+blocks are syntax-highlighted if the Doxygen grammar library is
+available.
+
+** Java-ts mode
+
++++
+*** New user option 'java-ts-mode-enable-doxygen'.
+By default, this is nil, and the Doxygen comment blocks in Java source
+are highlighted like other comments.  When non-nil, Doxygen comment
+blocks are syntax-highlighted if the Doxygen grammar library is
+available.
 
 ** Emacs Lisp mode
 
@@ -149,29 +302,205 @@ This affects calls to 'warn', 'lwarn', 'display-warning', and
 In most cases, having it enabled leads to a large amount of false
 positives.
 
+** DocView
+
+---
+*** Dedicated buffer for plain text contents.
+When switching to the plain text contents with 'doc-view-open-text',
+DocView now creates a dedicated buffer to display it.  'C-c C-c' gets you
+back to real DocView buffer if it still exists.
+
+** Tramp
+
++++
+*** Connection method "kubernetes" supports now optional namespace.
+The host name for Kubernetes connections can be of kind
+[CONTAINER.]POD[%NAMESPACE], in order to specify the namespace to be
+used.  This overrides the setting in 'tramp-kubernetes-namespace', if
+any.
+
+** Diff
+
+---
+*** New command 'diff-kill-ring-save'.
+This command copies to the 'kill-ring' a region of text modified
+according to diffs in the current buffer, but without applying the diffs
+to the original text.  If the selected range extends a hunk, the
+command attempts to look up and copy the text in-between the hunks.
+
+** php-ts-mode
+
+---
+*** 'php-ts-mode-run-php-webserver' can now accept a custom "php.ini" file.
+You can use the new optional argument CONFIG when calling
+'php-ts-mode-run-php-webserver' to pass an alternative "php.ini" file to
+the built-in Web server.  Interactively, when invoked with a prefix
+argument, 'php-ts-mode-run-php-webserver' prompts for the config file as
+well as for other connection parameters.
+
+** Ediff
+
++++
+*** Ediff's copy commands now apply to all changes with 'C-u' prefix.
+The Ediff copy commands, bound to 'a', 'b', 'ab', etc., now copy all
+changes when supplied with a universal prefix argument via 'C-u':
+
+- 'C-u a' copies all changes from buffer A to buffer B (in 2-way diff)
+  or to buffer C (in 3-way diff or merge).
+- 'C-u b' copies all changes from buffer B to buffer A (in 2-way diff)
+  or to buffer C (in 3-way diff or merge).
+- 'C-u a b' copies all changes from buffer A to buffer B.
+- 'C-u b a' copies all changes from buffer B to buffer A.
+- 'C-u a c' copies all changes from buffer A to buffer C.
+- 'C-u b c' copies all changes from buffer B to buffer C.
+- 'C-u c a' copies all changes from buffer C to buffer A.
+- 'C-u c b' copies all changes from buffer C to buffer B.
+
+** Dired
+
++++
+*** New user option 'dired-check-symlinks' allows disabling validity checks.
+Dired uses 'file-truename' to check symbolic link validity when
+fontifying them, which can be slow for remote directories.  Setting
+'dired-check-symlinks' to nil disables these checks.  Defaults to t, can
+be set as a connection-local variable.
+
+** Grep
+
++++
+*** Grep results can be edited to reflect changes in the originating file.
+Like Occur Edit mode, typing 'e' in the '*grep*' buffer will now make
+the 'grep' results editable.  The edits will be reflected in the buffer
+visiting the originating file.  Typing 'C-c C-c' will leave the Grep
+Edit mode.
+
+** TeX modes
+
++++
+*** New xref backend for TeX modes.
+The new backend ('tex-etags') is on by default, and improves the
+functionality of the standard 'xref' commands in TeX buffers.  You can
+restore the standard 'etags' backend with the 'M-x xref-etags-mode'
+toggle.
+
 
 * New Modes and Packages in Emacs 31.1
 
 
 * Incompatible Lisp Changes in Emacs 31.1
 
+** The 'rx' category name 'chinese-two-byte' must now be spelled correctly.
+An old alternative name (without the first 'e') has been removed.
+
+---
+** All the digit characters now have the 'digit' category.
+All the characters whose Unicode general-category is Nd now have the
+'digit' category, whose mnemonic is '6'.  This includes both ASCII and
+non-ASCII digit characters.
+
+---
+** All the symbol characters now have the 'symbol' category.
+All the characters that belong to the 'symbol' script (according to
+'char-script-table') now have the 'symbol' category, whose mnemonic is
+'5'.
+
 
 * Lisp Changes in Emacs 31.1
 
 +++
-*** Support interactive D-Bus authorization.
+** Support interactive D-Bus authorization.
 A new ':authorizable t' parameter has been added to 'dbus-call-method'
 and 'dbus-call-method-asynchronously' to allow the user to interactively
-authorize the invoked D-Bus method (e.g., via polkit).
+authorize the invoked D-Bus method (for example via polkit).
+
+** The customization group 'wp' has been removed.
+It has been obsolete since Emacs 26.1.  Use the group 'text' instead.
+
+** Tree-sitter changes
+
++++
+*** Indirect buffers can have their own parser list.
+Before, indirect buffers share their base buffer’s parser list and
+parsers.  Now they can have their own parser list.
+
++++
+*** New variable 'treesit-language-remap-alist'.
+This variable allows a user to remap one language into another, such
+that creating a parser for language A actually creates a parser for
+language B.  By extension, any font-lock rules or indentation rules for
+language A will be applied to language B instead.
+
+This is useful for reusing font-lock rules and indentation rules of
+language A for language B, when language B is a strict superset of
+language A.
+
++++
+*** New accessor functions for each setting in 'treesit-font-lock-settings'.
+Now users can access a setting's query, feature, enable flag, and
+override flag by 'treesit-font-lock-setting-query',
+'treesit-font-lock-setting-feature', 'treesit-font-lock-setting-enable',
+and 'treesit-font-lock-setting-override'.
+
++++
+** New optional BUFFER argument for 'string-pixel-width'.
+If supplied, 'string-pixel-width' will use any face remappings from
+BUFFER when computing the string's width.
+
+---
+** New macro 'with-work-buffer'.
+This macro is similar to the already existing macro 'with-temp-buffer',
+except that it does not allocate a new temporary buffer on each call,
+but tries to reuse those previously allocated (up to a number defined by
+the new variable 'work-buffer-limit', which defaults to 10).
+
++++
+** 'date-to-time' now defaults to local time.
+The function now assumes local time instead of Universal Time when
+its argument lacks explicit time zone information.  This has been the
+de-facto behavior since Emacs 24 although documentation said otherwise.
+Also, the fallback on 'timezone-make-date-arpa-standard' has been
+removed because its supported date styles can be handled by
+'parse-time-string'.  To restore the previously documented behavior,
+specify "+0000" or "Z" as the time zone in the argument.
+
+---
+** The 'min-width' property is now supported for overlays as well.
+This 'display' property was previously supported only as text property.
+Now overlays can also have this property, with the same effect for the
+text "covered" by the overlay.
+
++++
+** New macro 'cond*'.
+The new macro 'cond*' is an alternative to 'pcase'.  Like 'pcase', it
+can be used to define several clauses, each one with its own condition;
+the first clause that matches will cause its body to be evaluated.
+'cond*' uses syntax that is different from that of 'pcase', which some
+users might find less cryptic.  See the Info node "(elisp) cond* Macro"
+for details.
 
 
 * Changes in Emacs 31.1 on Non-Free Operating Systems
 
 ---
 ** Process execution has been optimized on Android.
-The run-time performance of subprocesses on recent Android releases
-where a userspace executable loader is required has been optimized on
+The run-time performance of subprocesses on recent Android releases,
+where a userspace executable loader is required, has been optimized on
 systems featuring Linux 3.5.0 and above.
+
+---
+** 'NSSpeechRecognitionUsageDescription' now included in "Info.plist" (macOS).
+Should Emacs (or any built-in shell) invoke a process using macOS speech
+recognition APIs, the relevant permission dialog is now displayed, thus
+allowing Emacs users access to speech recognition utilities.
+
+Note: Accepting this permission allows the use of system APIs, which may
+send user data to Apple’s speech recognition servers.
+
+---
+** Emacs on MS-Windows now supports GUI dialogs and message boxes better.
+In particular, it is now possible to show text with embedded newlines in
+a dialog popped by 'message-box'.  This is supported on Windows Vista
+and later versions.
 
 
 ----------------------------------------------------------------------

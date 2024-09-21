@@ -14691,7 +14691,7 @@ x_construct_mouse_click (struct input_event *result,
           result->kind = (event->type != ButtonRelease ? NO_EVENT
 		          : wheel & 2 ? HORIZ_WHEEL_EVENT : WHEEL_EVENT);
           result->code = 0;         /* Not used.  */
-          result->modifiers &= ~(up_modifier || down_modifier);
+          result->modifiers &= ~(up_modifier | down_modifier);
           result->modifiers |= wheel & 1 ? up_modifier : down_modifier;
         }
     }
@@ -15585,7 +15585,7 @@ x_send_scroll_bar_event (Lisp_Object window, enum scroll_bar_part part,
   XClientMessageEvent *ev = &event.xclient;
   struct window *w = XWINDOW (window);
   struct frame *f = XFRAME (w->frame);
-  verify (INTPTR_WIDTH <= 64);
+  static_assert (INTPTR_WIDTH <= 64);
 
   /* Don't do anything if too many scroll bar events have been
      sent but not received.  */
@@ -32235,7 +32235,7 @@ x_initialize (void)
   Xt_app_con = XtCreateApplicationContext ();
 
   /* Register a converter from strings to pixels, which uses
-     Emacs' color allocation infrastructure.  */
+     Emacs's color allocation infrastructure.  */
   XtAppSetTypeConverter (Xt_app_con,
 			 XtRString, XtRPixel, cvt_string_to_pixel,
 			 cvt_string_to_pixel_args,

@@ -140,7 +140,7 @@ typedef unsigned char bits_word;
 # define BITS_WORD_MAX ((1u << BOOL_VECTOR_BITS_PER_CHAR) - 1)
 enum { BITS_PER_BITS_WORD = BOOL_VECTOR_BITS_PER_CHAR };
 #endif
-verify (BITS_WORD_MAX >> (BITS_PER_BITS_WORD - 1) == 1);
+static_assert (BITS_WORD_MAX >> (BITS_PER_BITS_WORD - 1) == 1);
 
 /* Use pD to format ptrdiff_t values, which suffice for indexes into
    buffers and strings.  Emacs never allocates objects larger than
@@ -281,14 +281,14 @@ DEFINE_GDB_SYMBOL_END (VALMASK)
    emacs_align_type union in alloc.c.
 
    Although these macros are reasonably portable, they are not
-   guaranteed on non-GCC platforms, as the C standard does not require support
-   for alignment to GCALIGNMENT and older compilers may ignore
-   alignment requests.  For any type T where garbage collection
-   requires alignment, use verify (GCALIGNED (T)) to verify the
-   requirement on the current platform.  Types need this check if
-   their objects can be allocated outside the garbage collector.  For
-   example, struct Lisp_Symbol needs the check because of lispsym and
-   struct Lisp_Cons needs it because of STACK_CONS.  */
+   guaranteed on non-GCC platforms, as the C standard does not require
+   support for alignment to GCALIGNMENT and older compilers may ignore
+   alignment requests.  For any type T where garbage collection requires
+   alignment, use static_assert (GCALIGNED (T)) to verify the
+   requirement on the current platform.  Types need this check if their
+   objects can be allocated outside the garbage collector.  For example,
+   struct Lisp_Symbol needs the check because of lispsym and struct
+   Lisp_Cons needs it because of STACK_CONS.  */
 
 #define GCALIGNED_UNION_MEMBER char alignas (GCALIGNMENT) gcaligned;
 #if HAVE_STRUCT_ATTRIBUTE_ALIGNED
@@ -865,7 +865,7 @@ struct Lisp_Symbol
     GCALIGNED_UNION_MEMBER
   } u;
 };
-verify (GCALIGNED (struct Lisp_Symbol));
+static_assert (GCALIGNED (struct Lisp_Symbol));
 
 /* Declare a Lisp-callable function.  The MAXARGS parameter has the same
    meaning as in the DEFUN macro, and is used to construct a prototype.  */
@@ -1480,7 +1480,7 @@ struct Lisp_Cons
     GCALIGNED_UNION_MEMBER
   } u;
 };
-verify (GCALIGNED (struct Lisp_Cons));
+static_assert (GCALIGNED (struct Lisp_Cons));
 
 INLINE bool
 (NILP) (Lisp_Object x)
@@ -1610,7 +1610,7 @@ struct Lisp_String
     GCALIGNED_UNION_MEMBER
   } u;
 };
-verify (GCALIGNED (struct Lisp_String));
+static_assert (GCALIGNED (struct Lisp_String));
 
 INLINE bool
 STRINGP (Lisp_Object x)
@@ -2025,10 +2025,11 @@ gc_aset (Lisp_Object array, ptrdiff_t idx, Lisp_Object val)
 }
 
 /* True, since Qnil's representation is zero.  Every place in the code
-   that assumes Qnil is zero should verify (NIL_IS_ZERO), to make it easy
-   to find such assumptions later if we change Qnil to be nonzero.
-   Test iQnil and Lisp_Symbol instead of Qnil directly, since the latter
-   is not suitable for use in an integer constant expression.  */
+   that assumes Qnil is zero should static_assert (NIL_IS_ZERO), to make
+   it easy to find such assumptions later if we change Qnil to be
+   nonzero.  Test iQnil and Lisp_Symbol instead of Qnil directly, since
+   the latter is not suitable for use in an integer constant
+   expression.  */
 enum { NIL_IS_ZERO = iQnil == 0 && Lisp_Symbol == 0 };
 
 /* Clear the object addressed by P, with size NBYTES, so that all its
@@ -2037,7 +2038,7 @@ INLINE void
 memclear (void *p, ptrdiff_t nbytes)
 {
   eassert (0 <= nbytes);
-  verify (NIL_IS_ZERO);
+  static_assert (NIL_IS_ZERO);
   /* Since Qnil is zero, memset suffices.  */
   memset (p, 0, nbytes);
 }
@@ -2240,7 +2241,7 @@ union Aligned_Lisp_Subr
     struct Lisp_Subr s;
     GCALIGNED_UNION_MEMBER
   };
-verify (GCALIGNED (union Aligned_Lisp_Subr));
+static_assert (GCALIGNED (union Aligned_Lisp_Subr));
 
 INLINE bool
 SUBRP (Lisp_Object a)
@@ -2281,11 +2282,11 @@ enum char_table_specials
   };
 
 /* Sanity-check pseudovector layout.  */
-verify (offsetof (struct Lisp_Char_Table, defalt) == header_size);
-verify (offsetof (struct Lisp_Char_Table, extras)
-	== header_size + CHAR_TABLE_STANDARD_SLOTS * sizeof (Lisp_Object));
-verify (offsetof (struct Lisp_Sub_Char_Table, contents)
-	== header_size + SUB_CHAR_TABLE_OFFSET * sizeof (Lisp_Object));
+static_assert (offsetof (struct Lisp_Char_Table, defalt) == header_size);
+static_assert (offsetof (struct Lisp_Char_Table, extras)
+	       == header_size + CHAR_TABLE_STANDARD_SLOTS * sizeof (Lisp_Object));
+static_assert (offsetof (struct Lisp_Sub_Char_Table, contents)
+	       == header_size + SUB_CHAR_TABLE_OFFSET * sizeof (Lisp_Object));
 
 /* Return the number of "extra" slots in the char table CT.  */
 
@@ -2819,7 +2820,7 @@ SXHASH_REDUCE (EMACS_UINT x)
 INLINE hash_hash_t
 reduce_emacs_uint_to_hash_hash (EMACS_UINT x)
 {
-  verify (sizeof x <= 2 * sizeof (hash_hash_t));
+  static_assert (sizeof x <= 2 * sizeof (hash_hash_t));
   return (sizeof x == sizeof (hash_hash_t)
 	  ? x
 	  : x ^ (x >> (8 * (sizeof x - sizeof (hash_hash_t)))));
@@ -3214,7 +3215,7 @@ struct Lisp_Float
       GCALIGNED_UNION_MEMBER
     } u;
   };
-verify (GCALIGNED (struct Lisp_Float));
+static_assert (GCALIGNED (struct Lisp_Float));
 
 INLINE bool
 (FLOATP) (Lisp_Object x)
@@ -3851,9 +3852,6 @@ record_in_backtrace (Lisp_Object function, Lisp_Object *args, ptrdiff_t nargs)
    All the other members are concerned with restoring the interpreter
    state.
 
-   Members are volatile if their values need to survive _longjmp when
-   a 'struct handler' is a local variable.
-
    When running the HANDLER of a 'handler-bind', we need to
    temporarily "mute" the CONDITION_CASEs and HANDLERs that are "below"
    the current handler, but without hiding any CATCHERs.  We do that by
@@ -4209,7 +4207,7 @@ modiff_incr (modiff_count *a, ptrdiff_t len)
   /* Increase the counter more for a large modification and less for a
      small modification.  Increase it logarithmically to avoid
      increasing it too much.  */
-  verify (PTRDIFF_MAX <= ULLONG_MAX);
+  static_assert (PTRDIFF_MAX <= ULLONG_MAX);
   int incr = len == 0 ? 1 : elogb (len) + 1;
   bool modiff_overflow = ckd_add (a, a0, incr);
   eassert (!modiff_overflow && *a >> 30 >> 30 == 0);
@@ -4229,16 +4227,21 @@ extern void notify_variable_watchers (Lisp_Object, Lisp_Object,
 				      Lisp_Object, Lisp_Object);
 extern Lisp_Object indirect_function (Lisp_Object);
 extern Lisp_Object find_symbol_value (Lisp_Object);
-enum Arith_Comparison {
-  ARITH_EQUAL,
-  ARITH_NOTEQUAL,
-  ARITH_LESS,
-  ARITH_GRTR,
-  ARITH_LESS_OR_EQUAL,
-  ARITH_GRTR_OR_EQUAL
+
+enum {
+  Cmp_Bit_EQ,
+  Cmp_Bit_LT,
+  Cmp_Bit_GT
 };
-extern Lisp_Object arithcompare (Lisp_Object num1, Lisp_Object num2,
-                                 enum Arith_Comparison comparison);
+
+/* code indicating a comparison outcome */
+typedef enum {
+  Cmp_EQ = 1 << Cmp_Bit_EQ,	/* = */
+  Cmp_LT = 1 << Cmp_Bit_LT,	/* < */
+  Cmp_GT = 1 << Cmp_Bit_GT	/* > */
+} cmp_bits_t;
+
+extern cmp_bits_t arithcompare (Lisp_Object num1, Lisp_Object num2);
 
 /* Convert the Emacs representation CONS back to an integer of type
    TYPE, storing the result the variable VAR.  Signal an error if CONS
@@ -4349,7 +4352,7 @@ extern void tim_sort (Lisp_Object, Lisp_Object, Lisp_Object *, const ptrdiff_t,
   ARG_NONNULL ((3));
 
 /* Defined in floatfns.c.  */
-verify (FLT_RADIX == 2 || FLT_RADIX == 16);
+static_assert (FLT_RADIX == 2 || FLT_RADIX == 16);
 enum { LOG2_FLT_RADIX = FLT_RADIX == 2 ? 1 : 4 };
 int double_integer_scale (double);
 #ifndef HAVE_TRUNC
@@ -5199,7 +5202,7 @@ extern void syms_of_frame (void);
 extern char **initial_argv;
 extern int initial_argc;
 extern char const *emacs_wd;
-#if defined (HAVE_X_WINDOWS) || defined (HAVE_NS)
+#if defined (HAVE_X_WINDOWS) || defined (HAVE_PGTK) || defined (HAVE_NS)
 extern bool display_arg;
 #endif
 extern Lisp_Object decode_env_path (const char *, const char *, bool);

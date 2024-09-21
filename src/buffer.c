@@ -27,8 +27,6 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <verify.h>
-
 #include "lisp.h"
 #include "intervals.h"
 #include "process.h"
@@ -2012,6 +2010,13 @@ cleaning up all windows currently displaying the buffer to be killed. */)
      buffer (bug#10114).  */
   replace_buffer_in_windows (buffer);
 
+  /* For dead windows that have not been collected yet, remove this
+     buffer from those windows' lists of previously and next shown
+     buffers and remove any 'quit-restore' or 'quit-restore-prev'
+     parameters mentioning the buffer.  */
+  if (XFIXNUM (BVAR (b, display_count)) > 0)
+    window_discard_buffer_from_dead_windows (buffer);
+
   /* Exit if replacing the buffer in windows has killed our buffer.  */
   if (!BUFFER_LIVE_P (b))
     return Qt;
@@ -2029,7 +2034,7 @@ cleaning up all windows currently displaying the buffer to be killed. */)
   /* If the buffer now current is shown in the minibuffer and our buffer
      is the sole other buffer give up.  */
   XSETBUFFER (tem, current_buffer);
-  if (EQ (tem, XWINDOW (minibuf_window)->contents)
+  if (BASE_EQ (tem, XWINDOW (minibuf_window)->contents)
       && BASE_EQ (buffer, Fother_buffer (buffer, Qnil, Qnil)))
     return Qnil;
 
@@ -3168,7 +3173,7 @@ mouse_face_overlay_overlaps (Lisp_Object overlay)
     {
       if (node->begin < end && node->end > start
           && node->begin < node->end
-          && !EQ (node->data, overlay)
+          && !BASE_EQ (node->data, overlay)
           && (tem = Foverlay_get (overlay, Qmouse_face),
 	      !NILP (tem)))
 	return true;
@@ -3231,7 +3236,7 @@ compare_overlays (const void *v1, const void *v2)
     return s2->end < s1->end ? -1 : 1;
   else if (s1->spriority != s2->spriority)
     return (s1->spriority < s2->spriority ? -1 : 1);
-  else if (EQ (s1->overlay, s2->overlay))
+  else if (BASE_EQ (s1->overlay, s2->overlay))
     return 0;
   else
     /* Avoid the non-determinism of qsort by choosing an arbitrary ordering
@@ -4083,7 +4088,7 @@ report_overlay_modification (Lisp_Object start, Lisp_Object end, bool after,
 			     Lisp_Object arg1, Lisp_Object arg2, Lisp_Object arg3)
 {
   /* True if this change is an insertion.  */
-  bool insertion = (after ? XFIXNAT (arg3) == 0 : EQ (start, end));
+  bool insertion = (after ? XFIXNAT (arg3) == 0 : BASE_EQ (start, end));
 
   /* We used to run the functions as soon as we found them and only register
      them in last_overlay_modification_hooks for the purpose of the `after'
@@ -4853,7 +4858,7 @@ init_buffer_once (void)
      The local flag bits are in the local_var_flags slot of the buffer.  */
 
   /* Nothing can work if this isn't true.  */
-  { verify (sizeof (EMACS_INT) == word_size); }
+  { static_assert (sizeof (EMACS_INT) == word_size); }
 
   Vbuffer_alist = Qnil;
   current_buffer = 0;

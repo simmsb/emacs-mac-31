@@ -1469,21 +1469,24 @@ system is determined by `shell-command-guess-open'."
     (when (and (memq system-type '(windows-nt))
                (equal command "start"))
       (setq command "open"))
-    (when command
-      (dolist (file files)
+    (if command
         (cond
-         ((memq system-type '(gnu/linux))
-          (call-process command nil 0 nil file))
          ((memq system-type '(ms-dos))
-          (shell-command (concat command " " (shell-quote-argument file))))
+          (dolist (file files)
+            (shell-command (concat command " " (shell-quote-argument file)))))
          ((memq system-type '(windows-nt))
-          (w32-shell-execute command (convert-standard-filename file)))
+          (dolist (file files)
+            (w32-shell-execute command (convert-standard-filename file))))
          ((memq system-type '(cygwin))
-          (call-process command nil nil nil file))
+          (dolist (file files)
+            (call-process command nil nil nil file)))
          ((memq system-type '(darwin))
-          (start-process (concat command " " file) nil command file))
+          (dolist (file files)
+            (start-process (concat command " " file) nil command file)))
          (t
-          (error "Open not supported on this system")))))))
+          (dolist (file files)
+            (call-process command nil 0 nil file))))
+      (error "Open not supported on this system"))))
 
 
 ;;; Commands that delete or redisplay part of the dired buffer
@@ -3801,10 +3804,9 @@ Third arg DELIMITED (prefix arg) means replace only word-delimited matches.
 If you exit the query-replace loop (\\[keyboard-quit], RET or q), you can
 resume the query replace with the command \\[fileloop-continue]."
   (interactive
-   (let* ((query-replace-lazy-highlight)
-          (common
-	   (query-replace-read-args
-	    "Query replace regexp in marked files" t t)))
+   (let ((common
+	  (query-replace-read-args
+	   "Query replace regexp in marked files" t t t)))
      (list (nth 0 common) (nth 1 common) (nth 2 common)))
    dired-mode)
   (dolist (file (dired-get-marked-files nil nil #'dired-nondirectory-p nil t))
@@ -3826,10 +3828,9 @@ Third arg DELIMITED (prefix arg) means replace only word-delimited matches.
 The replacements are displayed in the buffer *replace-diff* that
 you can later apply as a patch after reviewing the changes."
   (interactive
-   (let* ((query-replace-lazy-highlight)
-          (common
-           (query-replace-read-args
-            "Replace regexp as diff in marked files" t t)))
+   (let ((common
+          (query-replace-read-args
+           "Replace regexp as diff in marked files" t t t)))
      (list (nth 0 common) (nth 1 common) (nth 2 common))))
   (dired-post-do-command)
   (multi-file-replace-regexp-as-diff
@@ -3903,10 +3904,9 @@ REGEXP should use constructs supported by your local `grep' command.
 Also see `query-replace' for user options that affect how this
 function works."
   (interactive
-   (let* ((query-replace-lazy-highlight)
-          (common
+   (let ((common
           (query-replace-read-args
-           "Query replace regexp in marked files" t t)))
+           "Query replace regexp in marked files" t t t)))
      (list (nth 0 common) (nth 1 common)))
    dired-mode)
   (require 'xref)

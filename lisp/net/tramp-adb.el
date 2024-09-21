@@ -43,14 +43,18 @@
   "Name of the Android Debug Bridge program."
   :group 'tramp
   :version "24.4"
-  :type 'string)
+  :type '(choice (const "adb")
+                 (string))
+  :link '(tramp-info-link :tag "Tramp manual" tramp-adb-program))
 
 (defcustom tramp-adb-connect-if-not-connected nil
   "Try to run `adb connect' if provided device is not connected currently.
 It is used for TCP/IP devices."
   :group 'tramp
   :version "25.1"
-  :type 'boolean)
+  :type 'boolean
+  :link '(tramp-info-link :tag "Tramp manual"
+			  tramp-adb-connect-if-not-connected))
 
 ;;;###tramp-autoload
 (defconst tramp-adb-method "adb"
@@ -763,9 +767,7 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
 	 (kill-buffer (tramp-get-connection-buffer v))
 	 (setq ret 1)))
 
-      ;; Handle signals.  `process-file-return-signal-string' exists
-      ;; since Emacs 28.1.
-      (when (and (bound-and-true-p process-file-return-signal-string)
+      (when (and process-file-return-signal-string
 		 (natnump ret) (> ret 128))
 	(setq ret (nth (- ret 128) (tramp-adb-get-signal-strings v))))))
 

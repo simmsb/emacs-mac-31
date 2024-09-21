@@ -1119,8 +1119,10 @@ and DOC describes the way this style of completion works.")
     widget))
 
 (defconst completion--styles-type
-  `(repeat :tag "insert a new menu to add more styles"
-           (choice :convert-widget completion--update-styles-options)))
+  '(repeat :tag "insert a new menu to add more styles"
+           (single-or-list
+            (choice :convert-widget completion--update-styles-options)
+            (repeat :tag "Variable overrides" (group variable sexp)))))
 
 (defconst completion--cycling-threshold-type
   '(choice (const :tag "No cycling" nil)
@@ -1141,12 +1143,20 @@ and DOC describes the way this style of completion works.")
     ;; and simply add "bar" to the end of the result.
     emacs22)
   "List of completion styles to use.
-The available styles are listed in `completion-styles-alist'.
+An element should be a symbol which is listed in
+`completion-styles-alist'.
+
+An element can also be a list of the form
+(STYLE ((VARIABLE VALUE) ...))
+STYLE must be a symbol listed in `completion-styles-alist', followed by
+a `let'-style list of variable/value pairs.  VARIABLE will be bound to
+VALUE (without evaluating it) while the style is handling completion.
+This allows repeating the same style with different configurations.
 
 Note that `completion-category-overrides' may override these
 styles for specific categories, such as files, buffers, etc."
   :type completion--styles-type
-  :version "23.1")
+  :version "31.1")
 
 (defvar completion-category-defaults
   '((buffer (styles . (basic substring)))
@@ -1197,7 +1207,7 @@ completing buffer and file names, respectively.
 
 If a property in a category is specified by this variable, it
 overrides the default specified in `completion-category-defaults'."
-  :version "25.1"
+  :version "31.1"
   :type `(alist :key-type (choice :tag "Category"
 				  (const buffer)
                                   (const file)
@@ -1284,11 +1294,18 @@ overrides the default specified in `completion-category-defaults'."
          (result-and-style
           (seq-some
            (lambda (style)
-             (let ((probe (funcall
-                           (or (nth n (assq style completion-styles-alist))
-                               (error "Invalid completion style %s" style))
-                           string table pred point)))
-               (and probe (cons probe style))))
+             (let (symbols values)
+               (when (consp style)
+                 (dolist (binding (cadr style))
+                   (push (car binding) symbols)
+                   (push (cadr binding) values))
+                 (setq style (car style)))
+               (cl-progv symbols values
+                 (let ((probe (funcall
+                               (or (nth n (assq style completion-styles-alist))
+                                   (error "Invalid completion style %s" style))
+                               string table pred point)))
+                   (and probe (cons probe style))))))
            (completion--styles md)))
          (adjust-fn (get (cdr result-and-style) 'completion--adjust-metadata)))
     (when (and adjust-fn metadata)
@@ -3343,7 +3360,7 @@ same as `substitute-in-file-name'."
     (file-error nil)))               ;PCM often calls with invalid directories.
 
 (defun completion--sifn-requote (upos qstr)
-  ;; We're looking for `qpos' such that:
+  ;; We're looking for (the largest) `qpos' such that:
   ;; (equal (substring (substitute-in-file-name qstr) 0 upos)
   ;;        (substitute-in-file-name (substring qstr 0 qpos)))
   ;; Big problem here: we have to reverse engineer substitute-in-file-name to
@@ -3373,11 +3390,13 @@ same as `substitute-in-file-name'."
       ;; Main assumption: nothing after qpos should affect the text before upos,
       ;; so we can work our way backward from the end of qstr, one character
       ;; at a time.
-      ;; Second assumptions: If qpos is far from the end this can be a bit slow,
+      ;; Second assumption: If qpos is far from the end this can be a bit slow,
       ;; so we speed it up by doing a first loop that skips a word at a time.
       ;; This word-sized loop is careful not to cut in the middle of env-vars.
       (while (let ((boundary (string-match "\\(\\$+{?\\)?\\w+\\W*\\'" qstr)))
                (and boundary
+                    ;; Try and make sure we keep the largest `qpos' (bug#72176).
+                    (not (string-match-p "/[/~]" qstr boundary))
                     (progn
                       (setq qprefix (substring qstr 0 boundary))
                       (string-prefix-p uprefix
@@ -3866,6 +3885,21 @@ the commands start with a \"-\" or a SPC."
 	     (setq trivial nil)))
 	 trivial)))
 
+(defcustom completion-pcm-leading-wildcard nil
+  "If non-nil, partial-completion completes as if there's a leading wildcard.
+
+If nil (the default), partial-completion requires a matching completion
+alternative to have the same beginning as the first \"word\" in the
+minibuffer text, where \"word\" is determined by
+`completion-pcm-word-delimiters'.
+
+If non-nil, partial-completion allows any string of characters to occur
+at the beginning of a completion alternative, as if a wildcard such as
+\"*\" was present at the beginning of the minibuffer text.  This makes
+partial-completion behave more like the substring completion style."
+  :version "31.1"
+  :type 'boolean)
+
 (defun completion-pcm--string->pattern (string &optional point)
   "Split STRING into a pattern.
 A pattern is a list where each element is either a string
@@ -3916,7 +3950,11 @@ or a symbol, see `completion-pcm--merge-completions'."
       (when (> (length string) p0)
         (if pending (push pending pattern))
         (push (substring string p0) pattern))
-      (nreverse pattern))))
+      (setq pattern (nreverse pattern))
+      (when completion-pcm-leading-wildcard
+        (when (stringp (car pattern))
+          (push 'prefix pattern)))
+      pattern)))
 
 (defun completion-pcm--optimize-pattern (p)
   ;; Remove empty strings in a separate phase since otherwise a ""
@@ -3946,7 +3984,7 @@ or a symbol, see `completion-pcm--merge-completions'."
                      (t
                       (let ((re (if (eq x 'any-delim)
                                     (concat completion-pcm--delim-wild-regex "*?")
-                                  ".*?")))
+                                  "[^z-a]*?")))
                         (if (if (consp group) (memq x group) group)
                             (concat "\\(" re "\\)")
                           re)))))
@@ -4382,18 +4420,21 @@ the same set of elements."
                      (unique (or (and (eq prefix t) (setq prefix fixed))
                                  (and (stringp prefix)
                                       (eq t (try-completion prefix comps))))))
-                ;; if the common prefix is unique, it also is a common
-                ;; suffix, so we should add it for `prefix' elements
-                (unless (or (and (eq elem 'prefix) (not unique))
-                            (equal prefix ""))
-                  (push prefix res))
                 ;; If there's only one completion, `elem' is not useful
                 ;; any more: it can only match the empty string.
                 ;; FIXME: in some cases, it may be necessary to turn an
                 ;; `any' into a `star' because the surrounding context has
                 ;; changed such that string->pattern wouldn't add an `any'
                 ;; here any more.
-                (unless unique
+                (if unique
+                    ;; If the common prefix is unique, it also is a common
+                    ;; suffix, so we should add it for `prefix' elements.
+                    (push prefix res)
+                  ;; `prefix' only wants to include the fixed part before the
+                  ;; wildcard, not the result of growing that fixed part.
+                  (when (eq elem 'prefix)
+                    (setq prefix fixed))
+                  (push prefix res)
                   (push elem res)
                   ;; Extract common suffix additionally to common prefix.
                   ;; Don't do it for `any' since it could lead to a merged

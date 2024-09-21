@@ -3906,7 +3906,7 @@ union read_non_regular
   } s;
   GCALIGNED_UNION_MEMBER
 };
-verify (GCALIGNED (union read_non_regular));
+static_assert (GCALIGNED (union read_non_regular));
 
 static Lisp_Object
 read_non_regular (Lisp_Object state)
@@ -5741,7 +5741,7 @@ DEFUN ("car-less-than-car", Fcar_less_than_car, Scar_less_than_car, 2, 2, 0,
   Lisp_Object ca = Fcar (a), cb = Fcar (b);
   if (FIXNUMP (ca) && FIXNUMP (cb))
     return XFIXNUM (ca) < XFIXNUM (cb) ? Qt : Qnil;
-  return arithcompare (ca, cb, ARITH_LESS);
+  return arithcompare (ca, cb) & Cmp_LT ? Qt : Qnil;
 }
 
 /* Build the complete list of annotations appropriate for writing out
@@ -6316,7 +6316,7 @@ A non-nil CURRENT-ONLY argument means save only current buffer.  */)
 	      continue;
 
 	    enum { growth_factor = 4 };
-	    verify (BUF_BYTES_MAX <= EMACS_INT_MAX / growth_factor);
+	    static_assert (BUF_BYTES_MAX <= EMACS_INT_MAX / growth_factor);
 
 	    set_buffer_internal (b);
 	    if (NILP (Vauto_save_include_big_deletions)

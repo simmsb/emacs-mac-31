@@ -353,14 +353,14 @@ calling this function)."
 (defun eshell-duplicate-handles (handles &optional steal-p)
   "Create a duplicate of the file handles in HANDLES.
 This uses the targets of each handle in HANDLES, incrementing its
-reference count by one (unless STEAL-P is non-nil).  These
-targets are shared between the original set of handles and the
-new one, so the targets are only closed when the reference count
-drops to 0 (see `eshell-close-handles').
+reference count by one.  These targets are shared between the original
+set of handles and the new one, so the targets are only closed when the
+reference count drops to 0 (see `eshell-close-handles').
 
 This function also sets the DEFAULT field for each handle to
 t (see `eshell-create-handles').  Unlike the targets, this value
 is not shared with the original handles."
+  (declare (advertised-calling-convention (handles) "31.1"))
   (let ((dup-handles (make-vector eshell-number-of-handles nil)))
     (dotimes (idx eshell-number-of-handles)
       (when-let ((handle (aref handles idx)))
@@ -429,11 +429,10 @@ current list of targets."
       (when defaultp
         (cl-decf (cdar handle))
         (setcar handle (cons nil 1)))
-      (catch 'eshell-null-device
-        (let ((current (caar handle))
-              (where (eshell-get-target target mode)))
-          (unless (member where current)
-            (setcar (car handle) (append current (list where))))))
+      (let ((current (caar handle))
+            (where (eshell-get-target target mode)))
+        (when (and where (not (member where current)))
+          (setcar (car handle) (append current (list where)))))
       (setcar (cdr handle) nil))))
 
 (defun eshell-copy-output-handle (index index-to-copy &optional handles)
@@ -609,11 +608,13 @@ return an `eshell-generic-target' instance; otherwise, return a
 marker for a file named TARGET."
   (setq mode (or mode 'insert))
   (if-let ((redir (assoc raw-target eshell-virtual-targets)))
-      (let ((target (if (nth 2 redir)
-                        (funcall (nth 1 redir) mode)
-                      (nth 1 redir))))
-        (unless (eshell-generic-target-p target)
-          (setq target (eshell-function-target-create target)))
+      (let (target)
+        (catch 'eshell-null-device
+          (setq target (if (nth 2 redir)
+                           (funcall (nth 1 redir) mode)
+                         (nth 1 redir)))
+          (unless (eshell-generic-target-p target)
+            (setq target (eshell-function-target-create target))))
         target)
     (let ((exists (get-file-buffer raw-target))
           (buf (find-file-noselect raw-target t)))
@@ -711,7 +712,7 @@ Returns what was actually sent, or nil if nothing was sent.")
 
 (cl-defmethod eshell-output-object-to-target (object (target symbol))
   "Output OBJECT to the value of the symbol TARGET."
-  (if (not (symbol-value target))
+  (if (not (and (boundp target) (symbol-value target)))
       (set target object)
     (setq object (eshell-stringify object))
     (if (not (stringp (symbol-value target)))

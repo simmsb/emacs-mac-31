@@ -2238,7 +2238,7 @@ displayed in a given window.  This function is used by
 it contains.
 
 @defun window-text-pixel-size &optional window from to x-limit y-limit mode-lines ignore-line-at-end
-This function returns the size of the text of @var{window}'s buffer in
+This function returns the dimensions of the text of @var{window}'s buffer in
 pixels.  @var{window} must be a live window and defaults to the
 selected one.  The return value is a cons of the maximum pixel-width
 of any text line and the maximum pixel-height of all text lines.  This
@@ -2385,9 +2385,15 @@ The optional arguments @var{x-limit} and @var{y-limit} have the same
 meaning as with @code{window-text-pixel-size}.
 @end defun
 
-@defun string-pixel-width string
+@defun string-pixel-width string &optional buffer
 This is a convenience function that uses @code{window-text-pixel-size}
-to compute the width of @var{string} (in pixels).
+to compute the width of @var{string} (in pixels).  Caveat: if you call
+this function to measure the width of a string with embedded newlines,
+it will then return the width of the widest substring that does not
+include newlines.  The meaning of this result is the widest line taken
+by the string if inserted into a buffer.  If @var{buffer} is
+non-@code{nil}, use any face remappings (@pxref{Face Remapping}) from
+that buffer when computing the width of @var{string}.
 @end defun
 
 @defun line-pixel-height
@@ -4372,9 +4378,10 @@ should be equal to the value of @var{height} above.
 The width, in pixels, of the font's space character.
 
 @item average-width
-The average width of the font characters.  If this is zero, Emacs uses
-the value of @var{space-width} instead, when it calculates text layout
-on display.
+The average width of the font characters.  Emacs uses this for
+calculating text layout on display; if the value of @var{average-width}
+is zero, Emacs uses the value of @var{space-width} instead for those
+purposes.
 
 @item filename
 The file name of the font as a string.  This can be @code{nil} if the
@@ -6708,7 +6715,7 @@ Draw vertical lines.
 @end deffn
 
 @deffn Command curveto coordinate-sets
-Using the first element in @var{coordinate-sets}, draw a cubic Bézier
+Using the first element in @var{coordinate-sets}, draw a cubic B@'ezier
 curve from the current point.  If there are multiple coordinate sets,
 draw a polybezier.  Each coordinate set is a list of the form
 @code{(@var{x1} @var{y1} @var{x2} @var{y2} @var{x} @var{y})}, where
@@ -6725,7 +6732,7 @@ beginning and at the end, respectively.
 @end deffn
 
 @deffn Command smooth-curveto coordinate-sets
-Using the first element in @var{coordinate-sets}, draw a cubic Bézier
+Using the first element in @var{coordinate-sets}, draw a cubic B@'ezier
 curve from the current point.  If there are multiple coordinate sets,
 draw a polybezier.  Each coordinate set is a list of the form
 @code{(@var{x2} @var{y2} @var{x} @var{y})}, where @w{(@var{x},
@@ -6746,7 +6753,7 @@ coincides with the current point.
 
 @deffn Command quadratic-bezier-curveto coordinate-sets
 Using the first element in @var{coordinate-sets}, draw a quadratic
-Bézier curve from the current point.  If there are multiple coordinate
+B@'ezier curve from the current point.  If there are multiple coordinate
 sets, draw a polybezier.  Each coordinate set is a list of the form
 @code{(@var{x1} @var{y1} @var{x} @var{y})}, where @w{(@var{x},
 @var{y})} is the curve's end point and @w{(@var{x1}, @var{y1})} is the
@@ -6764,7 +6771,7 @@ control point.
 
 @deffn Command smooth-quadratic-bezier-curveto coordinate-sets
 Using the first element in @var{coordinate-sets}, draw a quadratic
-Bézier curve from the current point.  If there are multiple coordinate
+B@'ezier curve from the current point.  If there are multiple coordinate
 sets, draw a polybezier.  Each coordinate set is a list of the form
 @code{(@var{x} @var{y})}, where @w{(@var{x}, @var{y})} is the curve's
 end point.  The control point is the reflection of the control point

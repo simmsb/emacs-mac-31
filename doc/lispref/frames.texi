@@ -591,7 +591,7 @@ The @dfn{external border} is part of the decorations supplied by the
 window manager.  It is typically used for resizing the frame with the
 mouse and is therefore not shown on ``fullboth'' and maximized frames
 (@pxref{Size Parameters}).  Its width is determined by the window
-manager and cannot be changed by Emacs' functions.
+manager and cannot be changed by Emacs's functions.
 
 External borders don't exist on text terminal frames.  For graphical
 frames, their display can be suppressed by setting the
@@ -2285,7 +2285,7 @@ it on an undecorated frame.
 If non-@code{nil}, this means that this is an @dfn{override redirect}
 frame---a frame not handled by window managers under X@.  Override
 redirect frames have no window manager decorations, can be positioned
-and resized only via Emacs' positioning and resizing functions and are
+and resized only via Emacs's positioning and resizing functions and are
 usually drawn on top of all other frames.  Setting this parameter has
 no effect on MS-Windows.
 
@@ -2762,6 +2762,43 @@ With the prefix argument @var{iconify}, the frames are iconified rather
 than deleted.
 @end deffn
 
+The following function checks whether a frame can be safely deleted.  It
+is useful to avoid that a subsequent call of @code{delete-frame} throws
+an error.
+
+@defun frame-deletable-p &optional frame
+This function returns non-@code{nil} if the frame specified by
+@var{frame} can be safely deleted.  @var{frame} must be a live frame and
+defaults to the selected frame.
+
+A frame cannot be safely deleted in the following cases:
+
+@itemize @bullet
+@item
+It is the only visible or iconified frame (@pxref{Visibility of
+Frames}).
+
+@item
+It hosts the active minibuffer window and minibuffer windows do not
+follow the selected frame (@pxref{Basic Minibuffer,,, emacs}).
+
+@item
+All other visible or iconified frames are either child frames
+(@pxref{Child Frames}) or have a non-@code{nil} @code{delete-before}
+parameter.
+
+@item
+The frame or one of its descendants hosts the minibuffer window of a
+frame that is not a descendant of the frame (@pxref{Child Frames}).
+@end itemize
+
+These conditions cover most cases where @code{delete-frame} might fail
+when called from top-level.  They do not catch some special cases like,
+for example, deleting a frame during a drag-and-drop operation
+(@pxref{Drag and Drop}).  In any such case, it will be better to wrap
+the @code{delete-frame} call in a @code{condition-case} form.
+@end defun
+
 
 @node Finding All Frames
 @section Finding All Frames
@@ -2782,7 +2819,7 @@ visible, even though only the selected one is actually displayed.
 @end defun
 
 @defun frame-list-z-order &optional display
-This function returns a list of Emacs' frames, in Z (stacking) order
+This function returns a list of Emacs's frames, in Z (stacking) order
 (@pxref{Raising and Lowering}).  The optional argument @var{display}
 specifies which display to poll.  @var{display} should be either a frame
 or a display name (a string).  If omitted or @code{nil}, that stands for
@@ -3159,7 +3196,7 @@ A frame on a graphical display may be @dfn{visible}, @dfn{invisible}, or
 usual manner.  If it is iconified, its contents are not displayed, but
 there is a little icon somewhere to bring the frame back into view (some
 window managers refer to this state as @dfn{minimized} rather than
-@dfn{iconified}, but from Emacs' point of view they are the same thing).
+@dfn{iconified}, but from Emacs's point of view they are the same thing).
 If a frame is invisible, it is not displayed at all.
 
 @cindex mapped frame

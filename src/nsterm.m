@@ -577,7 +577,7 @@ ns_init_locale (void)
     }
 
   /* Check if LANG can be used for initializing the locale.  If not,
-     use a default setting.  Note that Emacs' main will undo the
+     use a default setting.  Note that Emacs's main will undo the
      setlocale below, initializing the locale from the
      environment.  */
   if (setlocale (LC_ALL, lang) == NULL)
@@ -1407,7 +1407,7 @@ ns_raise_frame (struct frame *f, BOOL make_key)
   block_input ();
   if (FRAME_VISIBLE_P (f))
     {
-      if (make_key)
+      if (make_key && !f->no_accept_focus)
         [[view window] makeKeyAndOrderFront: NSApp];
       else
         [[view window] orderFront: NSApp];
@@ -5067,7 +5067,7 @@ ns_set_vertical_scroll_bar (struct window *window,
   window_box (window, ANY_AREA, 0, &window_y, 0, &window_height);
   top = window_y;
   height = window_height;
-  width = NS_SCROLL_BAR_WIDTH (f);
+  width = WINDOW_SCROLL_BAR_AREA_WIDTH (window);
   left = WINDOW_SCROLL_BAR_AREA_X (window);
 
   r = NSMakeRect (left, top, width, height);
@@ -5161,7 +5161,7 @@ ns_set_horizontal_scroll_bar (struct window *window,
   window_box (window, ANY_AREA, &window_x, 0, &window_width, 0);
   left = window_x;
   width = window_width;
-  height = NS_SCROLL_BAR_HEIGHT (f);
+  height = WINDOW_SCROLL_BAR_AREA_HEIGHT (window);
   top = WINDOW_SCROLL_BAR_AREA_Y (window);
 
   r = NSMakeRect (left, top, width, height);
@@ -5199,7 +5199,7 @@ ns_set_horizontal_scroll_bar (struct window *window,
      it fills with junk.  */
   if (!NILP (window->vertical_scroll_bar))
     ns_clear_frame_area (f, WINDOW_SCROLL_BAR_AREA_X (window), top,
-                         NS_SCROLL_BAR_HEIGHT (f), height);
+                         WINDOW_SCROLL_BAR_AREA_WIDTH (window), height);
 
   if (update_p)
     [bar setPosition: position portion: portion whole: whole];
@@ -7032,9 +7032,48 @@ ns_create_font_panel_buttons (id target, SEL select, SEL cancel_action)
   [nsEvArray removeObject: theEvent];
 }
 
+/***********************************************************************
+			   NSTextInputClient
+ ***********************************************************************/
+
+#ifdef NS_IMPL_COCOA
+
+- (void) insertText: (id) string
+   replacementRange: (NSRange) replacementRange
+{
+  if ([string isKindOfClass:[NSAttributedString class]])
+    string = [string string];
+  [self unmarkText];
+  [self insertText:string];
+}
+
+- (void) setMarkedText: (id) string
+	 selectedRange: (NSRange) selectedRange
+      replacementRange: (NSRange) replacementRange
+{
+  [self setMarkedText: string selectedRange: selectedRange];
+}
+
+- (nullable NSAttributedString *)
+  attributedSubstringForProposedRange: (NSRange) range
+			  actualRange: (nullable NSRangePointer) actualRange
+{
+  return nil;
+}
+
+- (NSRect) firstRectForCharacterRange: (NSRange) range
+			  actualRange: (nullable NSRangePointer) actualRange
+{
+  return [self firstRectForCharacterRange: range];
+}
+
+#endif /* NS_IMPL_COCOA */
+
+/***********************************************************************
+			      NSTextInput
+ ***********************************************************************/
 
 /* <NSTextInput> implementation (called through [super interpretKeyEvents:]).  */
-
 
 /* <NSTextInput>: called when done composing;
    NOTE: also called when we delete over working text, followed
@@ -7929,6 +7968,7 @@ ns_in_echo_area (void)
     dpyinfo->ns_focus_frame = emacsframe;
 
   ns_frame_rehighlight (emacsframe);
+  [self adjustEmacsFrameRect];
 
   event.kind = FOCUS_IN_EVENT;
   XSETFRAME (event.frame_or_window, emacsframe);
@@ -8034,6 +8074,10 @@ ns_in_echo_area (void)
 #ifdef NS_IMPL_COCOA
   old_title = 0;
   maximizing_resize = NO;
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+  /* Restore to default before macOS 14 (bug#72440).  */
+  [self setClipsToBounds: YES];
+#endif
 #endif
 
 #if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
@@ -8318,6 +8362,15 @@ ns_in_echo_area (void)
   [self windowDidEnterFullScreen];
 }
 
+- (void)adjustEmacsFrameRect
+{
+  struct frame *f = emacsframe;
+  NSWindow *frame_window = [FRAME_NS_VIEW (f) window];
+  NSRect r = [frame_window frame];
+  f->left_pos = NSMinX (r) - NS_PARENT_WINDOW_LEFT_POS (f);
+  f->top_pos = NS_PARENT_WINDOW_TOP_POS (f) - NSMaxY (r);
+}
+
 - (void)windowDidEnterFullScreen /* provided for direct calls */
 {
   NSTRACE ("[EmacsView windowDidEnterFullScreen]");
@@ -8347,6 +8400,10 @@ ns_in_echo_area (void)
         }
 #endif
     }
+
+  /* Do what windowDidMove does which isn't called when entering/exiting
+     fullscreen mode.  */
+  [self adjustEmacsFrameRect];
 }
 
 - (void)windowWillExitFullScreen:(NSNotification *)notification
@@ -8389,6 +8446,10 @@ ns_in_echo_area (void)
 
   if (next_maximized != -1)
     [[self window] performZoom:self];
+
+  /* Do what windowDidMove does which isn't called when entering/exiting
+     fullscreen mode.  */
+  [self adjustEmacsFrameRect];
 }
 
 - (BOOL)fsIsNative

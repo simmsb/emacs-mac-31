@@ -239,8 +239,8 @@ would give mode line times like `94/12/30 21:07:48 (UTC)'."
 	 (timer display-time-timer)
 	 ;; Compute the time when this timer will run again, next.
 	 (next-time (timer-relative-time
-		     (list (aref timer 1) (aref timer 2) (aref timer 3))
-		     (* 5 (aref timer 4)) 0)))
+		     (timer--time timer)
+		     (* 5 (timer--repeat-delay timer)) 0)))
     ;; If the activation time is not in the future,
     ;; skip executions until we reach a time in the future.
     ;; This avoids a long pause if Emacs has been suspended for hours.
@@ -452,7 +452,7 @@ runs the normal hook `display-time-hook' after each update."
     ("America/New_York" "New York")
     ("Europe/London" "London")
     ("Europe/Paris" "Paris")
-    ("Asia/Calcutta" "Bangalore")
+    ("Asia/Kolkata" "Bangalore")
     ("Asia/Tokyo" "Tokyo"))
   "Alist of zoneinfo-style time zones and places for `world-clock'.
 Each element has the form (TIMEZONE LABEL).

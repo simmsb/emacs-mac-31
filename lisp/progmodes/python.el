@@ -3030,11 +3030,11 @@ machine then modifies `tramp-remote-process-environment' and
                  (tramp-dissect-file-name default-directory 'noexpand)))))
     (if vec
         (python-shell--tramp-with-environment vec extraenv bodyfun)
-      (let ((process-environment
-             (append extraenv process-environment))
-            (exec-path
-             ;; FIXME: This is still Python-specific.
-             (python-shell-calculate-exec-path)))
+      (cl-letf (((default-value 'process-environment)
+		 (append extraenv process-environment))
+		((default-value 'exec-path)
+		 ;; FIXME: This is still Python-specific.
+		 (python-shell-calculate-exec-path)))
         (funcall bodyfun)))))
 
 (defun python-shell--tramp-with-environment (vec extraenv bodyfun)
@@ -4396,12 +4396,12 @@ When a match is found, native completion is disabled."
 (defcustom python-shell-completion-native-output-timeout 5.0
   "Time in seconds to wait for completion output before giving up."
   :version "25.1"
-  :type 'float)
+  :type 'number)
 
 (defcustom python-shell-completion-native-try-output-timeout 1.0
   "Time in seconds to wait for *trying* native completion output."
   :version "25.1"
-  :type 'float)
+  :type 'number)
 
 (defvar python-shell-readline-completer-delims nil
   "Word delimiters used by the readline completer.
@@ -4549,6 +4549,9 @@ def __PYTHON_EL_native_completion_setup():
             readline.parse_and_bind('tab: complete')
             # Require just one tab to send output.
             readline.parse_and_bind('set show-all-if-ambiguous on')
+            # Avoid ANSI escape characters in the output
+            readline.parse_and_bind('set colored-completion-prefix off')
+            readline.parse_and_bind('set colored-stats off')
             # Avoid replacing common prefix with ellipsis.
             readline.parse_and_bind('set completion-prefix-display-length 0')
 
@@ -5390,8 +5393,8 @@ be added to `python-mode-skeleton-abbrev-table'."
               (format "Insert %s statement." name))
          ,@skel))))
 
-(define-abbrev-table 'python-mode-abbrev-table ()
-  "Abbrev table for Python mode."
+(define-abbrev-table 'python-base-mode-abbrev-table ()
+  "Abbrev table for Python modes."
   :parents (list python-mode-skeleton-abbrev-table))
 
 (defmacro python-define-auxiliary-skeleton (name &optional doc &rest skel)
