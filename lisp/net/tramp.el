@@ -700,12 +700,15 @@ The `sudo' program appears to insert a `^@' character into the prompt."
 (defcustom tramp-otp-password-prompt-regexp
   (rx-to-string
    `(: bol (* nonl)
-       ;; JumpCloud.
-       (group (| "Verification code"))
+       (group (|
+	 ;; JumpCloud.
+	 "Verification code"
+	 ;; TACC HPC.  <https://docs.tacc.utexas.edu/basics/mfa/>
+	 "TACC Token Code"))
        (* nonl) (any . ,tramp-compat-password-colon-equivalents) (* blank)))
   "Regexp matching one-time password prompts.
 The regexp should match at end of buffer."
-  :version "29.2"
+  :version "30.2"
   :type 'regexp
   :link '(tramp-info-link :tag "Tramp manual" tramp-otp-password-prompt-regexp))
 
@@ -850,11 +853,9 @@ filename part, though.")
   "Buffer name for a temporary buffer.
 It shall be used in combination with `generate-new-buffer-name'.")
 
-(defvar tramp-temp-buffer-file-name nil
+(defvar-local tramp-temp-buffer-file-name nil
   "File name of a persistent local temporary file.
 Useful for \"rsync\" like methods.")
-
-(make-variable-buffer-local 'tramp-temp-buffer-file-name)
 (put 'tramp-temp-buffer-file-name 'permanent-local t)
 
 (defcustom tramp-syntax 'default
@@ -2477,8 +2478,11 @@ Fall back to normal file name handler if no Tramp file name handler exists."
 			  ;; We flush connection properties
 			  ;; "process-name" and "process-buffer",
 			  ;; because the operations shall be applied
-			  ;; in the main connection process.
-                          ;; If `non-essential' is non-nil, Tramp shall
+			  ;; in the main connection process.  In order
+			  ;; to avoid superfluous debug buffers during
+			  ;; host name completion, we adapt
+			  ;; `tramp-verbose'.
+			  ;; If `non-essential' is non-nil, Tramp shall
 		          ;; not open a new connection.
 		          ;; If Tramp detects that it shouldn't continue
 		          ;; to work, it throws the `suppress' event.
@@ -2488,8 +2492,11 @@ Fall back to normal file name handler if no Tramp file name handler exists."
 		          ;; In both cases, we try the default handler then.
 			  (with-tramp-saved-connection-properties
 			      v '("process-name" "process-buffer")
-			    (tramp-flush-connection-property v "process-name")
-			    (tramp-flush-connection-property v "process-buffer")
+			    (let ((tramp-verbose
+				   (if minibuffer-completing-file-name
+				       0 tramp-verbose)))
+			      (tramp-flush-connection-property v "process-name")
+			      (tramp-flush-connection-property v "process-buffer"))
 		            (setq result
 				  (catch 'non-essential
 			            (catch 'suppress
@@ -6042,7 +6049,7 @@ nil."
     (with-tramp-timeout (timeout)
       (while (not found)
 	;; This is needed to yield the CPU, otherwise we'll see 100% CPU load.
-	(sit-for 0)
+	(sit-for 0 'nodisp)
 	(tramp-accept-process-output proc)
 	(unless (process-live-p proc)
 	  (tramp-error-with-buffer

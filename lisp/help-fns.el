@@ -112,6 +112,7 @@ current help buffer.")
   (pcase-dolist (`(,prefix . ,files) prefixes)
     (setq help-definition-prefixes
           (radix-tree-insert help-definition-prefixes prefix nil))
+    (remhash prefix definition-prefixes)
     (dolist (file files)
       ;; FIXME: Should we scan help-definition-prefixes to remove
       ;; other prefixes of the same file?
@@ -206,9 +207,12 @@ type specifier when available."
         ,@(when completions-detailed
             '((affixation-function . help--symbol-completion-table-affixation)))
         (category . symbol-help))
-    (when help-enable-completion-autoload
+    (when (and help-enable-completion-autoload
+               (memq action '(nil t lambda)))
       (let ((prefixes (radix-tree-prefixes (help-definition-prefixes) string)))
-        (help--load-prefixes prefixes)))
+        ;; Don't load FOO.el during `test-completion' of `FOO-'.
+        (unless (and (eq action 'lambda) (assoc string prefixes))
+          (help--load-prefixes prefixes))))
     (let ((prefix-completions
            (and help-enable-completion-autoload
                 (mapcar #'intern (all-completions string definition-prefixes)))))
@@ -262,6 +266,23 @@ interactive command."
                   fn))
     (list fn)))
 
+(declare-function project-combine-directories "project" (&rest lists))
+
+(cl-defmethod xref-backend-references ((_backend (eql 'elisp)) identifier
+                                       &context (major-mode help-mode))
+  (mapcan
+   (lambda (dir)
+     (message "Searching %s..." dir)
+     (redisplay)
+     (prog1
+         (xref-references-in-directory identifier dir)
+       (message "Searching %s... done" dir)))
+   (project-combine-directories (elisp-load-path-roots))))
+
+(defun help-fns--setup-xref-backend ()
+  (add-hook 'xref-backend-functions #'elisp--xref-backend nil t)
+  (setq-local semantic-symref-filepattern-alist '((help-mode "*.el"))))
+
 ;;;###autoload
 (defun describe-function (function)
   "Display the full documentation of FUNCTION (a symbol).
@@ -295,6 +316,8 @@ handling of autoloaded functions."
         (princ " is ")
         (describe-function-1 function)
         (with-current-buffer standard-output
+          (help-fns--setup-xref-backend)
+
           ;; Return the text we displayed.
           (buffer-string))))))
 
@@ -1022,17 +1045,41 @@ TYPE indicates the namespace and is `fun' or `var'."
         (fill-region-as-paragraph (point-min) (point-max))
         (goto-char (point-max))))))
 
+(require 'radix-tree)
+
+(defconst help-fns--radix-trees
+  (make-hash-table :weakness 'key :test 'equal)
+  "Cache of radix-tree representation of `load-path'.")
+
+(defun help-fns--filename (file)
+  (let ((f (abbreviate-file-name (expand-file-name file))))
+    (if (file-name-case-insensitive-p f) (downcase f) f)))
+
+(defun help-fns--radix-tree (dirs)
+  (with-memoization (gethash dirs help-fns--radix-trees)
+    (let ((rt radix-tree-empty))
+      (dolist (d dirs)
+        (let ((d (help-fns--filename (file-name-as-directory d))))
+          (setq rt (radix-tree-insert rt d t))))
+      rt)))
+
 (defun help-fns-short-filename (filename)
-  (let* ((abbrev (abbreviate-file-name filename))
-         (short abbrev))
-    (dolist (dir load-path)
-      (let ((rel (file-relative-name filename dir)))
-        (if (< (length rel) (length short))
-            (setq short rel)))
-      (let ((rel (file-relative-name abbrev dir)))
-        (if (< (length rel) (length short))
-            (setq short rel))))
-    short))
+  (let* ((short (help-fns--filename filename))
+         (prefixes (radix-tree-prefixes (help-fns--radix-tree load-path)
+                                        (file-name-directory short))))
+    (if (not prefixes)
+        ;; The file is not inside the `load-path'.
+        ;; FIXME: Here's the old code (too slow, bug#73766),
+        ;; which used to try and shorten it with "../" as well.
+        ;; (dolist (dir load-path)
+        ;;   (let ((rel (file-relative-name filename dir)))
+        ;;     (if (< (length rel) (length short))
+        ;;         (setq short rel)))
+        ;;   (let ((rel (file-relative-name abbrev dir)))
+        ;;     (if (< (length rel) (length short))
+        ;;         (setq short rel))))
+        short
+      (file-relative-name short (caar prefixes)))))
 
 (defun help-fns--analyze-function (function)
   ;; FIXME: Document/explain the differences between FUNCTION,
@@ -1510,6 +1557,7 @@ it is displayed along with the global value."
                     (delete-char 1)))))
 
 	    (with-current-buffer standard-output
+              (help-fns--setup-xref-backend)
 	      ;; Return the text we displayed.
 	      (buffer-string))))))))
 

@@ -788,9 +788,6 @@ to ASCII.
 
 *** Provide a user friendly interface to specify fonts
 
-** Use the XIE X extension, if available, for image display
-This is obsolete, as XIE itself is now considered obsolete.
-
 ** Make monochrome images honor the face
 Display those images using the foreground and background colors of the
 applicable faces.
@@ -925,6 +922,12 @@ unit (CU) such that calls from functions in a CU targeting functions
 in the same CU don't have to go through funcall.  If one of these
 functions is redefined, a trampoline is compiled and installed to
 restore the redirection through funcall.
+
+**** Better runtime function inlining
+
+Several functions could be open-coded in generated code once exposed to
+libgccjit.  Two simple first candidates are probably 'maybe_quit' and
+'maybe_gc'.
 
 *** Features to be improved or missing
 

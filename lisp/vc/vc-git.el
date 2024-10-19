@@ -67,6 +67,7 @@
 ;; - merge-news (file)                      see `merge-file'
 ;; - mark-resolved (files)                         OK
 ;; - steal-lock (file &optional revision)          NOT NEEDED
+;; - get-change-comment (files rev)                OK
 ;; HISTORY FUNCTIONS
 ;; * print-log (files buffer &optional shortlog start-revision limit)   OK
 ;; * log-outgoing (buffer remote-location)         OK
@@ -315,11 +316,21 @@ Good example of file name that needs this: \"test[56].xx\".")
 
 (defvar vc-git--program-version nil)
 
+(connection-local-set-profile-variables
+ 'vc-git-connection-default-profile
+ '((vc-git--program-version . nil)))
+
+(connection-local-set-profiles
+ '(:application vc-git)
+ 'vc-git-connection-default-profile)
+
 (defun vc-git--program-version ()
-  (or vc-git--program-version
-      (let ((version-string
-             (vc-git--run-command-string nil "version")))
-        (setq vc-git--program-version
+  (with-connection-local-application-variables 'vc-git
+   (or vc-git--program-version
+       (let ((version-string
+              (vc-git--run-command-string nil "version")))
+         (setq-connection-local
+              vc-git--program-version
               (if (and version-string
                        ;; Some Git versions append additional strings
                        ;; to the numerical version string. E.g., Git
@@ -329,7 +340,7 @@ Good example of file name that needs this: \"test[56].xx\".")
                        (string-match "git version \\([0-9][0-9.]+\\)"
                                      version-string))
                   (string-trim-right (match-string 1 version-string) "\\.")
-                "0")))))
+                "0"))))))
 
 (defun vc-git--git-path (&optional path)
   "Resolve .git/PATH for the current working tree.
@@ -1027,12 +1038,8 @@ See `vc-git-log-edit-summary-max-len'.")
   "Toggle whether this will amend the previous commit.
 If toggling on, also insert its message into the buffer."
   (interactive)
-  (log-edit--toggle-amend
-   (lambda ()
-     (with-output-to-string
-       (vc-git-command
-        standard-output 1 nil
-        "log" "--max-count=1" "--pretty=format:%B" "HEAD")))))
+  (log-edit--toggle-amend (lambda ()
+                            (vc-git-get-change-comment nil "HEAD"))))
 
 (defvar-keymap vc-git-log-edit-mode-map
   :name "Git-Log-Edit"
@@ -1948,6 +1955,11 @@ This requires git 1.8.4 or later, for the \"-L\" option of \"git log\"."
 (defun vc-git-mark-resolved (files)
   (vc-git-command nil 0 files "add"))
 
+(defun vc-git-get-change-comment (_files rev)
+  (with-output-to-string
+    (vc-git-command standard-output 1 nil
+                    "log" "--max-count=1" "--pretty=format:%B" rev)))
+
 (defvar vc-git-extra-menu-map
   (let ((map (make-sparse-keymap)))
     (define-key map [git-grep]
@@ -2211,7 +2223,7 @@ The difference to `vc-do-command' is that this function always invokes
        (let ((file (or (car-safe file-or-list)
                        file-or-list)))
          (and file
-              (eq ?/ (aref file (1- (length file))))
+              (directory-name-p file)
               (equal file (vc-git-root file))))))
 
 (defun vc-git--empty-db-p ()
