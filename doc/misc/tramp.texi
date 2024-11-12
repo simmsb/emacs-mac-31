@@ -3914,6 +3914,30 @@ shall be taken, add a proper rule to the user option
 @end lisp
 
 
+@subsection Using different proxies for the same destination
+
+@strong{Note}: This feature is experimental, don't use it in
+production systems!
+
+Sometimes, it is needed to specify different proxies for the same
+destination host name.  This can happen for the same destination when
+the local host is located in different networks over the time.  This
+can also happen when the remote destination is specified by the remote
+same file name, although different hosts are meant depending on the
+used proxy.  A typical example are docker containers, which run on
+different hosts under the same docker name.
+
+When the user option @code{tramp-show-ad-hoc-proxies} is
+non-@code{nil}, such ad-hoc multi-hop file names can be used in
+parallel.  In the following, on both remote hosts @samp{host1} and
+@samp{host2} there is a docker container @samp{name}, respectively:
+
+@example
+@trampfn{ssh@value{postfixhop}user1@@host1|docker,name,}
+@trampfn{ssh@value{postfixhop}user2@@host2|docker,name,}
+@end example
+
+
 @node Home directories
 @section Expanding @file{~} to home directory
 
@@ -4607,6 +4631,18 @@ which must be set to a non-@code{nil} value.  Example:
 @end group
 @end lisp
 
+This enables direct async processes for the host @samp{remotehost}.
+If you want to enable direct async processes for all remote hosts
+connected via the same method (e.g., @option{ssh}), use instead
+
+@lisp
+@group
+(connection-local-set-profiles
+ '(:application tramp :protocol "ssh")
+ 'remote-direct-async-process)
+@end group
+@end lisp
+
 Using direct asynchronous processes in @value{tramp} is not possible,
 if the remote host is connected via multiple hops
 (@pxref{Multi-hops}).  In this case, @value{tramp} falls back to its
@@ -5172,6 +5208,17 @@ at this stage.  Also note that a verbosity level of 6 or greater, the
 contents of files and directories will be included in the debug
 buffer.  Passwords typed in @value{tramp} will never be included
 there.
+
+If you find, that using @value{tramp} with @command{emacs -Q} doesn't
+cause any problem, you might check your init file for the suspicious
+configuration by bisecting it.  That is, comment out about half of the
+init file, and check whether the problem still arises when calling
+@command{emacs}.  If yes, comment out half of the still active code.
+Otherwise, comment out the active code, and uncomment the just
+commented code.
+
+Call @command{emacs}, again.  Reiterate, until you find the suspicious
+configuaration.
 
 
 @node Frequently Asked Questions
