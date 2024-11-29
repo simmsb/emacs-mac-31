@@ -35,12 +35,6 @@
 ;; To use these modes by default, assuming you have the respective
 ;; tree-sitter grammars available, do one of the following:
 ;;
-;; - If you have both C and C++ grammars installed, add
-;;
-;;    (require 'c-ts-mode)
-;;
-;;   to your init file.
-;;
 ;; - Add one or mode of the following to your init file:
 ;;
 ;;    (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
@@ -58,6 +52,12 @@
 ;;                    . c++-ts-mode))
 ;;
 ;;   will turn on the c++-ts-mode for C++ source files.
+;;
+;; - If you have both C and C++ grammars installed, add
+;;
+;;     (load "c-ts-mode")
+;;
+;;   to your init file.
 ;;
 ;; You can also turn on these modes manually in a buffer.  Doing so
 ;; will set up Emacs to use the C/C++ modes defined here for other
@@ -973,9 +973,14 @@ Return nil if NODE is not a defun node or doesn't have a name."
 
 (defun c-ts-mode--outline-predicate (node)
   "Match outlines on lines with function names."
-  (or (and (equal (treesit-node-type node) "function_declarator")
-           (equal (treesit-node-type (treesit-node-parent node))
-                  "function_definition"))
+  (or (when-let* ((decl (treesit-node-child-by-field-name
+                         (treesit-node-parent node) "declarator"))
+                  (node-pos (treesit-node-start node))
+                  (decl-pos (treesit-node-start decl))
+                  (eol (save-excursion (goto-char node-pos) (line-end-position))))
+        (and (equal (treesit-node-type decl) "function_declarator")
+             (<= node-pos decl-pos)
+             (< decl-pos eol)))
       ;; DEFUNs in Emacs sources.
       (and c-ts-mode-emacs-sources-support
            (c-ts-mode--emacs-defun-p node))))
@@ -1539,19 +1544,20 @@ the code is C or C++, and based on that chooses whether to enable
            'c-ts-mode)))
     (funcall (major-mode-remap mode))))
 
-;; The entries for C++ must come first to prevent *.c files be taken
-;; as C++ on case-insensitive filesystems, since *.C files are C++,
-;; not C.
-(if (treesit-ready-p 'cpp)
-    (add-to-list 'major-mode-remap-defaults
-                 '(c++-mode . c++-ts-mode)))
+(when (treesit-ready-p 'cpp)
+  (setq major-mode-remap-defaults
+        (assq-delete-all 'c++-mode major-mode-remap-defaults))
+  (add-to-list 'major-mode-remap-defaults '(c++-mode . c++-ts-mode)))
 
 (when (treesit-ready-p 'c)
-  (add-to-list 'major-mode-remap-defaults '(c++-mode . c++-ts-mode))
+  (setq major-mode-remap-defaults
+        (assq-delete-all 'c-mode major-mode-remap-defaults))
   (add-to-list 'major-mode-remap-defaults '(c-mode . c-ts-mode)))
 
 (when (and (treesit-ready-p 'cpp)
            (treesit-ready-p 'c))
+  (setq major-mode-remap-defaults
+        (assq-delete-all 'c-or-c++-mode major-mode-remap-defaults))
   (add-to-list 'major-mode-remap-defaults '(c-or-c++-mode . c-or-c++-ts-mode)))
 
 (when (and c-ts-mode-enable-doxygen (not (treesit-ready-p 'doxygen t)))

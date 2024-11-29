@@ -2683,7 +2683,8 @@ binding."
   (declare (indent 2)
            (debug ([&or (symbolp form)  ; must be first, Bug#48489
                         (&rest [&or symbolp (symbolp form) (form)])]
-                   body)))
+                   body))
+           (obsolete if-let* "31.1"))
   (when (and (<= (length spec) 2)
              (not (listp (car spec))))
     ;; Adjust the single binding case
@@ -2696,12 +2697,16 @@ Evaluate each binding in turn, stopping if a binding value is nil.
 If all are non-nil, return the value of the last form in BODY.
 
 The variable list SPEC is the same as in `if-let'."
-  (declare (indent 1) (debug if-let))
-  (list 'if-let spec (macroexp-progn body)))
-
-(make-obsolete 'if-let 'if-let* "31.1")
-(make-obsolete 'when-let "use `when-let*' or `and-let*' instead."
-               "31.1")
+  (declare (indent 1) (debug if-let)
+           (obsolete "use `when-let*' or `and-let*' instead." "31.1"))
+  ;; Previously we expanded to `if-let', and then required a
+  ;; `with-suppressed-warnings' to avoid doubling up the obsoletion
+  ;; warnings.  But that triggers a bytecompiler bug; see bug#74530.
+  ;; So for now we reimplement `if-let' here.
+  (when (and (<= (length spec) 2)
+             (not (listp (car spec))))
+    (setq spec (list spec)))
+  (list 'if-let* spec (macroexp-progn body)))
 
 (defmacro while-let (spec &rest body)
   "Bind variables according to SPEC and conditionally evaluate BODY.
@@ -3424,9 +3429,10 @@ with Emacs.  Do not call it directly in your own packages."
 (defun read-number (prompt &optional default hist)
   "Read a numeric value in the minibuffer, prompting with PROMPT.
 DEFAULT specifies a default value to return if the user just types RET.
-The value of DEFAULT is inserted into PROMPT.
-HIST specifies a history list variable.  See `read-from-minibuffer'
-for details of the HIST argument.
+For historical reasons, the value of DEFAULT is always inserted into
+PROMPT, so it's recommended to use `format' instead of `format-prompt'
+to generate PROMPT.  HIST specifies a history list variable.  See
+`read-from-minibuffer' for details of the HIST argument.
 
 This function is used by the `interactive' code letter \"n\"."
   (let ((n nil)
@@ -7451,9 +7457,10 @@ CONDITION is either:
   * `major-mode': the buffer matches if the buffer's major mode
     is eq to the cons-cell's cdr.  Prefer using `derived-mode'
     instead when both can work.
-  * `category': the buffer matches a category as a symbol if
-    the caller of `display-buffer' provides `(category . symbol)'
-    in its action argument.
+  * `category': when this function is called from `display-buffer',
+    the buffer matches if the caller of `display-buffer' provides
+    `(category . SYMBOL)' in its ACTION argument, and SYMBOL is `eq'
+    to the cons-cell's cdr.
   * `not': the cadr is interpreted as a negation of a condition.
   * `and': the cdr is a list of recursive conditions, that all have
     to be met.
