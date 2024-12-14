@@ -34,9 +34,38 @@
 ;; put somewhere Emacs can find it.  See the docstring of
 ;; `treesit-extra-load-path'.
 
-;; This mode doesn't associate itself with .rb files automatically.
-;; You can do that either by prepending to the value of
-;; `auto-mode-alist', or using `major-mode-remap-alist'.
+;; This mode doesn't associate itself with .rb files automatically.  To
+;; use this mode by default, assuming you have the tree-sitter grammar
+;; available, do one of the following:
+;;
+;; - Add the following to your init file:
+;;
+;;    (add-to-list 'major-mode-remap-alist '(ruby-mode . ruby-ts-mode))
+;;
+;; - Customize 'auto-mode-alist' to turn ruby-ts-mode automatically.
+;;   For example:
+;;
+;;    (add-to-list 'auto-mode-alist
+;;                 (cons (concat "\\(?:\\.\\(?:"
+;;                               "rbw?\\|ru\\|rake\\|thor\\|axlsx"
+;;                               "\\|jbuilder\\|rabl\\|gemspec\\|podspec"
+;;                               "\\)"
+;;                               "\\|/"
+;;                               "\\(?:Gem\\|Rake\\|Cap\\|Thor"
+;;                               "\\|Puppet\\|Berks\\|Brew\\|Fast"
+;;                               "\\|Vagrant\\|Guard\\|Pod\\)file"
+;;                               "\\)\\'")
+;;                       'ruby-ts-mode))
+;;
+;;   will turn on the ruby-ts-mode for Ruby source files.
+;;
+;; - If you have the Ruby grammar installed, add
+;;
+;;     (load "ruby-ts-mode")
+;;
+;;   to your init file.
+;;
+;; You can also turn on this mode manually in a buffer.
 
 ;; Tree Sitter brings a lot of power and versitility which can be
 ;; broken into these features.
@@ -83,23 +112,7 @@
 
 (require 'treesit)
 (require 'ruby-mode)
-
-(declare-function treesit-parser-create "treesit.c")
-(declare-function treesit-induce-sparse-tree "treesit.c")
-(declare-function treesit-node-child-by-field-name "treesit.c")
-(declare-function treesit-search-subtree "treesit.c")
-(declare-function treesit-node-parent "treesit.c")
-(declare-function treesit-node-next-sibling "treesit.c")
-(declare-function treesit-node-type "treesit.c")
-(declare-function treesit-node-child "treesit.c")
-(declare-function treesit-node-end "treesit.c")
-(declare-function treesit-node-start "treesit.c")
-(declare-function treesit-node-string "treesit.c")
-(declare-function treesit-query-compile "treesit.c")
-(declare-function treesit-query-capture "treesit.c")
-(declare-function treesit-parser-add-notifier "treesit.c")
-(declare-function treesit-parser-buffer "treesit.c")
-(declare-function treesit-parser-list "treesit.c")
+(treesit-declare-unavailable-functions)
 
 (defgroup ruby-ts nil
   "Major mode for editing Ruby code."
@@ -1198,9 +1211,6 @@ leading double colon is not added."
                                            (treesit-node-parent node))
                                           "interpolation"))))))))
 
-  ;; AFAIK, Ruby can not nest methods
-  (setq-local treesit-defun-prefer-top-level nil)
-
   ;; Imenu.
   (setq-local imenu-create-index-function #'ruby-ts--imenu)
 
@@ -1237,8 +1247,10 @@ leading double colon is not added."
 
 (derived-mode-add-parents 'ruby-ts-mode '(ruby-mode))
 
-(if (treesit-ready-p 'ruby)
-    (add-to-list 'major-mode-remap-defaults
+(when (treesit-ready-p 'ruby)
+  (setq major-mode-remap-defaults
+        (assq-delete-all 'ruby-mode major-mode-remap-defaults))
+  (add-to-list 'major-mode-remap-defaults
                  '(ruby-mode . ruby-ts-mode)))
 
 (provide 'ruby-ts-mode)

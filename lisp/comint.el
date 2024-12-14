@@ -404,7 +404,7 @@ This variable is buffer-local."
    (regexp-opt
     '("Enter" "enter" "Enter same" "enter same" "Enter the" "enter the"
       "Current"
-      "Enter Auth" "enter auth" "Old" "old" "New" "new" "'s" "login"
+      "Enter Auth" "enter auth" "Old" "old" "New" "new" "login"
       "Kerberos" "CVS" "UNIX" " SMB" "LDAP" "PEM" "SUDO"
       "[sudo]" "doas" "Repeat" "Bad" "Retype" "Verify")
     t)
@@ -418,11 +418,13 @@ This variable is buffer-local."
    ;; The ccrypt encryption dialog doesn't end with a colon, so
    ;; treat it specially.
    "\\|^Enter encryption key: (repeat) *\\'"
+   ;; Default openssh format: "user@host's password:".
+   "\\|^[^@ \t\n]+@[^@ \t\n]+'s password: *\\'"
    ;; openssh-8.6p1 format: "(user@host) Password:".
    "\\|^([^)@ \t\n]+@[^)@ \t\n]+) Password: *\\'")
   "Regexp matching prompts for passwords in the inferior process.
 This is used by `comint-watch-for-password-prompt'."
-  :version "29.1"
+  :version "31.1"
   :type 'regexp
   :group 'comint)
 
@@ -1536,16 +1538,20 @@ If nil, Isearch operates on the whole comint buffer."
   :group 'comint
   :version "23.2")
 
+(defvar comint--force-history-isearch nil
+  "Non-nil means to force searching in input history.
+If nil, respect the option `comint-history-isearch'.")
+
 (defun comint-history-isearch-backward ()
   "Search for a string backward in input history using Isearch."
   (interactive nil comint-mode)
-  (setq comint-history-isearch t)
+  (setq comint--force-history-isearch t)
   (isearch-backward nil t))
 
 (defun comint-history-isearch-backward-regexp ()
   "Search for a regular expression backward in input history using Isearch."
   (interactive nil comint-mode)
-  (setq comint-history-isearch t)
+  (setq comint--force-history-isearch t)
   (isearch-backward-regexp nil t))
 
 (defvar-local comint-history-isearch-message-overlay nil)
@@ -1561,7 +1567,8 @@ Intended to be added to `isearch-mode-hook' in `comint-mode'."
 		    (forward-line 0)
 		    (point))
 		  (comint-line-beginning-position)))
-	 (or (eq comint-history-isearch t)
+	 (or comint--force-history-isearch
+             (eq comint-history-isearch t)
 	     (and (eq comint-history-isearch 'dwim)
 		  ;; Point is at command line.
 		  (comint-after-pmark-p))))
@@ -1591,7 +1598,7 @@ Intended to be added to `isearch-mode-hook' in `comint-mode'."
   (kill-local-variable 'isearch-lazy-count)
   (remove-hook 'isearch-mode-end-hook 'comint-history-isearch-end t)
   (unless isearch-suspended
-    (custom-reevaluate-setting 'comint-history-isearch)))
+    (setq comint--force-history-isearch nil)))
 
 (defun comint-goto-input (pos)
   "Put input history item of the absolute history position POS."
@@ -2569,11 +2576,12 @@ to detect the need to (prompt and) send a password.  Ignores any
 carriage returns (\\r) in STRING.
 
 This function could be in the list `comint-output-filter-functions'."
-  (let ((string (string-limit string comint-password-prompt-max-length t))
+  (let ((string (string-limit
+                 (string-replace "\r" "" string)
+                 comint-password-prompt-max-length t))
         prompt)
     (when (let ((case-fold-search t))
-            (string-match comint-password-prompt-regexp
-                          (string-replace "\r" "" string)))
+            (string-match comint-password-prompt-regexp string))
       (setq prompt (string-trim (match-string 0 string)
                                 "[ \n\r\t\v\f\b\a]+" "\n+"))
       ;; Use `run-at-time' in order not to pause execution of the

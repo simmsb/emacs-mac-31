@@ -33,22 +33,10 @@
 
 (require 'comint)
 (require 'treesit)
+(treesit-declare-unavailable-functions)
 
 (eval-when-compile
   (require 'rx))
-
-(declare-function treesit-induce-sparse-tree "treesit.c")
-(declare-function treesit-node-child-by-field-name "treesit.c")
-(declare-function treesit-node-child-count "treesit.c")
-(declare-function treesit-node-eq "treesit.c")
-(declare-function treesit-node-first-child-for-pos "treesit.c")
-(declare-function treesit-node-parent "treesit.c")
-(declare-function treesit-node-prev-sibling "treesit.c")
-(declare-function treesit-node-start "treesit.c")
-(declare-function treesit-node-end "treesit.c")
-(declare-function treesit-node-type "treesit.c")
-(declare-function treesit-parser-create "treesit.c")
-(declare-function treesit-search-subtree "treesit.c")
 
 (defgroup lua-ts nil
   "Major mode for editing Lua files."
@@ -694,7 +682,7 @@ Calls REPORT-FN directly."
 
 (defun lua-ts-send-file (file)
   "Send contents of FILE to the inferior Lua process."
-  (interactive "f" lua-ts-mode)
+  (interactive "f")
   (with-temp-buffer
     (insert-file-contents-literally file)
     (lua-ts-send-region (point-min) (point-max))))

@@ -27301,6 +27301,35 @@ deep_copy_glyph_row (struct glyph_row *to, struct glyph_row *from)
     fill_up_frame_row_with_spaces (to, to_used);
 }
 
+/* Produce glyphs for a menu separator on a tty.
+
+   FIXME: This is only a "good enough for now" implementation of menu
+   separators as described in the Elisp info manual.  We should probably
+   ignore menu separators when computing the width of a menu.  Secondly,
+   optionally using Unicode characters via display table entries would
+   be nice.  Patches very welcome.  */
+
+static void
+display_tty_menu_separator (struct it *it, const char *label, int width)
+{
+  USE_SAFE_ALLOCA;
+  char c;
+  if (strcmp (label, "--space") == 0)
+    c = ' ';
+  else if (strcmp (label, "--double-line") == 0)
+    c = '=';
+  else
+    c = '-';
+  char *sep = SAFE_ALLOCA (width);
+  memset (sep, c, width - 1);
+  sep[width -  1] = 0;
+  display_string (sep, Qnil, Qnil, 0, 0, it, width - 1, width - 1,
+		  FRAME_COLS (it->f) - 1, -1);
+  display_string (" ", Qnil, Qnil, 0, 0, it, 1, 0,
+		  FRAME_COLS (it->f) - 1, -1);
+  SAFE_FREE ();
+}
+
 /* Display one menu item on a TTY, by overwriting the glyphs in the
    frame F's desired glyph matrix with glyphs produced from the menu
    item text.  Called from term.c to display TTY drop-down menus one
@@ -27375,6 +27404,7 @@ display_tty_menu_item (const char *item_text, int width, int face_id,
   /* Pad with a space on the left.  */
   display_string (" ", Qnil, Qnil, 0, 0, &it, 1, 0, FRAME_COLS (f) - 1, -1);
   width--;
+
   /* Display the menu item, pad with spaces to WIDTH.  */
   if (submenu)
     {
@@ -27385,9 +27415,13 @@ display_tty_menu_item (const char *item_text, int width, int face_id,
       display_string (" >", Qnil, Qnil, 0, 0, &it, width, 0,
 		      FRAME_COLS (f) - 1, -1);
     }
+  else if (menu_separator_name_p (item_text))
+    {
+      display_tty_menu_separator (&it, item_text, width);
+    }
   else
-    display_string (item_text, Qnil, Qnil, 0, 0, &it,
-		    width, 0, FRAME_COLS (f) - 1, -1);
+    display_string (item_text, Qnil, Qnil, 0, 0, &it, width, 0,
+		    FRAME_COLS (f) - 1, -1);
 
   row->used[TEXT_AREA] = max (saved_used, row->used[TEXT_AREA]);
   row->truncated_on_right_p = saved_truncated;

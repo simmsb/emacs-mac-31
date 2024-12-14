@@ -39,61 +39,69 @@
 
 ;;; Function declarations
 
-(declare-function treesit-language-available-p "treesit.c")
-(declare-function treesit-language-version "treesit.c")
+(defmacro treesit-declare-unavailable-functions ()
+  "Declare C functions and variables defined in treesit.c.
 
-(declare-function treesit-parser-p "treesit.c")
-(declare-function treesit-node-p "treesit.c")
-(declare-function treesit-compiled-query-p "treesit.c")
-(declare-function treesit-query-p "treesit.c")
-(declare-function treesit-query-language "treesit.c")
+This macro is only needed when a file needs to be able to byte-compile
+in a Emacs not built with tree-sitter library."
+  '(progn
+     (declare-function treesit-language-available-p "treesit.c")
+     (declare-function treesit-language-version "treesit.c")
 
-(declare-function treesit-node-parser "treesit.c")
+     (declare-function treesit-parser-p "treesit.c")
+     (declare-function treesit-node-p "treesit.c")
+     (declare-function treesit-compiled-query-p "treesit.c")
+     (declare-function treesit-query-p "treesit.c")
+     (declare-function treesit-query-language "treesit.c")
 
-(declare-function treesit-parser-create "treesit.c")
-(declare-function treesit-parser-delete "treesit.c")
-(declare-function treesit-parser-list "treesit.c")
-(declare-function treesit-parser-buffer "treesit.c")
-(declare-function treesit-parser-language "treesit.c")
-(declare-function treesit-parser-tag "treesit.c")
+     (declare-function treesit-node-parser "treesit.c")
 
-(declare-function treesit-parser-root-node "treesit.c")
+     (declare-function treesit-parser-create "treesit.c")
+     (declare-function treesit-parser-delete "treesit.c")
+     (declare-function treesit-parser-list "treesit.c")
+     (declare-function treesit-parser-buffer "treesit.c")
+     (declare-function treesit-parser-language "treesit.c")
+     (declare-function treesit-parser-tag "treesit.c")
 
-(declare-function treesit-parser-set-included-ranges "treesit.c")
-(declare-function treesit-parser-included-ranges "treesit.c")
-(declare-function treesit-parser-changed-ranges "treesit.c")
-(declare-function treesit-parser-add-notifier "treesit.c")
+     (declare-function treesit-parser-root-node "treesit.c")
 
-(declare-function treesit-node-type "treesit.c")
-(declare-function treesit-node-start "treesit.c")
-(declare-function treesit-node-end "treesit.c")
-(declare-function treesit-node-string "treesit.c")
-(declare-function treesit-node-parent "treesit.c")
-(declare-function treesit-node-child "treesit.c")
-(declare-function treesit-node-check "treesit.c")
-(declare-function treesit-node-field-name-for-child "treesit.c")
-(declare-function treesit-node-child-count "treesit.c")
-(declare-function treesit-node-child-by-field-name "treesit.c")
-(declare-function treesit-node-next-sibling "treesit.c")
-(declare-function treesit-node-prev-sibling "treesit.c")
-(declare-function treesit-node-first-child-for-pos "treesit.c")
-(declare-function treesit-node-descendant-for-range "treesit.c")
-(declare-function treesit-node-eq "treesit.c")
+     (declare-function treesit-parser-set-included-ranges "treesit.c")
+     (declare-function treesit-parser-included-ranges "treesit.c")
+     (declare-function treesit-parser-changed-ranges "treesit.c")
+     (declare-function treesit-parser-add-notifier "treesit.c")
 
-(declare-function treesit-pattern-expand "treesit.c")
-(declare-function treesit-query-expand "treesit.c")
-(declare-function treesit-query-compile "treesit.c")
-(declare-function treesit-query-capture "treesit.c")
+     (declare-function treesit-node-type "treesit.c")
+     (declare-function treesit-node-start "treesit.c")
+     (declare-function treesit-node-end "treesit.c")
+     (declare-function treesit-node-string "treesit.c")
+     (declare-function treesit-node-parent "treesit.c")
+     (declare-function treesit-node-child "treesit.c")
+     (declare-function treesit-node-check "treesit.c")
+     (declare-function treesit-node-field-name-for-child "treesit.c")
+     (declare-function treesit-node-child-count "treesit.c")
+     (declare-function treesit-node-child-by-field-name "treesit.c")
+     (declare-function treesit-node-next-sibling "treesit.c")
+     (declare-function treesit-node-prev-sibling "treesit.c")
+     (declare-function treesit-node-first-child-for-pos "treesit.c")
+     (declare-function treesit-node-descendant-for-range "treesit.c")
+     (declare-function treesit-node-eq "treesit.c")
 
-(declare-function treesit-search-subtree "treesit.c")
-(declare-function treesit-search-forward "treesit.c")
-(declare-function treesit-induce-sparse-tree "treesit.c")
-(declare-function treesit-subtree-stat "treesit.c")
-(declare-function treesit-node-match-p "treesit.c")
+     (declare-function treesit-pattern-expand "treesit.c")
+     (declare-function treesit-query-expand "treesit.c")
+     (declare-function treesit-query-compile "treesit.c")
+     (declare-function treesit-query-capture "treesit.c")
 
-(declare-function treesit-available-p "treesit.c")
+     (declare-function treesit-search-subtree "treesit.c")
+     (declare-function treesit-search-forward "treesit.c")
+     (declare-function treesit-induce-sparse-tree "treesit.c")
+     (declare-function treesit-subtree-stat "treesit.c")
+     (declare-function treesit-node-match-p "treesit.c")
 
-(defvar treesit-thing-settings)
+     (declare-function treesit-available-p "treesit.c")
+
+     (defvar treesit-thing-settings)))
+
+(treesit-declare-unavailable-functions)
 
 ;;; Custom options
 
@@ -898,29 +906,22 @@ t, nil, append, prepend, keep.  See more in
     (setf (nth 1 new-setting) t)
     new-setting))
 
-;; FIXME: Rewrite this in more readable fashion.
 (defun treesit--font-lock-level-setter (sym val)
   "Custom setter for `treesit-font-lock-level'.
 Set the default value of SYM to VAL, recompute fontification
 features and refontify for every buffer where tree-sitter-based
 fontification is enabled."
   (set-default sym val)
-  (and (treesit-available-p)
-       (named-let loop ((res nil)
-                        (buffers (buffer-list)))
-         (if (null buffers)
-             (mapc (lambda (b)
-                     (with-current-buffer b
-                       (setq-local treesit-font-lock-level val)
-                       (treesit-font-lock-recompute-features)
-                       (treesit-font-lock-fontify-region (point-min)
-                                                         (point-max))))
-                   res)
-           (let ((buffer (car buffers)))
-             (with-current-buffer buffer
-               (if treesit-font-lock-settings
-                   (loop (append res (list buffer)) (cdr buffers))
-                 (loop res (cdr buffers)))))))))
+  (when (treesit-available-p)
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        ;; FIXME: This doesn't re-run major mode hooks, meaning any
+        ;; customization done in major mode hooks (e.g., with
+        ;; `treesit-font-lock-recompute-features') is lost.
+        (when treesit-font-lock-settings
+          (treesit-font-lock-recompute-features)
+          (treesit-font-lock-fontify-region
+           (point-min) (point-max)))))))
 
 (defcustom treesit-font-lock-level 3
   "Decoration level to be used by tree-sitter fontifications.
@@ -936,6 +937,15 @@ assignments, constants, numbers and literals, etc.
 Level 4 adds everything else that can be fontified: delimiters,
 operators, brackets, punctuation, all functions, properties,
 variables, etc.
+
+The value of this variable can be either a number representing a level,
+or an alist of (MAJOR-MODE . LEVEL), where MAJOR-MODE is major mode
+symbols, or t (meaning the default), and LEVEL is the font-lock level
+for that mode.  For example,
+
+    ((c-ts-mode . 3) (c++-ts-mode . 4) (t . 3))
+
+Major mode is checked with `derived-mode-p'.
 
 In addition to the decoration level, individual features can be
 turned on/off by calling `treesit-font-lock-recompute-features'.
@@ -1123,6 +1133,23 @@ name, it is ignored."
 (defvar treesit--font-lock-verbose nil
   "If non-nil, print debug messages when fontifying.")
 
+(defun treesit--compute-font-lock-level (level)
+  "Compute the font-lock level for the current major mode.
+
+LEVEL should be the value of `treesit-font-lock-level'.  Return a number
+representing the font-lock level for the current major mode.  If there's
+no match, return 3."
+  (if (numberp level)
+      level
+    (catch 'found
+      (dolist (config level)
+        (let ((mode (car config))
+              (num (cdr config)))
+          (when (derived-mode-p mode)
+            (throw 'found num))))
+      (or (alist-get t level)
+          3))))
+
 (defun treesit-font-lock-recompute-features
     (&optional add-list remove-list language)
   "Enable/disable font-lock features.
@@ -1147,7 +1174,8 @@ and leave settings for other languages unchanged."
     (signal 'treesit-font-lock-error
             (list "ADD-LIST and REMOVE-LIST contain the same feature"
                   intersection)))
-  (let* ((level treesit-font-lock-level)
+  (let* ((level (treesit--compute-font-lock-level
+                 treesit-font-lock-level))
          (base-features (cl-loop
                          for idx = 0 then (1+ idx)
                          for features in treesit-font-lock-feature-list
@@ -1213,6 +1241,48 @@ docstring of `treesit-font-lock-rules' for what is a feature."
        (setf (nthcdr feature-idx treesit-font-lock-settings)
              (append rules
                      (nthcdr feature-idx treesit-font-lock-settings)))))))
+
+(defun treesit-validate-font-lock-rules (settings)
+  "Validate font-lock rules in SETTINGS before major mode starts.
+
+If the tree-sitter grammar currently installed on the system is
+incompatible with the major mode's font-lock rules, this procedure will
+detect the problematic rule, disable it temporarily, and notify the
+user."
+  (let ((faulty-features ()))
+    (dolist (setting settings)
+      (let* ((query (treesit-font-lock-setting-query setting))
+             (lang (treesit-query-language query))
+             (enabled (treesit-font-lock-setting-enable setting)))
+        (when (and enabled
+                   (condition-case nil
+                       (progn
+                         (treesit-query-compile lang query 'eager)
+                         nil)
+                     (treesit-query-error t)))
+          (push (cons (treesit-font-lock-setting-feature setting)
+                      lang)
+                faulty-features))))
+    (when faulty-features
+      (treesit-font-lock-recompute-features
+       nil (mapcar #'car faulty-features))
+      (let* ((languages
+              (string-join
+               (delete-dups (mapcar (lambda (feat)
+                                      (format "tree-sitter-%s" (cdr feat)))
+                                    faulty-features))
+               ", "))
+             (features (string-join
+                        (mapcar
+                         (lambda (feat)
+                           (format "- `%s' for %s"
+                                   (car feat) (cdr feat)))
+                         faulty-features)
+                        ",\n")))
+        (display-warning
+         'treesit-font-lock-rules-mismatch
+         (format "Emacs cannot compile every font-lock rules because a mismatch between the grammar and the rules.  This is most likely due to a mismatch between the font-lock rules defined by the major mode and the tree-sitter grammar.\n\nThis error can be fixed by either downgrading the grammar (%s) on your system, or upgrading the major mode package.  The following are the temporarily disabled features:\n\n%s."
+                 languages features))))))
 
 (defun treesit-fontify-with-override
     (start end face override &optional bound-start bound-end)
@@ -1559,13 +1629,13 @@ START and END mark the current to-be-propertized region."
 
 (defvar-local treesit-simple-indent-rules nil
   "A list of indent rule settings.
-Each indent rule setting should be (LANGUAGE . RULES),
-where LANGUAGE is a language symbol, and RULES is a list of
+Each indent rule setting should be (LANGUAGE RULE...), where LANGUAGE is
+a language symbol, and each RULE is of the form
 
-    (MATCHER ANCHOR OFFSET).
+    (MATCHER ANCHOR OFFSET)
 
-MATCHER determines whether this rule applies, ANCHOR and OFFSET
-together determines which column to indent to.
+MATCHER determines whether this rule applies, ANCHOR and
+OFFSET together determines which column to indent to.
 
 A MATCHER is a function that takes three arguments (NODE PARENT
 BOL).  BOL is the point where we are indenting: the beginning of
@@ -1582,7 +1652,20 @@ ANCHOR and adds OFFSET to it, and indents to that column.  OFFSET
 can be an integer or a variable whose value is an integer.
 
 For MATCHER and ANCHOR, Emacs provides some convenient presets.
-See `treesit-simple-indent-presets'.")
+See `treesit-simple-indent-presets'.
+
+For complex cases, a RULE can also be a single function.  This function
+should take the same argument as MATCHER or ANCHOR.  If it matches,
+return a cons (ANCHOR-POS . OFFSET), where ANCHOR-POS is a position and
+OFFSET is the indent offset; if it doesn't match, return nil.")
+
+(defun treesit--indent-prev-line-node (pos)
+  "Return the largest node on the previous line of POS."
+  (save-excursion
+    (goto-char pos)
+    (when (eq (forward-line -1) 0)
+      (back-to-indentation)
+      (treesit--indent-largest-node-at (point)))))
 
 (defvar treesit-simple-indent-presets
   (list (cons 'match
@@ -1634,6 +1717,12 @@ See `treesit-simple-indent-presets'.")
                          (lambda (node &rest _)
                            (string-match-p
                             type (or (treesit-node-type node) "")))))
+        ;; FIXME: Add to manual.
+        (cons 'prev-line-is (lambda (type)
+                              (lambda (_n _p bol &rest _)
+                                (treesit-node-match-p
+                                 (treesit--indent-prev-line-node bol)
+                                 type))))
         (cons 'field-is (lambda (name)
                           (lambda (node &rest _)
                             (string-match-p
@@ -1739,10 +1828,7 @@ See `treesit-simple-indent-presets'.")
                              (forward-line -1)
                              (skip-chars-forward " \t")
                              (point))))
-        (cons 'column-0 (lambda (_n _p bol &rest _)
-                          (save-excursion
-                            (goto-char bol)
-                            (line-beginning-position))))
+        (cons 'column-0 (lambda (&rest _) (pos-bol)))
         ;; TODO: Document.
         (cons 'and (lambda (&rest fns)
                      (lambda (node parent bol &rest _)
@@ -1943,6 +2029,32 @@ PARENT is its parent; ANCHOR is a point (not a node), and OFFSET
 is a number.  Emacs finds the column of ANCHOR and adds OFFSET to
 it as the final indentation of the current line.")
 
+(defun treesit--indent-largest-node-at (pos)
+  "Get largest node that still starts at POS."
+  (let* ((local-parsers (treesit-local-parsers-at pos nil t))
+         (smallest-node
+          (cond ((car local-parsers)
+                 (let ((local-parser (caar local-parsers))
+                       (host-parser (cdar local-parsers)))
+                   (if (eq (treesit-node-start
+                            (treesit-parser-root-node local-parser))
+                           pos)
+                       (treesit-node-at pos host-parser)
+                     (treesit-node-at pos local-parser))))
+                ((null (treesit-parser-list)) nil)
+                ((eq 1 (length (treesit-parser-list nil nil t)))
+                 (treesit-node-at pos))
+                ((treesit-language-at pos)
+                 (treesit-node-at pos (treesit-language-at pos)))
+                (t (treesit-node-at pos))))
+         (root (treesit-parser-root-node
+                (treesit-node-parser smallest-node))))
+    (treesit-parent-while
+     smallest-node
+     (lambda (node)
+       (and (eq pos (treesit-node-start node))
+            (not (treesit-node-eq node root)))))))
+
 (defun treesit--indent-1 ()
   "Indent the current line.
 Return (ANCHOR . OFFSET).  This function is used by
@@ -1952,32 +2064,9 @@ Return (ANCHOR . OFFSET).  This function is used by
                 (forward-line 0)
                 (skip-chars-forward " \t")
                 (point)))
-         (local-parsers (treesit-local-parsers-at bol nil t))
-         (smallest-node
-          (cond ((car local-parsers)
-                 (let ((local-parser (caar local-parsers))
-                       (host-parser (cdar local-parsers)))
-                   (if (eq (treesit-node-start
-                            (treesit-parser-root-node local-parser))
-                           bol)
-                       (treesit-node-at bol host-parser)
-                     (treesit-node-at bol local-parser))))
-                ((null (treesit-parser-list)) nil)
-                ((eq 1 (length (treesit-parser-list nil nil t)))
-                 (treesit-node-at bol))
-                ((treesit-language-at bol)
-                 (treesit-node-at bol (treesit-language-at bol)))
-                (t (treesit-node-at bol))))
-         (root (treesit-parser-root-node
-                (treesit-node-parser smallest-node)))
-         (node (treesit-parent-while
-                smallest-node
-                (lambda (node)
-                  (and (eq bol (treesit-node-start node))
-                       (not (treesit-node-eq node root)))))))
-    (let*
-        ((parser (if smallest-node
-                     (treesit-node-parser smallest-node)
+         (node (treesit--indent-largest-node-at bol))
+         (parser (if node
+                     (treesit-node-parser node)
                    nil))
          ;; NODE would be nil if BOL is on a whitespace.  In that case
          ;; we set PARENT to the "node at point", which would
@@ -1985,7 +2074,7 @@ Return (ANCHOR . OFFSET).  This function is used by
          (parent (cond ((and node parser)
                         (treesit-node-parent node))
                        (t (treesit-node-on bol bol)))))
-      (funcall treesit-indent-function node parent bol))))
+    (funcall treesit-indent-function node parent bol)))
 
 (defun treesit-indent ()
   "Indent according to the result of `treesit-indent-function'."
@@ -2118,31 +2207,37 @@ OFFSET."
     (let* ((language (treesit-node-language parent))
            (rules (alist-get language
                              treesit-simple-indent-rules)))
-      (cl-loop for rule in rules
-               for pred = (nth 0 rule)
-               for anchor = (nth 1 rule)
-               for offset = (nth 2 rule)
-               if (treesit--simple-indent-eval
-                   (list pred node parent bol))
-               do (when treesit--indent-verbose
+      (catch 'match
+        (dolist (rule rules)
+          (if (functionp rule)
+              (let ((result (funcall rule node parent bol)))
+                (when result
+                  (when treesit--indent-verbose
                     (message "Matched rule: %S" rule))
-               and
-               return
-               (let ((anchor-pos
-                      (treesit--simple-indent-eval
-                       (list anchor node parent bol)))
-                     (offset-val
-                      (cond ((numberp offset) offset)
-                            ((and (symbolp offset)
-                                  (boundp offset))
-                             (symbol-value offset))
-                            (t (treesit--simple-indent-eval
-                                (list offset node parent bol))))))
-                 (cons anchor-pos offset-val))
-               finally return
-               (progn (when treesit--indent-verbose
-                        (message "No matched rule"))
-                      (cons nil nil))))))
+                  (throw 'match result)))
+            (let ((pred (nth 0 rule))
+                  (anchor (nth 1 rule))
+                  (offset (nth 2 rule)))
+              ;; Found a match.
+              (when (treesit--simple-indent-eval
+                     (list pred node parent bol))
+                (when treesit--indent-verbose
+                  (message "Matched rule: %S" rule))
+                (let ((anchor-pos
+                       (treesit--simple-indent-eval
+                        (list anchor node parent bol)))
+                      (offset-val
+                       (cond ((numberp offset) offset)
+                             ((and (symbolp offset)
+                                   (boundp offset))
+                              (symbol-value offset))
+                             (t (treesit--simple-indent-eval
+                                 (list offset node parent bol))))))
+                  (throw 'match (cons anchor-pos offset-val)))))))
+        ;; Didn't find any match.
+        (when treesit--indent-verbose
+          (message "No matched rule"))
+        (cons nil nil)))))
 
 (defun treesit--read-major-mode ()
   "Read a major mode using completion.
@@ -2198,12 +2293,14 @@ RULES."
                     (_ func)))
                 ;; Optimize a rule (MATCHER ANCHOR OFFSET).
                 (optimize-rule (rule)
-                  (let ((matcher (nth 0 rule))
-                        (anchor (nth 1 rule))
-                        (offset (nth 2 rule)))
-                    (list (optimize-func matcher)
-                          (optimize-func anchor)
-                          offset))))
+                  (if (functionp rule)
+                      rule
+                    (let ((matcher (nth 0 rule))
+                          (anchor (nth 1 rule))
+                          (offset (nth 2 rule)))
+                      (list (optimize-func matcher)
+                            (optimize-func anchor)
+                            offset)))))
              (cons lang (mapcar #'optimize-rule indent-rules)))))
 
 ;;; Search
@@ -3115,7 +3212,8 @@ before calling this function."
     (add-hook 'pre-redisplay-functions #'treesit--pre-redisplay 0 t)
     (when treesit-primary-parser
       (treesit-parser-add-notifier
-       treesit-primary-parser #'treesit--font-lock-mark-ranges-to-fontify)))
+       treesit-primary-parser #'treesit--font-lock-mark-ranges-to-fontify))
+    (treesit-validate-font-lock-rules treesit-font-lock-settings))
   ;; Syntax
   (add-hook 'syntax-propertize-extend-region-functions
             #'treesit--pre-syntax-ppss 0 t)
@@ -3320,7 +3418,7 @@ to the offending pattern and highlight the pattern."
 (defvar-local treesit--explorer-source-buffer nil
   "Source buffer corresponding to the playground buffer.")
 
-(defvar-local treesit--explorer-language nil
+(defvar-local treesit--explorer-parser nil
   "The language used in the playground.")
 
 (defvar-local treesit--explorer-refresh-timer nil
@@ -3334,8 +3432,8 @@ to the offending pattern and highlight the pattern."
 
 (defvar treesit-explore-mode)
 
-(defun treesit--explorer--nodes-to-highlight (language)
-  "Return nodes for LANGUAGE covered in region.
+(defun treesit--explorer--nodes-to-highlight (parser)
+  "Return nodes for PARSER covered in region.
 This function tries to return the largest node possible.  If the
 region covers exactly one node, that node is returned (in a
 list).  If the region covers more than one node, two nodes are
@@ -3343,7 +3441,7 @@ returned: the very first one in the region and the very last one
 in the region."
   (let* ((beg (region-beginning))
          (end (region-end))
-         (node (treesit-node-on beg end language))
+         (node (treesit-node-on beg end parser))
          (node (or (treesit-parent-while
                     node
                     (lambda (n)
@@ -3367,7 +3465,7 @@ in the region."
   (when (and treesit-explore-mode
              (buffer-live-p treesit--explorer-buffer))
     (let* ((root (treesit-node-on
-                  (window-start) (window-end) treesit--explorer-language))
+                  (window-start) (window-end) treesit--explorer-parser))
            ;; Only highlight the current top-level construct.
            ;; Highlighting the whole buffer is slow and unnecessary.
            ;; But if the buffer is small (ie, used in playground
@@ -3384,7 +3482,7 @@ in the region."
            (nodes-hl
             (when (region-active-p)
               (treesit--explorer--nodes-to-highlight
-               treesit--explorer-language)))
+               treesit--explorer-parser)))
            ;; If we didn't edit the buffer nor change the top-level
            ;; node, don't redraw the whole syntax tree.
            (highlight-only (treesit-node-eq
@@ -3562,10 +3660,55 @@ leaves point at the end of the last line of NODE."
   (when (buffer-live-p treesit--explorer-buffer)
     (kill-buffer treesit--explorer-buffer)))
 
+(defun treesit--explorer-generate-parser-alist ()
+  "Return an alist of (PARSER-NAME . PARSER) for relevant parsers.
+Relevant parsers include all global parsers and local parsers that
+covers point.  PARSER-NAME are unique."
+  (let* ((local-parsers (treesit-parser-list nil nil 'embedded))
+         (local-parsers-at-point
+          (treesit-local-parsers-at (point)))
+         res)
+    (dolist (parser (treesit-parser-list nil nil t))
+      ;; Exclude local parsers that doesn't cover point.
+      (when (or (memq parser local-parsers-at-point)
+                (not (memq parser local-parsers)))
+        (push (cons (concat (format "%s" parser)
+                            (if (treesit-parser-tag parser)
+                                (format " tag=%s"
+                                        (treesit-parser-tag
+                                         parser))
+                              "")
+                            (if (memq parser
+                                      local-parsers-at-point)
+                                " (local)"
+                              "")
+                            (propertize (format " %s" (gensym))
+                                        'invisible t))
+                    parser)
+              res)))
+    (nreverse res)))
+
 (define-derived-mode treesit--explorer-tree-mode special-mode
   "TS Explorer"
   "Mode for displaying syntax trees for `treesit-explore-mode'."
   nil)
+
+(defun treesit-explorer-switch-parser (parser)
+  "Switch explorer to use PARSER."
+  (interactive
+   (list (let* ((parser-alist
+                 (treesit--explorer-generate-parser-alist))
+                (parser-name (completing-read
+                              "Parser: " (mapcar #'car parser-alist))))
+           (alist-get parser-name parser-alist
+                      nil nil #'equal))))
+  (unless treesit-explore-mode
+    (user-error "Not in `treesit-explore-mode'"))
+  (setq-local treesit--explorer-parser parser)
+  (display-buffer treesit--explorer-buffer
+                  (cons nil '((inhibit-same-window . t))))
+  (setq-local treesit--explorer-last-node nil)
+  (treesit--explorer-refresh))
 
 (define-minor-mode treesit-explore-mode
   "Enable exploring the current buffer's syntax tree.
@@ -3575,46 +3718,42 @@ the text in the active region is highlighted in the explorer
 window."
   :lighter " TSexplore"
   (if treesit-explore-mode
-      (let ((language
-             (intern (completing-read
-                      "Language: "
-                      (cl-remove-duplicates
-                       (mapcar #'treesit-parser-language
-                               (treesit-parser-list nil nil t)))))))
-        (if (not (treesit-language-available-p language))
-            (user-error "Cannot find tree-sitter grammar for %s: %s"
-                        language (cdr (treesit-language-available-p
-                                       language t)))
-          ;; Create explorer buffer.
-          (unless (buffer-live-p treesit--explorer-buffer)
-            (setq-local treesit--explorer-buffer
-                        (get-buffer-create
-                         (format "*tree-sitter explorer for %s*"
-                                 (buffer-name))))
-            (setq-local treesit--explorer-language language)
-            (with-current-buffer treesit--explorer-buffer
-              (treesit--explorer-tree-mode)))
-          (display-buffer treesit--explorer-buffer
-                          (cons nil '((inhibit-same-window . t))))
-          (setq-local treesit--explorer-last-node nil)
-          (treesit--explorer-refresh)
-          ;; Set up variables and hooks.
-          (add-hook 'post-command-hook
-                    #'treesit--explorer-post-command 0 t)
-          (add-hook 'kill-buffer-hook
-                    #'treesit--explorer-kill-explorer-buffer 0 t)
-          ;; Tell `desktop-save' to not save explorer buffers.
-          (when (boundp 'desktop-modes-not-to-save)
-            (unless (memq 'treesit--explorer-tree-mode
-                          desktop-modes-not-to-save)
-              (push 'treesit--explorer-tree-mode
-                    desktop-modes-not-to-save)))))
+      (progn
+        ;; Create explorer buffer.
+        (unless (buffer-live-p treesit--explorer-buffer)
+          (setq-local treesit--explorer-buffer
+                      (get-buffer-create
+                       (format "*tree-sitter explorer for %s*"
+                               (buffer-name))))
+          (with-current-buffer treesit--explorer-buffer
+            (treesit--explorer-tree-mode)))
+        ;; Select parser.
+        (call-interactively #'treesit-explorer-switch-parser)
+        ;; Set up variables and hooks.
+        (add-hook 'post-command-hook
+                  #'treesit--explorer-post-command 0 t)
+        (add-hook 'kill-buffer-hook
+                  #'treesit--explorer-kill-explorer-buffer 0 t)
+        ;; Tell `desktop-save' to not save explorer buffers.
+        (when (boundp 'desktop-modes-not-to-save)
+          (unless (memq 'treesit--explorer-tree-mode
+                        desktop-modes-not-to-save)
+            (push 'treesit--explorer-tree-mode
+                  desktop-modes-not-to-save))))
     ;; Turn off explore mode.
     (remove-hook 'post-command-hook
                  #'treesit--explorer-post-command t)
     (remove-hook 'post-command-hook
                  #'treesit--explorer-kill-explorer-buffer t)
     (treesit--explorer-kill-explorer-buffer)))
+
+(defun treesit-explore ()
+  "Show the explorer."
+  (interactive)
+  (if (and treesit-explore-mode
+           (buffer-live-p treesit--explorer-buffer))
+      (display-buffer treesit--explorer-buffer '(nil (inhibit-same-window . t)))
+    (treesit-explore-mode)))
 
 ;;; Install & build language grammar
 

@@ -55,26 +55,11 @@
 (require 'prog-mode)
 (require 'treesit)
 (require 'c-ts-common) ; For comment indent and filling.
+(treesit-declare-unavailable-functions)
 
 (eval-when-compile
   (require 'cl-lib)
-  (require 'ido)
   (require 'rx))
-
-(defvar ido-cur-list)
-(declare-function ido-mode "ido" (&optional arg))
-(declare-function treesit-parser-create "treesit.c")
-(declare-function treesit-induce-sparse-tree "treesit.c")
-(declare-function treesit-search-subtree "treesit.c")
-(declare-function treesit-node-parent "treesit.c")
-(declare-function treesit-node-child "treesit.c")
-(declare-function treesit-node-child-by-field-name "treesit.c")
-(declare-function treesit-node-next-sibling "treesit.c")
-(declare-function treesit-node-start "treesit.c")
-(declare-function treesit-node-end "treesit.c")
-(declare-function treesit-node-type "treesit.c")
-(declare-function treesit-query-compile "treesit.c")
-(declare-function treesit-query-capture "treesit.c")
 
 ;;; Constants
 
@@ -3288,11 +3273,7 @@ one from `js--get-all-known-symbols', using prompt PROMPT and
 initial input INITIAL-INPUT.  Return a cons of (SYMBOL-NAME
 . LOCATION), where SYMBOL-NAME is a string and LOCATION is a
 marker."
-  (unless ido-mode
-    (ido-mode 1)
-    (ido-mode -1))
-
-  (let ((choice (ido-completing-read
+  (let ((choice (completing-read
                  prompt
                  (cl-loop for key being the hash-keys of symbols-table
                           collect key)
@@ -3918,7 +3899,6 @@ See `treesit-thing-settings' for more information.")
     ;; Indent.
     (setq-local treesit-simple-indent-rules js--treesit-indent-rules)
     ;; Navigation.
-    (setq-local treesit-defun-prefer-top-level t)
     (setq-local treesit-defun-type-regexp
                 (rx (or "class_declaration"
                         "method_definition"
