@@ -8,7 +8,7 @@
 @include emacsver.texi
 
 @copying
-Copyright @copyright{} 2001--2024 Free Software Foundation, Inc.@*
+Copyright @copyright{} 2001--2025 Free Software Foundation, Inc.@*
 Copyright @copyright{} 1994--2000 Reuven M. Lerner@*
 Copyright @copyright{} 1992--1993 Steven Byrnes@*
 Copyright @copyright{} 1990--1992 Joseph Brian Wells@*
@@ -941,6 +941,13 @@ many typical workloads.
 Emacs has been ported to the Android operating system.  See the file
 @file{java/INSTALL} in the Emacs source distribution for details on how
 to build it.
+
+@item
+New user option @code{trusted-contents} to allow potentially dangerous
+Emacs features which could execute arbitrary Lisp code.  Use this
+variable to list files and directories whose contents Emacs should
+trust, thus allowing those potentially dangerous features when those
+files are visited.
 
 @item
 Numerous performance improvements, for example in parsing JSON, reading

@@ -1,6 +1,6 @@
 ;;; subr.el --- basic lisp subroutines for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1985-2025 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: internal
@@ -1973,9 +1973,6 @@ be a list of the form returned by `event-start' and `event-end'."
            (side-effect-free t) (obsolete log "24.4"))
   (log x 10))
 
-(set-advertised-calling-convention
- 'all-completions '(string collection &optional predicate) "23.1")
-(set-advertised-calling-convention 'unintern '(name obarray) "23.3")
 (set-advertised-calling-convention 'indirect-function '(object) "25.1")
 (set-advertised-calling-convention 'redirect-frame-focus '(frame focus-frame) "24.3")
 (set-advertised-calling-convention 'libxml-parse-xml-region '(&optional start end base-url) "27.1")
@@ -1990,7 +1987,6 @@ be a list of the form returned by `event-start' and `event-end'."
  ;; It's been announced as obsolete in NEWS and in the docstring since Emacs-25,
  ;; but it's only been marked for compilation warnings since Emacs-29.
  "25.1")
-(make-obsolete-variable 'redisplay-dont-pause nil "24.5")
 (make-obsolete-variable 'operating-system-release nil "28.1")
 (make-obsolete-variable 'inhibit-changing-match-data 'save-match-data "29.1")
 

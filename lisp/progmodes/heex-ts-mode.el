@@ -1,6 +1,6 @@
 ;;; heex-ts-mode.el --- Major mode for Heex with tree-sitter support -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
 ;; Author: Wilhelm H Kirschbaum <wkirschbaum@gmail.com>
 ;; Created: November 2022
@@ -20,6 +20,15 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Tree-sitter language versions
+;;
+;; heex-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-heex: v0.7.0
+;;
+;; We try our best to make builtin modes work with latest grammar
+;; versions, so a more recent grammar version has a good chance to work.
+;; Send us a bug report if it doesn't.
 
 ;;; Commentary:
 ;;
@@ -50,7 +59,7 @@
 (defconst heex-ts--sexp-regexp
   (rx bol
       (or "directive" "tag" "component" "slot"
-          "attribute" "attribute_value" "quoted_attribute_value")
+          "attribute" "attribute_value" "quoted_attribute_value" "expression")
       eol))
 
 ;; There seems to be no parent directive block for tree-sitter-heex,
@@ -77,6 +86,7 @@
        ((node-is "end_slot") parent-bol 0)
        ((node-is "/>") parent-bol 0)
        ((node-is ">") parent-bol 0)
+       ((node-is "}") parent-bol 0)
        ((parent-is "comment") prev-adaptive-prefix 0)
        ((parent-is "component") parent-bol ,offset)
        ((parent-is "tag") parent-bol ,offset)
@@ -108,7 +118,7 @@
      `((special_attribute_name) @font-lock-keyword-face)
      :language 'heex
      :feature 'heex-string
-     `([(attribute_value) (quoted_attribute_value)] @font-lock-constant-face)
+     `([(attribute_value) (quoted_attribute_value)] @font-lock-string-face)
      :language 'heex
      :feature 'heex-component
      `([

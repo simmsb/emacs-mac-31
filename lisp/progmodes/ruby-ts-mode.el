@@ -1,6 +1,6 @@
 ;;; ruby-ts-mode.el --- Major mode for editing Ruby files using tree-sitter -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
 ;; Author: Perry Smith <pedz@easesoftware.com>
 ;; Created: December 2022
@@ -21,6 +21,15 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Tree-sitter language versions
+;;
+;; ruby-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-ruby: v0.23.1
+;;
+;; We try our best to make builtin modes work with latest grammar
+;; versions, so a more recent grammar version has a good chance to work.
+;; Send us a bug report if it doesn't.
 
 ;;; Commentary:
 
@@ -223,9 +232,9 @@ values of OVERRIDE."
              (<= plus-1 end)
              (string-match-p "\\`#" text))
         (treesit-fontify-with-override node-start plus-1
-                                       font-lock-comment-delimiter-face override))
+                                       'font-lock-comment-delimiter-face override))
     (treesit-fontify-with-override (max plus-1 start) (min node-end end)
-                                   font-lock-comment-face override)))
+                                   'font-lock-comment-face override)))
 
 (defun ruby-ts--font-lock-settings (language)
   "Tree-sitter font-lock settings for Ruby."
@@ -1052,6 +1061,9 @@ leading double colon is not added."
                              ;; Method calls with name ending with ? or !.
                              ((call method: (identifier) @ident)
                               (:match "[?!]\\'" @ident))
+                             ;; Method definitions for the above.
+                             ((method name: (identifier) @ident)
+                              (:match "[?!]\\'" @ident))
                              ;; Backtick method redefinition.
                              ((operator "`" @backtick))
                              ;; TODO: Stop at interpolations.
@@ -1119,6 +1131,12 @@ leading double colon is not added."
                   "argument_list"))
       (equal (treesit-node-type (treesit-node-child node 0))
              "(")))
+
+(defun ruby-ts--sexp-list-p (node)
+  ;; Distinguish between the named `unless' node and the
+  ;; node with the same value of type.
+  (when (treesit-node-check node 'named)
+    (ruby-ts--sexp-p node)))
 
 (defvar-keymap ruby-ts-mode-map
   :doc "Keymap used in Ruby mode"
@@ -1195,6 +1213,47 @@ leading double colon is not added."
                                 )
                                eol)
                               #'ruby-ts--sexp-p))
+                 (sexp-list
+                  ,(cons (rx
+                          bol
+                          (or
+                           "begin_block"
+                           "end_block"
+                           "method"
+                           "singleton_method"
+                           "method_parameters"
+                           "parameters"
+                           "block_parameters"
+                           "class"
+                           "singleton_class"
+                           "module"
+                           "do"
+                           "case"
+                           "case_match"
+                           "array_pattern"
+                           "find_pattern"
+                           "hash_pattern"
+                           "parenthesized_pattern"
+                           "expression_reference_pattern"
+                           "if"
+                           "unless"
+                           "begin"
+                           "parenthesized_statements"
+                           "argument_list"
+                           "do_block"
+                           "block"
+                           "destructured_left_assignment"
+                           "interpolation"
+                           "string"
+                           "string_array"
+                           "symbol_array"
+                           "delimited_symbol"
+                           "regex"
+                           "heredoc_body"
+                           "array"
+                           "hash")
+                          eol)
+                         #'ruby-ts--sexp-list-p))
                  (text ,(lambda (node)
                           (or (member (treesit-node-type node)
                                       '("comment" "string_content" "heredoc_content"))

@@ -1,6 +1,6 @@
 ;;; help.el --- help commands for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1993-1994, 1998-2024 Free Software
+;; Copyright (C) 1985-1986, 1993-1994, 1998-2025 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -1397,6 +1397,7 @@ Otherwise, return a new string."
     ;; itself.
     (let ((keymap overriding-local-map)
           (inhibit-modification-hooks t)
+          (inhibit-read-only t)
           (orig-buf (current-buffer)))
       (with-temp-buffer
         (insert string)

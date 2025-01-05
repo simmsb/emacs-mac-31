@@ -1,6 +1,6 @@
 ;;; c-ts-mode.el --- tree-sitter support for C and C++  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
 ;; Author     : Theodor Thornhill <theo@thornhill.no>
 ;; Maintainer : Theodor Thornhill <theo@thornhill.no>
@@ -21,6 +21,18 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Tree-sitter language versions
+;;
+;; c-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-c: v0.23.4-1-g3aa2995
+;;
+;; c++-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-cpp: v0.23.4-1-gf41b4f6
+;;
+;; We try our best to make builtin modes work with latest grammar
+;; versions, so a more recent grammar version has a good chance to work.
+;; Send us a bug report if it doesn't.
 
 ;;; Commentary:
 ;;
@@ -1139,6 +1151,38 @@ if `c-ts-mode-emacs-sources-support' is non-nil."
   `(;; It's more useful to include semicolons as sexp so
     ;; that users can move to the end of a statement.
     (sexp (not ,(rx (or "{" "}" "[" "]" "(" ")" ","))))
+    (sexp-list
+     ,(regexp-opt '("preproc_params"
+                    "preproc_parenthesized_expression"
+                    "preproc_argument_list"
+                    "attribute_declaration"
+                    "declaration_list"
+                    "parenthesized_declarator"
+                    "parenthesized_field_declarator"
+                    "parenthesized_type_declarator"
+                    "abstract_parenthesized_declarator"
+                    "compound_statement"
+                    "enumerator_list"
+                    "field_declaration_list"
+                    "parameter_list"
+                    "argument_list"
+                    "parenthesized_expression"
+                    "initializer_list"
+                    "subscript_designator"
+                    "subscript_range_designator"
+                    "string_literal"
+                    "system_lib_string"
+                    ;; C++
+                    "template_parameter_list"
+                    "structured_binding_declarator"
+                    "template_argument_list"
+                    "condition_clause"
+                    "subscript_argument_list"
+                    "requirement_seq"
+                    "requires_parameter_list"
+                    "lambda_capture_specifier"
+                    "fold_expression")
+                  'symbols))
     ;; compound_statement makes us jump over too big units
     ;; of code, so skip that one, and include the other
     ;; statements.

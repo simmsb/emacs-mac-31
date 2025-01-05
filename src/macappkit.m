@@ -3069,7 +3069,6 @@ static void mac_move_frame_window_structure_1 (struct frame *, int, int);
 
 - (void)lockFocusOnEmacsView
 {
-  eassert (!FRAME_OBSCURED_P (emacsFrame));
   [emacsView lockFocusOnBacking];
 }
 
@@ -11133,7 +11132,7 @@ mac_track_menu_with_block (void (^block) (void))
       struct frame *mini_frame = XFRAME (WINDOW_FRAME (XWINDOW (mini_window)));
 
       if (FRAME_MAC_P (mini_frame)
-	  && FRAME_VISIBLE_P (mini_frame) && !FRAME_OBSCURED_P (mini_frame))
+	  && FRAME_VISIBLE_P (mini_frame))
 	Vshow_help_function = intern ("tooltip-show-help-non-mode");
     }
   mac_within_gui_allowing_inner_lisp (block);
@@ -11981,7 +11980,6 @@ mac_export_frames (Lisp_Object frames, Lisp_Object type)
   NSView *contentView;
   specpdl_ref count = SPECPDL_INDEX ();
 
-  specbind (Qredisplay_dont_pause, Qt);
   redisplay_preserve_echo_area (31);
 
   f = XFRAME (XCAR (frames));

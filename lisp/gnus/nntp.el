@@ -1,6 +1,6 @@
 ;;; nntp.el --- nntp access for Gnus  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1987-1990, 1992-1998, 2000-2024 Free Software
+;; Copyright (C) 1987-1990, 1992-1998, 2000-2025 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
@@ -1189,7 +1189,7 @@ If SEND-IF-FORCE, only send authinfo to the server if the
   "Create a new, fresh buffer usable for nntp process connections."
   (with-current-buffer
       (generate-new-buffer
-       (format " *server %s %s %s*"
+       (format " *server %s %s %S*"
                nntp-address nntp-port-number buffer))
     (gnus-add-buffer)
     (mm-disable-multibyte)

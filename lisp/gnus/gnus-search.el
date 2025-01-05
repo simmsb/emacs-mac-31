@@ -1,6 +1,6 @@
 ;;; gnus-search.el --- Search facilities for Gnus    -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2020-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
 ;; Author: Eric Abrahamsen <eric@ericabrahamsen.net>
 
@@ -1591,8 +1591,7 @@ fudges a relevancy score of 100."
 ;; I can't tell if this is actually necessary.
 (cl-defmethod gnus-search-run-search :around ((_e gnus-search-namazu)
 					      _server _query _groups)
-  (let ((process-environment (copy-sequence process-environment)))
-    (setenv "LC_MESSAGES" "C")
+  (with-environment-variables (("LC_MESSAGES" "C"))
     (cl-call-next-method)))
 
 (cl-defmethod gnus-search-indexed-search-command ((engine gnus-search-namazu)

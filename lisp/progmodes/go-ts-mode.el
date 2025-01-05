@@ -1,6 +1,6 @@
 ;;; go-ts-mode.el --- tree-sitter support for Go  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2022-2025 Free Software Foundation, Inc.
 
 ;; Author     : Randy Taylor <dev@rjt.dev>
 ;; Maintainer : Randy Taylor <dev@rjt.dev>
@@ -22,6 +22,15 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Tree-sitter language versions
+;;
+;; go-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-go: v0.23.4-1-g12fe553
+;;
+;; We try our best to make builtin modes work with latest grammar
+;; versions, so a more recent grammar version has a good chance to work.
+;; Send us a bug report if it doesn't.
+
 ;;; Commentary:
 ;;
 
@@ -40,6 +49,12 @@
 
 (defcustom go-ts-mode-build-tags nil
   "List of Go build tags for the test commands."
+  :version "31.1"
+  :type '(repeat string)
+  :group 'go)
+
+(defcustom go-ts-mode-test-flags nil
+  "List of extra flags for the Go test commands."
   :version "31.1"
   :type '(repeat string)
   :group 'go)
@@ -384,13 +399,20 @@ specifying build tags."
       (format "-tags %s" (string-join go-ts-mode-build-tags ","))
     ""))
 
+(defun go-ts-mode--get-test-flags ()
+  "Return the flags for test invocation."
+  (if go-ts-mode-test-flags
+      (mapconcat #'shell-quote-argument go-ts-mode-test-flags " ")
+    ""))
+
 (defun go-ts-mode--compile-test (regexp)
   "Compile the tests matching REGEXP.
 This function respects the `go-ts-mode-build-tags' variable for
 specifying build tags."
-  (compile (format "go test -v %s -run '%s'"
+  (compile (format "go test -v %s -run '%s' %s"
                    (go-ts-mode--get-build-tags-flag)
-                   regexp)))
+                   regexp
+                   (go-ts-mode--get-test-flags))))
 
 (defun go-ts-mode--find-defun-at (start)
   "Return the first defun node from START."
@@ -449,9 +471,10 @@ be run."
 (defun go-ts-mode-test-this-package ()
   "Run all the unit tests under the current package."
   (interactive)
-  (compile (format "go test -v %s -run %s"
+  (compile (format "go test -v %s %s %s"
                    (go-ts-mode--get-build-tags-flag)
-                   default-directory)))
+                   default-directory
+                   (go-ts-mode--get-test-flags))))
 
 ;; go.mod support.
 

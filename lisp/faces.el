@@ -1,6 +1,6 @@
 ;;; faces.el --- Lisp faces -*- lexical-binding: t -*-
 
-;; Copyright (C) 1992-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: internal
@@ -1147,17 +1147,6 @@ returned.  Otherwise, DEFAULT is returned verbatim."
     (let ((prompt (if default
                       (format-prompt prompt default)
                     (format "%s: " prompt)))
-          (completion-extra-properties
-           `(:affixation-function
-             ,(lambda (faces)
-                (mapcar
-                 (lambda (face)
-                   (list face
-                         (concat (propertize read-face-name-sample-text
-                                             'face face)
-                                 "\t")
-                         ""))
-                 faces))))
           aliasfaces nonaliasfaces faces)
       ;; Build up the completion tables.
       (mapatoms (lambda (s)
@@ -1180,7 +1169,18 @@ returned.  Otherwise, DEFAULT is returned verbatim."
             (nreverse faces))
         (let ((face (completing-read
                      prompt
-                     (completion-table-in-turn nonaliasfaces aliasfaces)
+                     (completion-table-with-metadata
+                      (completion-table-in-turn nonaliasfaces aliasfaces)
+                      `((affixation-function
+                        . ,(lambda (faces)
+                             (mapcar
+                              (lambda (face)
+                                (list face
+                                      (concat (propertize read-face-name-sample-text
+                                                          'face face)
+                                              "\t")
+                                      ""))
+                              faces)))))
                      nil t nil 'face-name-history defaults)))
           (when (facep face) (if (stringp face)
                                  (intern face)
