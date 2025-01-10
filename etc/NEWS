@@ -165,6 +165,13 @@ This option has 'kill-buffer' call 'quit-restore-window' to handle the
 further destiny of any window showing the buffer to be killed.
 
 +++
+*** 'split-window' can optionally resurrect deleted windows.
+A new argument REFER of 'split-window' makes it possible to, instead of
+making a new window object, reuse an existing, deleted one.  This can be
+used to preserve the identity of windows when swapping or transposing
+them.
+
++++
 *** New window parameter 'quit-restore-prev'.
 This parameter is set up by 'display-buffer' when it detects that the
 window used already has a 'quit-restore' parameter.  Its presence gives
@@ -260,12 +267,12 @@ The Tifinagh script is used to write the Berber languages.
 *** New input methods for Northern Iroquoian languages.
 Input methods are now implemented for Haudenosaunee languages in the
 Northern Iroquoian language family: 'mohawk-postfix' (Mohawk
-[Kanien’kéha / Onkwehonwehnéha]), 'oneida-postfix' (Oneida [Onʌyota:ká:
-/ Ukwehuwehnéha]), 'cayuga-postfix' (Cayuga [Gayogo̱ho:nǫhnéha:ˀ]),
-'onondaga-postfix' (Onondaga [Onųdaʔgegáʔ]), and 'seneca-postfix'
-(Seneca [Onödowá’ga:’]).  Additionally, there is a general-purpose
-'haudenosaunee-postfix' input method to facilitate writing in the
-orthographies of the five languages simultaneously.
+[Kanien’kéha / Onkwehonwehnéha]), 'oneida-postfix' (Oneida
+[Onʌyote’a·ká· / Ukwehuwehnéha]), 'cayuga-postfix' (Cayuga
+[Gayogo̱ho:nǫhnéha:ˀ]), 'onondaga-postfix' (Onondaga [Onųdaʔgegáʔ]), and
+'seneca-postfix' (Seneca [Onödowá’ga:’]).  Additionally, there is a
+general-purpose 'haudenosaunee-postfix' input method to facilitate
+writing in the orthographies of the five languages simultaneously.
 
 ---
 ** 'visual-wrap-prefix-mode' now supports variable-pitch fonts.
@@ -317,6 +324,12 @@ modal editing packages.
 
 ** Smerge
 *** New command 'smerge-extend' extends a conflict over surrounding lines.
+
+** Image Dired
+
+*** 'image-dired-show-all-from-dir' takes the same first argument as 'dired'.
+This allows passing a string with wildcards, or a cons cell where the
+first element is a list and the rest is a list of files.
 
 ** Browse URL
 
@@ -1018,15 +1031,15 @@ override flag by 'treesit-font-lock-setting-query',
 'treesit-font-lock-setting-feature', 'treesit-font-lock-setting-enable',
 and 'treesit-font-lock-setting-override'.
 
-*** New treesit thing 'sexp-list'.
+*** New treesit thing 'list'.
 Unlike the existing thing 'sexp' that defines both lists and atoms,
-'sexp-list' defines only lists to be navigated by 'forward-sexp'.
-The new function 'treesit-forward-sexp-list' uses 'sexp-list'
+'list' defines only lists to be navigated by 'forward-sexp'.
+The new function 'treesit-forward-sexp-list' uses 'list'
 to move across lists.  But to move across atoms inside the list
 it uses 'forward-sexp-default-function'.
 
-*** New tree-sitter based functions for moving by sexp-lists.
-If a major mode defines 'sexp-list' in 'treesit-thing-settings',
+*** New tree-sitter based functions for moving by lists.
+If a major mode defines 'list' in 'treesit-thing-settings',
 tree-sitter setup for these modes sets 'forward-list-function' to
 'treesit-forward-list', 'up-list-function' to 'treesit-up-list', and
 'down-list-function' to 'treesit-down-list'.  This enables the
