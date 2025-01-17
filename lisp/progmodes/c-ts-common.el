@@ -1,6 +1,6 @@
 ;;; c-ts-common.el --- Utilities for C like Languages  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2023-2025 Free Software Foundation, Inc.
 
 ;; Maintainer : 付禹安 (Yuan Fu) <casouri@gmail.com>
 ;; Package    : emacs
@@ -249,9 +249,12 @@ This function should be called at BOL.  Used by
    ;; (3)
    ;; Current line: *, |, -
    ;; Prefix: same.
-   ;; This branch must return the same prefix as branch (1), as the
-   ;; second line in the paragraph; then the whole paragraph will use *
-   ;; as the prefix.
+   ;; Adaptive fill looks at the first and second line of a paragraph,
+   ;; only when both lines return the same prefix does it use that
+   ;; prefix for the following lines.  If the first lines matches branch
+   ;; (1) and returns * as prefix, and the second line matches this
+   ;; branch (3), and returns * as prefix, then the whole paragraph will
+   ;; use * as prefix.
    ((looking-at (rx (* (syntax whitespace))
                     (or "*" "|" "-")
                     (* (syntax whitespace))))
@@ -394,7 +397,12 @@ and /* */ comments.  SOFT works the same as in
    :override t
    :feature 'keyword
    '((tag_name) @font-lock-constant-face
-     (storageclass) @font-lock-constant-face)
+     (type) @font-lock-type-face
+     (emphasis) @bold
+     ((tag_name) @bold (:match ".note" @bold))
+     ((tag_name) @warning (:match ".warning" @warning))
+     ((tag_name) @error (:match ".error" @error))
+     (storageclass) @font-lock-keyword-face)
 
    :language 'doxygen
    :override t

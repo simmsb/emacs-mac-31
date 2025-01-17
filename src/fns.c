@@ -1,6 +1,6 @@
 /* Random utility Lisp functions.
 
-Copyright (C) 1985-2024 Free Software Foundation, Inc.
+Copyright (C) 1985-2025 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -1921,6 +1921,15 @@ The value is actually the tail of LIST whose car is ELT.  */)
     if (EQ (XCAR (tail), elt))
       return tail;
   CHECK_LIST_END (tail, list);
+  return Qnil;
+}
+
+Lisp_Object
+memq_no_quit (Lisp_Object elt, Lisp_Object list)
+{
+  for (; CONSP (list); list = XCDR (list))
+    if (EQ (XCAR (list), elt))
+      return list;
   return Qnil;
 }
 

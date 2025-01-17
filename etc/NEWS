@@ -1,6 +1,6 @@
 GNU Emacs NEWS -- history of user-visible changes.
 
-Copyright (C) 2022-2024 Free Software Foundation, Inc.
+Copyright (C) 2022-2025 Free Software Foundation, Inc.
 See the end of the file for license conditions.
 
 Please send Emacs bug reports to 'bug-gnu-emacs@gnu.org'.
@@ -31,24 +31,64 @@ host system supports SSE2) or '-fno-tree-sra' (if not).  These GCC
 options work around GCC bug 58416, which can cause Emacs to behave
 incorrectly in rare cases.
 
----
-** New configuration option '--disable-gc-mark-trace'.
-This disables the GC mark trace buffer for about 5% better garbage
-collection performance.  Doing so may make it more difficult for Emacs
-developers to help finding GC-related bugs that you run into, which is
-why the mark trace buffer is enabled by default.
-
 
 * Startup Changes in Emacs 31.1
 
-** When run inside xterm, 'xterm-mouse-mode' is turned on by default.
-This means that the mouse will work by default inside xterm terminals.
-If your terminal does not behave properly with xterm mouse tracking
-enabled, you can disable mouse tracking by putting '(xterm-mouse-mode
--1)' in your init file.
+** In compatible terminals, 'xterm-mouse-mode' is turned on by default.
+For these terminals the mouse will work by default.  A compatible
+terminal is one that supports Emacs seting and getting the OS selection
+data (a.k.a. the clipboard) and mouse button and motion events.  With
+xterm-mouse-mode enabled, you must use Emacs keybindings to copy to the
+OS selection instead of terminal-specific keybindings.
+
+You can keep the old behavior by putting `(xterm-mouse-mode -1)' in your
+init file.
 
 
 * Changes in Emacs 31.1
+
+---
+** Child frames are now supported on TTY frames.
+This supports use-cases like Posframe, Corfu, and child frames acting
+like tooltips.  Other use-cases of child frames are not supported yet.
+In particular:
+
+- trying to create minibuffer-only child frames on a TTY frame will
+  signal an error.
+- a TTY child frame cannot be converted to a root frame or vice-versa.
+
+To enable tooltips on TTY frames, call 'tty-tip-mode'.
+
+The presence of child frame support on TTY frames can be checked with
+`(featurep 'tty-child-frames)'.
+
+Recent versions of Posframe and Corfu are known to use child frames on
+TTYs if they are supported.
+
++++
+** Several font-lock face variables are now obsolete.
+The following variables are now obsolete: 'font-lock-builtin-face',
+'font-lock-comment-delimiter-face', 'font-lock-comment-face',
+'font-lock-constant-face', 'font-lock-doc-face',
+'font-lock-doc-markup-face', 'font-lock-function-name-face',
+'font-lock-keyword-face', 'font-lock-negation-char-face',
+'font-lock-preprocessor-face', 'font-lock-string-face',
+'font-lock-type-face', 'font-lock-variable-name-face', and
+'font-lock-warning-face'.
+
+These variables contributed both to confusion about the relation between
+faces and variables, and to inconsistency when major mode authors used
+one or the other (sometimes interchangeably).  We always recommended
+using faces directly, and not creating variables going by the same name.
+
+If you have customized these variables, you should now customize the
+corresponding faces instead, using something like:
+
+    M-x customize-face RET font-lock-string-face RET
+
+If you have been using these variables in Lisp code (for example, in
+font-lock rules), simply quote the symbol, to use the face directly
+instead of its now-obsolete variable.
 
 ** Etags
 
@@ -67,40 +107,21 @@ The 'find-function', 'find-library', 'find-face-definition', and
 'find-variable' commands now allow retrieving previous input using the
 usual minibuffer history commands.  Each command has a separate history.
 
-Loading a Tree-Sitter mode (such as by using 'M-x load-library' or with
-'M-x load-file') by default causes the corresponding non-Tree-Sitter
-mode be remapped to the Tree-Sitter mode.  This remapping affects
-visiting files for which 'auto-mode-alist' specifies a non-Tree-Sitter
-mode, and also affects mode-specification cookies on the first line of a
-file and mode specifications in file- and directory-local variables.  To
-revert to using a non-Tree-Sitter mode, reload the corresponding mode
-file anew.  To prevent file loading from turning on Tree-Sitter mode
-when 'auto-mode-alist' or the file/directory-local variables specify a
-non-Tree-Sitter mode, customize the user option 'major-mode-remap-alist'
-to specify that a non-Tree-Sitter mode is "remapped" to itself.  For
-example:
-
-    (add-to-list 'major-mode-remap-alist '(c-mode))
-
-specifies that C Mode should not be remapped to 'c-ts-mode' even if and
-when 'c-ts-mode' is loaded.  Conversely,
-
-    (add-to-list 'major-mode-remap-alist '(c-mode . c-ts-mode))
-
-tells Emacs to always invoke 'c-ts-mode' whenever 'c-mode' is
-requested, either by 'auto-mode-alist' or by file/directory-local
-variables.
-
-We recommend using 'major-mode-remap-alist' to express your preferences
-for using Tree-Sitter or non-Tree-Sitter modes for files for which both
-variants of major modes are available, because that variable overrides
-the remapping Emacs might decide to perform as result of loading Lisp
-files and features.
-
 ---
 ** New minor mode 'find-function-mode' replaces 'find-function-setup-keys'.
 
 ** Minibuffer and Completions
+
++++
+*** New user option 'completion-eager-display'.
+This option configures whether completion commands should display the
+"*Completions*" buffer immediately.  When the option is set to t, all
+completion commands show "*Completions*" immediately, respectively nil
+disables the eager display for all commands.  The default setting auto
+enables eager completion only if requested by the command.
+For more fine-grained control you can also toggle this feature by
+category using the symbol 'eager-display' in the user option
+'completion-category-overrides'.
 
 +++
 *** New user option 'completion-pcm-leading-wildcard'.
@@ -123,12 +144,12 @@ applies for the styles configuration in 'completion-category-overrides'
 and 'completion-category-defaults'.
 
 ---
-*** Selected completion candidate is preserved across *Completions* updates.
-When point is on a completion candidate in the *Completions* buffer
+*** Selected completion candidate is preserved across "*Completions*" updates.
+When point is on a completion candidate in the "*Completions*" buffer
 (because of 'minibuffer-next-completion' or for any other reason), point
-will still be on that candidate after *Completions* is updated with a
+will still be on that candidate after "*Completions*" is updated with a
 new list of completions.  The candidate is automatically deselected when
-the *Completions* buffer is hidden.
+the "*Completions*" buffer is hidden.
 
 ** Windows
 
@@ -294,9 +315,37 @@ modal editing packages.
 
 * Changes in Specialized Modes and Packages in Emacs 31.1
 
+** Smerge
+*** New command 'smerge-extend' extends a conflict over surrounding lines.
+
+** Browse URL
+
+*** New user option 'browse-url-transform-alist'.
+This user option is an alist that allows transforming URLs before asking
+a web browser to load them.  For example, it could be used like this:
+
+    (add-to-list 'browse-url-transform-alist
+                 '("www.google.com" . "www.duckduckgo.com"))
+
+*** New function 'browse-url-qutebrowser' for the Qutebrowser.
+For better integration with the Qutebrowser, set
+'browse-url(-secondary)-browser-function' to 'browse-url-qutebrowser'.
+
+*** New GTK-native launch mode
+For better Wayland support, the pgtk toolkit exposes a new
+'x-gtk-launch-uri' browse-url handler and uses it by default when URLs
+are browsed from a PGTK frame.  For other frames, we fall back to the
+default URL launch function.  This change allows us to properly raise
+browser windows under Wayland using the xdg_activation_v1 protocol.
+
+*** Removed support for some obsolete web browsers.
+Conkeror (obsolete since Emacs 28.1), gnome-moz-remote (obsolete since
+Emacs 25.1), and gnudoit (obsolete since Emacs 25.1).
+
 ** CL-Lib
+
 +++
-*** 'cl-labels' now also accepts (FUNC EXP) bindings, like 'cl-flet'.
+*** 'cl-labels' now also accepts '(FUNC EXP)' bindings, like 'cl-flet'.
 Such bindings make it possible to compute which function to bind to FUNC.
 
 ** Whitespace
@@ -322,6 +371,12 @@ It removes all the buttons in the specified region.
 
 +++
 *** Disabling 'button-mode' now removes all buttons in the current buffer.
+
+** Shell
+
+*** New command to complete the shell history.
+'comint-complete-input-ring' ('C-x <up>') is like 'minibuffer-complete-history'
+but completes on comint inputs.
 
 ** Eshell
 
@@ -396,13 +451,14 @@ is freed for normal search commands.  If you would like to restore the
 previous key-bindings for the non-incremental search commands, put in
 your configuration:
 
-    (keymap-set eshell-hist-mode-map "M-r"
-                #'eshell-previous-matching-input)
-    (keymap-set eshell-hist-mode-map "M-s"
-                #'eshell-next-matching-input)
+    (with-eval-after-load 'em-hist
+      (keymap-set eshell-hist-mode-map "M-r"
+                  #'eshell-previous-matching-input)
+      (keymap-set eshell-hist-mode-map "M-s"
+                  #'eshell-next-matching-input))
 
 +++
-*** New user option 'eshell-history-isearch'
+*** New user option 'eshell-history-isearch'.
 When 'eshell-history-isearch' is nil (the default), Isearch commands
 search in the buffer contents.  If you customize it to t, those commands
 only search in input history.  If you customize it to the symbol 'dwim',
@@ -717,6 +773,23 @@ toggle.
 ** BibTeX mode
 
 ---
+*** New user options facilitate customization of BibTeX and biblatex entries.
+Entry definitions via the user options 'bibtex-BibTeX-aux-entry-alist',
+'bibtex-biblatex-aux-entry-alist', 'bibtex-BibTeX-aux-opt-alist', and
+'bibtex-biblatex-aux-opt-alist' take precedence over
+'bibtex-BibTeX-entry-alist' and 'bibtex-biblatex-entry-alist'.
+These user options now support the definition of aliases that inherit
+the definition of another entry.
+
+---
+*** 'bibtex-user-optional-fields' has been renamed to 'bibtex-aux-opt-alist'.
+The old name is an obsolete alias.
+
+---
+*** 'bibtex-include-OPTkey' is now obsolete and its default is nil.
+Use 'bibtex-aux-opt-alist' instead.
+
+---
 *** New user option 'bibtex-entry-ask-for-key'.
 When enabled, 'bibtex-entry' asks for a key.
 
@@ -778,9 +851,9 @@ of seconds.  Crossfading can be toggled using the command
 ---
 *** New command 'mpc-describe-song'.
 This command displays information about the currently playing song or
-song at point in the MPC-Songs buffer.  The list of tags to display can
-be customized using the new user option 'mpc-song-viewer-tags' and the
-appearance of the list with the new faces 'mpc-song-viewer-tag',
+song at point in the "*MPC-Songs*" buffer.  The list of tags to display
+can be customized using the new user option 'mpc-song-viewer-tags' and
+the appearance of the list with the new faces 'mpc-song-viewer-tag',
 'mpc-song-viewer-value', and 'mpc-song-viewer-empty'.
 
 ** VC
@@ -829,10 +902,10 @@ The commands that jump to some location use 'display-buffer' and specify
 the category 'xref-jump'.  As a result, you can customize how the
 destination window is chosen using 'display-buffer-alist'.  Example:
 
-  (setq display-buffer-alist '(((category . xref-jump)
-                                (display-buffer-reuse-window
-                                 display-buffer-use-some-window)
-                                (some-window . mru))))
+    (setq display-buffer-alist '(((category . xref-jump)
+                                  (display-buffer-reuse-window
+                                   display-buffer-use-some-window)
+                                  (some-window . mru))))
 
 
 * New Modes and Packages in Emacs 31.1
@@ -841,6 +914,9 @@ destination window is chosen using 'display-buffer-alist'.  Example:
 * Incompatible Lisp Changes in Emacs 31.1
 
 ** Nested backquotes are not supported any more in Pcase patterns.
+
+---
+** The obsolete variable `redisplay-dont-pause' has been removed.
 
 ** The 'rx' category name 'chinese-two-byte' must now be spelled correctly.
 An old alternative name (without the first 'e') has been removed.
@@ -878,7 +954,14 @@ restore the old behavior, you can set 'eshell-pwd-convert-function' to
 
 * Lisp Changes in Emacs 31.1
 
----
+** Time & Date
+
++++
+*** 'seconds-to-string' supports new formatting options.
+Optional arguments are provided to produce human-readable time-duration
+strings in a variety of formats, for example "6 months 3 weeks" or "5m
+52.5s".
+
 ** New function 'native-compile-directory'.
 This function natively-compiles all Lisp files in a directory and in its
 sub-directories, recursively, which were not already natively-compiled.
@@ -906,7 +989,7 @@ authorize the invoked D-Bus method (for example via polkit).
 ** The customization group 'wp' has been removed.
 It has been obsolete since Emacs 26.1.  Use the group 'text' instead.
 
-** Tree-sitter changes
+** Changes in tree-sitter modes.
 
 +++
 *** Indirect buffers can have their own parser list.
@@ -930,6 +1013,50 @@ Now users can access a setting's query, feature, enable flag, and
 override flag by 'treesit-font-lock-setting-query',
 'treesit-font-lock-setting-feature', 'treesit-font-lock-setting-enable',
 and 'treesit-font-lock-setting-override'.
+
+*** New treesit thing 'sexp-list'.
+Unlike the existing thing 'sexp' that defines both lists and atoms,
+'sexp-list' defines only lists to be navigated by 'forward-sexp'.
+The new function 'treesit-forward-sexp-list' uses 'sexp-list'
+to move across lists.  But to move across atoms inside the list
+it uses 'forward-sexp-default-function'.
+
+*** New tree-sitter based functions for moving by sexp-lists.
+If a major mode defines 'sexp-list' in 'treesit-thing-settings',
+tree-sitter setup for these modes sets 'forward-list-function' to
+'treesit-forward-list', 'up-list-function' to 'treesit-up-list', and
+'down-list-function' to 'treesit-down-list'.  This enables the
+'forward-list', 'up-list', and 'down-list' motion commands for those
+modes.
+
+*** Tree-sitter enabled modes now properly support 'show-paren-mode'.
+They do that by letting 'show-paren-mode' use the results of parsing by
+the tree-sitter library.  The new function 'treesit-show-paren-data' is
+used to communicate the tree-sitter parsing results to
+'show-paren-mode'.
+
++++
+*** New function 'treesit-language-display-name'.
+This new function returns the display name of a language given the
+language symbol.  For example, 'cpp' is translated to "C++".  A new
+variable 'treesit-language-display-name-alist' holds the translations of
+language symbols where that translation is not trivial.
+
++++
+*** New command 'treesit-explore'
+This command replaces 'treesit-explore-mode'.  It turns on
+'treesit-explore-mode' if it’s not on, and pops up the explorer buffer
+if it’s already on.
+
++++
+*** 'treesit-explore-mode' now supports local parsers
+Now 'treesit-explore-mode' (or 'treesit-explore') prompts for a parser
+rather than a language, and it’s now possible to select a local parser
+at point to explore.
+
++++
+*** New variable 'treesit-aggregated-simple-imenu-settings'
+This variable allows major modes to setup Imenu for multiple languages.
 
 +++
 ** New optional BUFFER argument for 'string-pixel-width'.
@@ -980,19 +1107,25 @@ conventions.
 +++
 ** 'make-vtable' can create an empty vtable.
 It is now possible to create a vtable without data, by leaving the
-':objects' list empty, or by providing a ':objects-function' that
+':objects' list empty, or by providing an ':objects-function' that
 (initially) produces no data.  In such a case, it is necessary to
 provide a ':columns' spec, so that the number of columns and their
-widths can be determined.  Columns widths can be set explicitly, or they
+widths can be determined.  Column widths can be set explicitly, or they
 will be calculated based on the window width.
 
 +++
-** New symbol property 'repeat-continue-only' for 'repeat-mode'.
+** New symbol property 'repeat-continue' for 'repeat-mode'.
 A command with this symbol property whose value is a list of repeat
 maps will not activate the repeat map in 'repeat-mode'.  It will only
 continue the already activated repeating sequence.  Also 'defvar-keymap'
-supports a new keyword ':continue-only' with a list of commands that
+supports a new keyword ':continue' with a list of commands that
 only continue the active repeating sequence.
+
+** New function 'completion-table-with-metadata'.
+It offers a more concise way to create a completion table with metadata.
+
++++
+** 'all-completions' and 'unintern' no longer support old calling conventions.
 
 
 * Changes in Emacs 31.1 on Non-Free Operating Systems
@@ -1046,6 +1179,11 @@ current buffer, if the major mode supports it.  (Support for
 ** Images on MS-Windows now support the ':transform-smoothing' flag.
 Transformed images are smoothed using the bilinear interpolation by
 means of the GDI+ library.
+
+---
+** Emacs on MS-Windows now supports the ':data' keyword for 'play-sound'.
+In addition to ':file FILE' for playing a sound from a file, ':data
+DATA' can now be used to play a sound from memory.
 
 
 ----------------------------------------------------------------------

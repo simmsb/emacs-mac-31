@@ -1,6 +1,6 @@
 ;;; eglot.el --- The Emacs Client for LSP servers  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2018-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2018-2025 Free Software Foundation, Inc.
 
 ;; Version: 1.17
 ;; Author: João Távora <joaotavora@gmail.com>
@@ -181,6 +181,13 @@
   "Interaction with Language Server Protocol (LSP) servers."
   :prefix "eglot-"
   :group 'tools)
+
+(add-to-list 'customize-package-emacs-version-alist
+             '(Eglot ("1.12" . "29.1")
+                     ("1.12" . "29.2")
+                     ("1.12" . "29.3")
+                     ("1.12.29" . "29.4")
+                     ("1.17.30" . "30.1")))
 
 (defun eglot-alternatives (alternatives)
   "Compute server-choosing function for `eglot-server-programs'.
@@ -475,7 +482,8 @@ the LSP connection.  That can be done by `eglot-reconnect'."
                            (choice
                             (const :tag "Full with original JSON" full)
                             (const :tag "Shortened" short)
-                            (const :tag "Pretty-printed lisp" lisp))))))
+                            (const :tag "Pretty-printed lisp" lisp)))))
+  :package-version '(Eglot . "1.17.30"))
 
 (defcustom eglot-confirm-server-edits '((eglot-rename . nil)
                                         (t . maybe-summary))
@@ -506,7 +514,8 @@ ACTION is the default value for commands not in the alist."
                    (alist :tag "Per-command alist"
                           :key-type (choice (function :tag "Command")
                                             (const :tag "Default" t))
-                          :value-type (choice . ,basic-choices)))))
+                          :value-type (choice . ,basic-choices))))
+  :package-version '(Eglot . "1.17.30"))
 
 (defcustom eglot-extend-to-xref nil
   "If non-nil, activate Eglot in cross-referenced non-project files."
@@ -514,7 +523,8 @@ ACTION is the default value for commands not in the alist."
 
 (defcustom eglot-prefer-plaintext nil
   "If non-nil, always request plaintext responses to hover requests."
-  :type 'boolean)
+  :type 'boolean
+  :package-version '(Eglot . "1.17.30"))
 
 (defcustom eglot-menu-string "eglot"
   "String displayed in mode line when Eglot is active."
@@ -530,7 +540,7 @@ the LSP connection.  That can be done by `eglot-reconnect'."
   :type '(choice (const :tag "Don't show progress" nil)
                  (const :tag "Show progress in *Messages*" messages)
                  (const :tag "Show progress in Eglot's mode line indicator" t))
-  :version "1.10")
+  :package-version '(Eglot . "1.10"))
 
 (defcustom eglot-ignored-server-capabilities (list)
   "LSP server capabilities that Eglot could use, but won't.
@@ -3228,14 +3238,15 @@ for which LSP on-type-formatting should be requested."
             ;; Maybe completion/resolve JSON object `lsp-comp' into
             ;; another JSON object, if at all possible.  Otherwise,
             ;; just return lsp-comp.
-            (lambda (lsp-comp)
+            (lambda (lsp-comp &optional dont-cancel-on-input)
               (or (gethash lsp-comp resolved)
                   (setf (gethash lsp-comp resolved)
                         (if (and (eglot-server-capable :completionProvider
                                                         :resolveProvider)
                                  (plist-get lsp-comp :data))
                             (eglot--request server :completionItem/resolve
-                                            lsp-comp :cancel-on-input t
+                                            lsp-comp :cancel-on-input
+                                            (not dont-cancel-on-input)
                                             :immediate t)
                           lsp-comp))))))
       (when (and (consp eglot--capf-session)
@@ -3350,7 +3361,12 @@ for which LSP on-type-formatting should be requested."
                       ;; A lookup should fix that (github#148)
                       (get-text-property
                        0 'eglot--lsp-item
-                       (cl-find proxy (funcall proxies) :test #'string=))))
+                       (cl-find proxy (funcall proxies) :test #'string=)))
+                  ;; Be sure to pass non-nil here since we don't want
+                  ;; any quick typing after the soon-to-be-undone
+                  ;; insertion to potentially cancel an essential
+                  ;; resolution request (github#1474).
+                  'dont-cancel-on-input)
                (let ((snippet-fn (and (eql insertTextFormat 2)
                                       (eglot--snippet-expansion-fn))))
                  (cond (textEdit

@@ -1,6 +1,6 @@
 ;;; org-table.el --- The Table Editor for Org        -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2025 Free Software Foundation, Inc.
 
 ;; Author: Carsten Dominik <carsten.dominik@gmail.com>
 ;; Keywords: outlines, hypermedia, calendar, text
@@ -3412,7 +3412,7 @@ Parameters get priority."
 	  (when title
 	    (unless (bobp) (insert "\n"))
 	    (insert
-	     (org-add-props (cdr title) nil 'face font-lock-comment-face))
+             (org-add-props (cdr title) nil 'face 'font-lock-comment-face))
 	    (setq titles (remove title titles)))
 	  (when (equal key (car entry)) (setq startline (org-current-line)))
 	  (let ((s (concat

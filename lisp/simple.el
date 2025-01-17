@@ -1,6 +1,6 @@
 ;;; simple.el --- basic editing commands for Emacs  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1987, 1993-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1987, 1993-2025 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: internal
@@ -393,7 +393,7 @@ To control which errors are matched, customize the variable
       (next-error-found buffer (current-buffer))
       (when (or next-error-verbose
                 (not (eq prev next-error-last-buffer)))
-        (message "Current locus from %s" next-error-last-buffer)))))
+        (message "Current locus from %S" next-error-last-buffer)))))
 
 (defun next-error-quit-window (from-buffer to-buffer)
   "Quit window of FROM-BUFFER when the prefix arg is 0.
@@ -2033,6 +2033,7 @@ function `read-from-minibuffer'."
         (set-syntax-table emacs-lisp-mode-syntax-table)
         (add-hook 'completion-at-point-functions
                   #'elisp-completion-at-point nil t)
+        (setq-local trusted-content :all)
         (run-hooks 'eval-expression-minibuffer-setup-hook))
     (read-from-minibuffer prompt initial-contents
                           read--expression-map t
@@ -6511,11 +6512,9 @@ PROMPT is a string to prompt with."
              map)))
       (completing-read
        prompt
-       (lambda (string pred action)
-         (if (eq action 'metadata)
-             ;; Keep sorted by recency
-             '(metadata (display-sort-function . identity))
-           (complete-with-action action completions string pred)))
+       ;; Keep sorted by recency
+       (completion-table-with-metadata
+        completions '((display-sort-function . identity)))
        nil nil nil
        (if history-pos
            (cons 'read-from-kill-ring-history

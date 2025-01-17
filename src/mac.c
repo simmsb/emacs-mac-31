@@ -1375,7 +1375,7 @@ cfproperty_list_create_with_lisp_1 (Lisp_Object obj,
 		  ptrdiff_t i, size = HASH_TABLE_SIZE (h);
 
 		  for (i = 0; i < size; ++i)
-		    if (!NILP (HASH_HASH (h, i)))
+		    if (!EQ (HASH_KEY (h, i), Qunbound))
 		      {
 			CFPropertyListRef value = NULL;
 

@@ -1,6 +1,6 @@
 ;;; process-tests.el --- Testing the process facilities -*- lexical-binding: t -*-
 
-;; Copyright (C) 2013-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2025 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -518,6 +518,17 @@ See Bug#30460."
   (should (eq nil (network-lookup-address-info "emacs.invalid")))))
 
 ;; End of tests requiring DNS
+
+(ert-deftest process-tests-check-bug-74907 ()
+  "Check that the result of `network-interface-list' is well-formed.
+(Bug#74907)"
+  (dolist (info (network-interface-list t))
+    (should (stringp (car info)))
+    (should (length= info 4))
+    (should (cl-every #'vectorp (cdr info)))
+    (let ((alen (length (cadr info))))
+      (should (memq alen '(5 9)))       ; Address info also has a port number
+      (should (cl-every (lambda (elt) (length= elt alen)) (cdr info))))))
 
 (defmacro process-tests--ignore-EMFILE (&rest body)
   "Evaluate BODY, ignoring EMFILE errors."

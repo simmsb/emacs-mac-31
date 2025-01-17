@@ -1,6 +1,6 @@
 ;;; esh-mode.el --- user interface  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
 
@@ -537,7 +537,7 @@ Putting this function on `eshell-pre-command-hook' will mimic Plan 9's
     (eshell-interactive-output-filter nil string)))
 
 (defsubst eshell-begin-on-new-line ()
-  "Print a newline if not at beginning of line."
+  "Output a newline if not at beginning of line."
   (save-excursion
     (goto-char eshell-last-output-end)
     (or (bolp)

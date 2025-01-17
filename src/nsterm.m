@@ -1,6 +1,6 @@
 /* NeXT/Open/GNUstep / macOS communication module.      -*- coding: utf-8 -*-
 
-Copyright (C) 1989, 1993-1994, 2005-2006, 2008-2024 Free Software
+Copyright (C) 1989, 1993-1994, 2005-2006, 2008-2025 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1505,7 +1505,7 @@ ns_make_frame_visible (struct frame *f)
       EmacsView *view = (EmacsView *)FRAME_NS_VIEW (f);
       EmacsWindow *window = (EmacsWindow *)[view window];
 
-      SET_FRAME_VISIBLE (f, 1);
+      SET_FRAME_VISIBLE (f, true);
       ns_raise_frame (f, ! FRAME_NO_FOCUS_ON_MAP (f));
 
       /* Making a new frame from a fullscreen frame will make the new frame
@@ -1550,7 +1550,7 @@ ns_make_frame_invisible (struct frame *f)
   check_window_system (f);
   view = FRAME_NS_VIEW (f);
   [[view window] orderOut: NSApp];
-  SET_FRAME_VISIBLE (f, 0);
+  SET_FRAME_VISIBLE (f, false);
   SET_FRAME_ICONIFIED (f, 0);
 }
 
@@ -6955,8 +6955,12 @@ ns_create_font_panel_buttons (id target, SEL select, SEL cancel_action)
 
 #ifndef NS_IMPL_GNUSTEP
       if (NS_KEYLOG)
-        fprintf (stderr, "keyDown: code =%x\tfnKey =%x\tflags = %x\tmods = %x\n",
-                 code, fnKeysym, flags, emacs_event->modifiers);
+	fprintf (stderr,
+		 "keyDown: code = %x\tfnKey = %x\tflags = %x\tmods = "
+		 "%x\n",
+		 (unsigned int) code, (unsigned int) fnKeysym,
+		 (unsigned int) flags,
+		 (unsigned int) emacs_event->modifiers);
 #endif
 
       /* If it was a function key or had control-like modifiers, pass
@@ -10761,7 +10765,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
 
       IOReturn lockStatus = IOSurfaceLock (surface, 0, nil);
       if (lockStatus != kIOReturnSuccess)
-        NSLog (@"Failed to lock surface: %x", lockStatus);
+        NSLog (@"Failed to lock surface: %x", (unsigned int)lockStatus);
 
       [self copyContentsTo:surface];
 
@@ -10808,7 +10812,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
 
   IOReturn lockStatus = IOSurfaceUnlock (currentSurface, 0, nil);
   if (lockStatus != kIOReturnSuccess)
-    NSLog (@"Failed to unlock surface: %x", lockStatus);
+    NSLog (@"Failed to unlock surface: %x", (unsigned int)lockStatus);
 }
 
 
@@ -10849,7 +10853,8 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
 
   lockStatus = IOSurfaceLock (source, kIOSurfaceLockReadOnly, nil);
   if (lockStatus != kIOReturnSuccess)
-    NSLog (@"Failed to lock source surface: %x", lockStatus);
+    NSLog (@"Failed to lock source surface: %x",
+	   (unsigned int) lockStatus);
 
   sourceData = IOSurfaceGetBaseAddress (source);
   destinationData = IOSurfaceGetBaseAddress (destination);
@@ -10861,7 +10866,7 @@ nswindow_orderedIndex_sort (id w1, id w2, void *c)
 
   lockStatus = IOSurfaceUnlock (source, kIOSurfaceLockReadOnly, nil);
   if (lockStatus != kIOReturnSuccess)
-    NSLog (@"Failed to unlock source surface: %x", lockStatus);
+    NSLog (@"Failed to unlock source surface: %x", (unsigned int)lockStatus);
 }
 
 #undef CACHE_MAX_SIZE

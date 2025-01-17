@@ -1,6 +1,6 @@
 ;;; cc-langs.el --- language specific settings for CC Mode -*- lexical-binding: t; coding: utf-8 -*-
 
-;; Copyright (C) 1985, 1987, 1992-2024 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 1987, 1992-2025 Free Software Foundation, Inc.
 
 ;; Authors:    2002- Alan Mackenzie
 ;;             1998- Martin Stjernholm
@@ -3251,7 +3251,7 @@ Such a keyword is a member of `c-paren-clause-kwds."
   c++    '("break" "continue" "goto" "return" "co_return")
   objc '("break" "continue" "goto" "return" "@throw")
   ;; Note: `goto' is not valid in Java, but the keyword is still reserved.
-  java '("break" "continue" "goto" "return" "throw")
+  java '("assert" "break" "continue" "goto" "return" "throw")
   idl  nil
   pike '("break" "continue" "return")
   awk  '(;; Not sure about "delete", "exit", "getline", etc. ; ACM 2002/5/30

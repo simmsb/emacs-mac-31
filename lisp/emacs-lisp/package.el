@@ -1,6 +1,6 @@
 ;;; package.el --- Simple package system for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2007-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2025 Free Software Foundation, Inc.
 
 ;; Author: Tom Tromey <tromey@redhat.com>
 ;;         Daniel Hackney <dan@haxney.org>
@@ -1829,10 +1829,11 @@ Populate `package-archive-contents' with the result.
 If optional argument ASYNC is non-nil, perform the downloads
 asynchronously."
   (dolist (archive package-archives)
-    (condition-case-unless-debug nil
+    (condition-case-unless-debug err
         (package--download-one-archive archive "archive-contents" async)
-      (error (message "Failed to download `%s' archive."
-               (car archive))))))
+      (error (message "Failed to download `%s' archive: %s"
+                      (car archive)
+                      (error-message-string err))))))
 
 (defvar package-refresh-contents-hook (list #'package--download-and-read-archives)
   "List of functions to call to refresh the package archive.
@@ -1856,7 +1857,8 @@ downloads in the background."
     (when (and (package-check-signature) (file-exists-p default-keyring))
       (condition-case-unless-debug error
           (package-import-keyring default-keyring)
-        (error (message "Cannot import default keyring: %S" (cdr error))))))
+        (error (message "Cannot import default keyring: %s"
+                        (error-message-string error))))))
   (run-hook-with-args 'package-refresh-contents-hook async))
 
 
@@ -2649,16 +2651,23 @@ argument, don't ask for confirmation to install packages."
 
 (defun package-isolate (packages &optional temp-init)
   "Start an uncustomized Emacs and only load a set of PACKAGES.
+Interactively, prompt for PACKAGES to load, which should be specified
+separated by commas.
+If called from Lisp, PACKAGES should be a list of packages to load.
 If TEMP-INIT is non-nil, or when invoked with a prefix argument,
-the Emacs user directory is set to a temporary directory."
+the Emacs user directory is set to a temporary directory.
+This command is intended for testing Emacs and/or the packages
+in a clean environment."
   (interactive
    (cl-loop for p in (cl-loop for p in (package--alist) append (cdr p))
 	    unless (package-built-in-p p)
 	    collect (cons (package-desc-full-name p) p) into table
 	    finally return
-	    (list (cl-loop for c in (completing-read-multiple
-                                     "Isolate packages: " table
-                                     nil t)
+	    (list
+             (cl-loop for c in
+                      (completing-read-multiple
+                       "Packages to isolate, as comma-separated list: " table
+                       nil t)
 		           collect (alist-get c table nil nil #'string=))
                   current-prefix-arg)))
   (let* ((name (concat "package-isolate-"
@@ -2864,7 +2873,7 @@ Helper function for `describe-package'."
                                   'action #'package-delete-button-action
                                   'package-desc desc)))
           (incompatible-reason
-           (insert (propertize "Incompatible" 'font-lock-face font-lock-warning-face)
+           (insert (propertize "Incompatible" 'font-lock-face 'font-lock-warning-face)
                    " because it depends on ")
            (if (stringp incompatible-reason)
                (insert "Emacs " incompatible-reason ".")
@@ -3989,8 +3998,9 @@ Return nil if there were no errors; non-nil otherwise."
               (package-delete elt nil 'nosave))
           (error
            (push (package-desc-full-name elt) errors)
-           (message "Error trying to delete `%s': %S"
-                    (package-desc-full-name elt) err)))))
+           (message "Error trying to delete `%s': %s"
+                    (package-desc-full-name elt)
+                    (error-message-string err))))))
     errors))
 
 (defun package--update-selected-packages (add remove)

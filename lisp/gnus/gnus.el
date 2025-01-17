@@ -1,6 +1,6 @@
 ;;; gnus.el --- a newsreader for GNU Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1987-1990, 1993-1998, 2000-2024 Free Software
+;; Copyright (C) 1987-1990, 1993-1998, 2000-2025 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Masanobu UMEDA <umerin@flab.flab.fujitsu.junet>
@@ -1402,9 +1402,14 @@ this variable.  I think."
 	    (string :tag "Address")
 	    (repeat :tag "Options"
 		    :inline t
-		    (list :format "%v"
-			  variable
-			  (sexp :tag "Value"))))))
+                    (radio
+		     (list :tag "Single var" :format "%v"
+			   variable
+			   (sexp :tag "Value"))
+                     (list :tag "Multiple var" :format "%v"
+			   variable
+                           variable
+			   (sexp :tag "Value")))))))
 
 (gnus-redefine-select-method-widget)
 

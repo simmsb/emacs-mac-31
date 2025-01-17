@@ -1,6 +1,6 @@
 /* Fully extensible Emacs, running on Unix, intended for GNU.
 
-Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2024 Free Software
+Copyright (C) 1985-1987, 1993-1995, 1997-1999, 2001-2025 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1281,16 +1281,16 @@ maybe_load_seccomp (int argc, char **argv)
 
 #endif  /* SECCOMP_USABLE */
 
-#if defined HAVE_ANDROID && !defined ANDROID_STUBIFY
-int
-android_emacs_init (int argc, char **argv, char *dump_file)
-#else
 #if HAVE_MACGUI
 int
 emacs_main (int argc, char **argv)
 #else
+#if !defined HAVE_ANDROID || defined ANDROID_STUBIFY
 int
 main (int argc, char **argv)
+#else
+int
+android_emacs_init (int argc, char **argv, char *dump_file)
 #endif
 #endif
 {

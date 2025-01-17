@@ -1,6 +1,6 @@
 Known Problems with GNU Emacs
 
-Copyright (C) 1987-1989, 1993-1999, 2001-2024 Free Software Foundation,
+Copyright (C) 1987-1989, 1993-1999, 2001-2025 Free Software Foundation,
 Inc.
 See the end of the file for license conditions.
 
@@ -484,6 +484,16 @@ of Emacs, building Emacs with the appropriate debug flags enabled, and
 running the just-built Emacs.
 
 * General runtime problems
+
+** GTK+ problems
+
+*** Some tool-bar icons aren't displayed.
+
+This could be caused by lack of support for XPM image format in the
+installed GTK packages.  Some GNU/Linux distros no longer install
+support for those formats by default, so you might need to install
+additional support packages.  E.g., on Fedora you need to install the
+'gdk-pixbuf2-modules-extra' package.
 
 ** Lisp problems
 
@@ -1587,6 +1597,12 @@ See also https://debbugs.gnu.org/cgi/bugreport.cgi?bug=15700,
 https://debbugs.gnu.org/cgi/bugreport.cgi?bug=22000,
 https://debbugs.gnu.org/cgi/bugreport.cgi?bug=22898 and
 https://lists.gnu.org/r/emacs-devel/2016-07/msg00154.html.
+
+*** In Emacs built with GTK+ toolkit, menu-bar background becomes transparent.
+
+This happens when 'alpha-background' is less than 100.  This is due a
+GTK limitation, for which no workaround is currently known,
+unfortunately.
 
 *** Metacity: Resizing Emacs or ALT-Tab causes X to be unresponsive.
 
@@ -3271,11 +3287,6 @@ Files larger than 4GB cause overflow in the size (represented as a
 32-bit integer) reported by 'file-attributes'.  This affects Dired as
 well, since the Windows port uses a Lisp emulation of 'ls', which relies
 on 'file-attributes'.
-
-** Playing sound doesn't support the :data method
-
-Sound playing is not supported with the ':data DATA' key-value pair.
-You _must_ use the ':file FILE' method.
 
 ** Typing Alt-Shift has strange effects on MS-Windows.
 

@@ -1,6 +1,6 @@
 ;;; nnfeed.el --- Generic feed backend for Gnus -*- lexical-binding: t -*-
 
-;; Copyright (C) 2023 Free Software Foundation, Inc.
+;; Copyright (C) 2023, 2025 Free Software Foundation, Inc.
 ;; Author: Daniel Semyonov <daniel@dsemy.com>
 
 ;; This file is part of GNU Emacs.
@@ -64,6 +64,7 @@
 
 (defcustom nnfeed-date-format "%F %X%p"
   "Format of displayed dates (see function `format-time-string')."
+  :version "30.1"
   :type 'string)
 
 (nnoo-declare nnfeed)

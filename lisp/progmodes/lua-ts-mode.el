@@ -1,6 +1,6 @@
 ;;; lua-ts-mode.el --- Major mode for editing Lua files -*- lexical-binding: t -*-
 
-;; Copyright (C) 2023-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2023-2025 Free Software Foundation, Inc.
 
 ;; Author: John Muhl <jm@pub.pink>
 ;; Created: June 27, 2023
@@ -20,6 +20,15 @@
 ;;
 ;; You should have received a copy of the GNU General Public License
 ;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Tree-sitter language versions
+;;
+;; lua-ts-mode is known to work with the following languages and version:
+;; - tree-sitter-lua: v0.2.0-2-g34e60e7
+;;
+;; We try our best to make builtin modes work with latest grammar
+;; versions, so a more recent grammar version has a good chance to work.
+;; Send us a bug report if it doesn't.
 
 ;;; Commentary:
 
@@ -153,11 +162,11 @@ values of OVERRIDE."
                (string-match "\\`--" node-text))
       (treesit-fontify-with-override node-start
                                      delimiter-end
-                                     font-lock-comment-delimiter-face
+                                     'font-lock-comment-delimiter-face
                                      override))
     (treesit-fontify-with-override (max delimiter-end start)
                                    (min node-end end)
-                                   font-lock-comment-face
+                                   'font-lock-comment-face
                                    override)))
 
 (defvar lua-ts--font-lock-settings
@@ -281,7 +290,7 @@ values of OVERRIDE."
           lua-ts--multi-line-comment-start
           (parent-is "comment_content")
           (parent-is "string_content")
-          (node-is "]]"))
+          (or (node-is "]]") (node-is "comment_end")))
       no-indent 0)
      ((and (n-p-gp "field" "table_constructor" "arguments")
            lua-ts--multi-arg-function-call-matcher
@@ -839,7 +848,8 @@ Calls REPORT-FN directly."
 (derived-mode-add-parents 'lua-ts-mode '(lua-mode))
 
 (when (treesit-ready-p 'lua)
-  (add-to-list 'auto-mode-alist '("\\.lua\\'" . lua-ts-mode)))
+  (add-to-list 'auto-mode-alist '("\\.lua\\'" . lua-ts-mode))
+  (add-to-list 'interpreter-mode-alist '("\\<lua\\(?:jit\\)?" . lua-ts-mode)))
 
 (provide 'lua-ts-mode)
 

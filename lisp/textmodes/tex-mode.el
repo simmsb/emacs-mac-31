@@ -1,6 +1,6 @@
 ;;; tex-mode.el --- TeX, LaTeX, and SliTeX mode commands  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1986, 1989, 1992, 1994-1999, 2001-2024 Free
+;; Copyright (C) 1985-1986, 1989, 1992, 1994-1999, 2001-2025 Free
 ;; Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -3070,7 +3070,7 @@ There might be text before point."
 		     '(?\n nil))))
       ;; Anything else is just as for LaTeX.
       (tex-font-lock-syntactic-face-function state)
-    font-lock-doc-face))
+    'font-lock-doc-face))
 
 (eval-when-compile
   (defconst doctex-syntax-propertize-rules

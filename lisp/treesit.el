@@ -1,6 +1,6 @@
 ;;; treesit.el --- tree-sitter utilities -*- lexical-binding: t -*-
 
-;; Copyright (C) 2021-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2021-2025 Free Software Foundation, Inc.
 
 ;; Maintainer: 付禹安 (Yuan Fu) <casouri@gmail.com>
 ;; Keywords: treesit, tree-sitter, languages
@@ -835,6 +835,37 @@ omitted, default END to BEG."
                return rng
                finally return nil))))
 
+;;; Language display name
+
+;; The entries are sorted by `sort-lines'.
+(defvar treesit-language-display-name-alist
+  '(
+    (charp . "C#")
+    (cmake . "CMake")
+    (cpp . "C++")
+    (gomod . "Go Mod")
+    (heex . "HEEx")
+    (json . "JSON")
+    (php . "PHP")
+    (tsx . "TSX")
+    )
+  "An alist mapping language symbols to their display names.
+
+Used by `treesit-language-display-name'.  If there's no mapping for a
+lamguage in this alist, `treesit-language-display-name' converts the
+symbol to the display name by capitalizing the first letter of the
+symbol's name.  Thus, languages like Java, Javascript, Rust don't need
+an entry in this variable.")
+
+(defun treesit-language-display-name (language)
+  "Return the display name (a string) of LANGUAGE (a symbol).
+
+If LANGUAGE has an entry in `treesit-language-display-name-alist', use
+the display name from there.  Otherwise, capitalize the first letter of
+LANGUAGE's name and return the resulting string."
+  (or (alist-get language treesit-language-display-name-alist)
+      (capitalize (symbol-name language))))
+
 ;;; Fontification
 
 (define-error 'treesit-font-lock-error
@@ -866,7 +897,7 @@ debugging:
 
 Currently each SETTING has the form:
 
-    (QUERY ENABLE FEATURE OVERRIDE)
+    (QUERY ENABLE FEATURE OVERRIDE REVERSE)
 
 QUERY must be a compiled query.  See Info node `(elisp)Pattern
 Matching' for how to write a query and compile it.
@@ -880,7 +911,10 @@ which features are enabled with `treesit-font-lock-level' and
 
 OVERRIDE is the override flag for this query.  Its value can be
 t, nil, append, prepend, keep.  See more in
-`treesit-font-lock-rules'.")
+`treesit-font-lock-rules'.
+
+If REVERSED is t, enable the QUERY when FEATURE is not in the feature
+list.")
 
 ;; Follow cl-defstruct naming conventions, in case we use cl-defstruct
 ;; in the future.
@@ -899,6 +933,10 @@ t, nil, append, prepend, keep.  See more in
 (defsubst treesit-font-lock-setting-override (setting)
   "Return the OVERRIDE flag of SETTING in `treesit-font-lock-settings'."
   (nth 3 setting))
+
+(defsubst treesit-font-lock-setting-reversed (setting)
+  "Return the REVERSED flag of SETTING in `treesit-font-lock-settings'."
+  (nth 4 setting))
 
 (defsubst treesit--font-lock-setting-clone-enable (setting)
   "Return enabled SETTING."
@@ -1030,6 +1068,8 @@ Other keywords include:
              `append'   Append the new face to existing ones.
              `prepend'  Prepend the new face to existing ones.
              `keep'     Fill-in regions without an existing face.
+  :reversed  t          Enable the query only if the feature is
+                        NOT in feature list.
   :default-language  LANGUAGE  Every QUERY after this keyword
                                will use LANGUAGE by default.
 
@@ -1064,6 +1104,7 @@ name, it is ignored."
           ;; DEFAULT-LANGUAGE will be chosen when current-language is
           ;; not set.
           default-language
+          current-reversed
           ;; The list this function returns.
           (result nil))
       (while query-specs
@@ -1102,6 +1143,13 @@ name, it is ignored."
                          `("Value of :feature should be a symbol"
                            ,var)))
                (setq current-feature var)))
+            (:reversed
+             (let ((var (pop query-specs)))
+               (when (not (memq var '(t nil)))
+                 (signal 'treesit-font-lock-error
+                         `("Value of :reversed can only be t or nil"
+                           ,var)))
+               (setq current-reversed var)))
             ;; (2) Process query.
             ((pred treesit-query-p)
              (let ((lang (or default-language current-language)))
@@ -1116,12 +1164,14 @@ name, it is ignored."
                  (push `(,(treesit-query-compile lang token)
                          t
                          ,current-feature
-                         ,current-override)
+                         ,current-override
+                         ,current-reversed)
                        result))
                ;; Clears any configurations set for this query.
                (setq current-language nil
                      current-override nil
-                     current-feature nil)))
+                     current-feature nil
+                     current-reversed nil)))
             (_ (signal 'treesit-font-lock-error
                        `("Unexpected value" ,token))))))
       (nreverse result))))
@@ -1190,9 +1240,11 @@ and leave settings for other languages unchanged."
          (additive (or add-list remove-list)))
     (cl-loop for idx = 0 then (1+ idx)
              for setting in treesit-font-lock-settings
-             for lang = (treesit-query-language (nth 0 setting))
-             for feature = (nth 2 setting)
-             for current-value = (nth 1 setting)
+             for lang = (treesit-query-language
+                         (treesit-font-lock-setting-query setting))
+             for feature = (treesit-font-lock-setting-feature setting)
+             for current-value = (treesit-font-lock-setting-enable setting)
+             for reversed = (treesit-font-lock-setting-reversed setting)
              ;; Set the ENABLE flag for the setting if its language is
              ;; relevant.
              if (or (null language)
@@ -1200,7 +1252,9 @@ and leave settings for other languages unchanged."
              do (setf (nth 1 (nth idx treesit-font-lock-settings))
                       (cond
                        ((not additive)
-                        (if (memq feature features) t nil))
+                        (if (not reversed)
+                            (if (memq feature features) t nil)
+                          (if (memq feature features) nil t)))
                        ((memq feature add-list) t)
                        ((memq feature remove-list) nil)
                        (t current-value))))))
@@ -2366,10 +2420,17 @@ delimits medium sized statements in the source code.  It is,
 however, smaller in scope than sentences.  This is used by
 `treesit-forward-sexp' and friends.")
 
+(defun treesit--scan-error (pred arg)
+  (when-let* ((parent (treesit-thing-at (point) pred t))
+              (boundary (treesit-node-child parent (if (> arg 0) -1 0))))
+    (signal 'scan-error (list (format-message "No more %S to move across" pred)
+                              (treesit-node-start boundary)
+                              (treesit-node-end boundary)))))
+
 (defun treesit-forward-sexp (&optional arg)
   "Tree-sitter implementation for `forward-sexp-function'.
 
-ARG is described in the docstring of `forward-sexp-function'.
+ARG is described in the docstring of `forward-sexp'.
 
 If point is inside a text environment where tree-sitter is not
 supported, go forward a sexp using `forward-sexp-default-function'.
@@ -2379,12 +2440,18 @@ signal `scan-error' like `forward-sexp' does.  If point is already
 at top-level, return nil without moving point.
 
 What constitutes as text and source code sexp is determined
-by `text' and `sexp' in `treesit-thing-settings'."
+by `text' and `sexp' in `treesit-thing-settings'.
+
+There is an alternative implementation in `treesit-forward-sexp-list'
+that uses `sexp-list' in `treesit-thing-settings' to move only
+across lists, whereas uses `forward-sexp-default-function' to move
+across atoms (such as symbols or words) inside the list."
   (interactive "^p")
   (let ((arg (or arg 1))
         (pred (or treesit-sexp-type-regexp 'sexp))
         (node-at-point
-         (treesit-node-at (point) (treesit-language-at (point)))))
+         (when (null treesit-sexp-type-regexp)
+           (treesit-node-at (point) (treesit-language-at (point))))))
     (or (when (and node-at-point
                    ;; Make sure point is strictly inside node.
                    (< (treesit-node-start node-at-point)
@@ -2400,44 +2467,190 @@ by `text' and `sexp' in `treesit-thing-settings'."
         ;; the obstacle, like `forward-sexp' does.  If we couldn't
         ;; find a parent, we simply return nil without moving point,
         ;; then functions like `up-list' will signal "at top level".
-        (when-let* ((parent (treesit-thing-at (point) pred t))
-                    (boundary (if (> arg 0)
-                                  (treesit-node-child parent -1)
-                                (treesit-node-child parent 0))))
-          (signal 'scan-error (list "No more sexp to move across"
-                                    (treesit-node-start boundary)
-                                    (treesit-node-end boundary)))))))
+        (treesit--scan-error pred arg))))
+
+(defun treesit-forward-sexp-list (&optional arg)
+  "Alternative tree-sitter implementation for `forward-sexp-function'.
+
+Whereas `treesit-forward-sexp' moves across both lists and atoms
+using `sexp' in `treesit-thing-settings', this function uses
+`sexp-list' in `treesit-thing-settings' to move only across lists.
+But to move across atoms (such as symbols or words) inside the list
+it uses `forward-sexp-default-function' as long as it doesn't go
+outside of the boundaries of the current list.
+
+ARG is described in the docstring of `forward-sexp-function'."
+  (interactive "^p")
+  (let* ((pred (or treesit-sexp-type-regexp 'sexp-list))
+         (arg (or arg 1))
+         (cnt arg)
+         (inc (if (> arg 0) 1 -1)))
+    (while (/= cnt 0)
+      (let* ((default-pos
+              (condition-case _
+                  (save-excursion
+                    (forward-sexp-default-function inc)
+                    (point))
+                (scan-error nil)))
+             (sibling (if (> arg 0)
+                          (treesit-thing-next (point) pred)
+                        (treesit-thing-prev (point) pred)))
+             (current (when default-pos
+                        (treesit-thing-at (point) pred t))))
+        ;; Use 'forward-sexp-default-function' only if it doesn't go
+        ;; over the sibling and doesn't go out of the current group.
+        (or (when (and default-pos
+                       (or (null sibling)
+                           (if (> arg 0)
+                               (<= default-pos (treesit-node-start sibling))
+                             (>= default-pos (treesit-node-end sibling))))
+                       (or (null current)
+                           (if (> arg 0)
+                               (< default-pos (treesit-node-end current))
+                             (> default-pos (treesit-node-start current)))))
+              (goto-char default-pos))
+            (when sibling
+              (goto-char (if (> arg 0)
+                             (treesit-node-end sibling)
+                           (treesit-node-start sibling))))
+            (treesit--scan-error pred arg)))
+      (setq cnt (- cnt inc)))))
+
+(defun treesit-forward-list (&optional arg)
+  "Move forward across a list.
+What constitutes a list is determined by `sexp-list' in
+`treesit-thing-settings' that usually defines
+parentheses-like expressions.
+
+Unlike `forward-sexp', this command moves only across a list,
+but not across atoms (such as symbols or words) inside the list.
+
+This command is the tree-sitter variant of `forward-list'
+redefined by the variable `forward-list-function'.
+
+ARG is described in the docstring of `forward-list'."
+  (interactive "^p")
+  (let ((arg (or arg 1))
+        (pred 'sexp-list))
+    (or (if (> arg 0)
+            (treesit-end-of-thing pred (abs arg) 'restricted)
+          (treesit-beginning-of-thing pred (abs arg) 'restricted))
+        (treesit--scan-error pred arg))))
+
+(defun treesit-down-list (&optional arg)
+  "Move forward down one level of parentheses.
+What constitutes a level of parentheses is determined by
+`sexp-list' in `treesit-thing-settings' that usually defines
+parentheses-like expressions.
+
+This command is the tree-sitter variant of `down-list'
+redefined by the variable `down-list-function'.
+
+ARG is described in the docstring of `down-list'."
+  (interactive "^p")
+  (let* ((pred 'sexp-list)
+         (arg (or arg 1))
+         (cnt arg)
+         (inc (if (> arg 0) 1 -1)))
+    (while (/= cnt 0)
+      (let* ((default-pos
+              (condition-case _
+                  (save-excursion
+                    (down-list-default-function inc)
+                    (point))
+                (scan-error nil)))
+             (sibling (if (> arg 0)
+                          (treesit-thing-next (point) pred)
+                        (treesit-thing-prev (point) pred)))
+             (child (when sibling
+                      (treesit-node-child sibling (if (> arg 0) 0 -1)))))
+        (or (when (and default-pos
+                       (or (null child)
+                           (if (> arg 0)
+                               (<= default-pos (treesit-node-start child))
+                             (>= default-pos (treesit-node-end child)))))
+              (goto-char default-pos))
+            (when child
+              (goto-char (if (> arg 0)
+                             (treesit-node-end child)
+                           (treesit-node-start child))))
+            (treesit--scan-error pred arg)))
+      (setq cnt (- cnt inc)))))
+
+(defun treesit-up-list (&optional arg escape-strings no-syntax-crossing)
+  "Move forward out of one level of parentheses.
+What constitutes a level of parentheses is determined by
+`sexp-list' in `treesit-thing-settings' that usually defines
+parentheses-like expressions.
+
+This command is the tree-sitter variant of `up-list'
+redefined by the variable `up-list-function'.
+
+ARG is described in the docstring of `up-list'."
+  (interactive "^p")
+  (let* ((pred 'sexp-list)
+         (arg (or arg 1))
+         (cnt arg)
+         (inc (if (> arg 0) 1 -1)))
+    (while (/= cnt 0)
+      (let* ((default-pos
+              (condition-case _
+                  (save-excursion
+                    (let ((forward-sexp-function nil))
+                      (up-list-default-function
+                       inc escape-strings no-syntax-crossing))
+                    (point))
+                (scan-error nil)
+                (user-error nil)))
+             (parent (treesit-thing-at (point) pred)))
+        (while (and parent (eq (point) (if (> arg 0)
+                                           (treesit-node-end parent)
+                                         (treesit-node-start parent))))
+          (setq parent (treesit-parent-until parent pred)))
+        (or (when (and default-pos
+                       (or (null parent)
+                           (if (> arg 0)
+                               (<= default-pos (treesit-node-end parent))
+                             (>= default-pos (treesit-node-start parent)))))
+              (goto-char default-pos))
+            (when parent
+              (goto-char (if (> arg 0)
+                             (treesit-node-end parent)
+                           (treesit-node-start parent))))
+            (user-error "At top level")))
+      (setq cnt (- cnt inc)))))
 
 (defun treesit-transpose-sexps (&optional arg)
   "Tree-sitter `transpose-sexps' function.
 ARG is the same as in `transpose-sexps'.
 
-Locate the node closest to POINT, and transpose that node with
-its sibling node ARG nodes away.
+Locate the named node closest to POINT, and transpose that node with
+its named sibling node ARG nodes away.
 
 Return a pair of positions as described by
 `transpose-sexps-function' for use in `transpose-subr' and
 friends."
-  ;; First arrive at the right level at where the node at point is
-  ;; considered a sexp. If sexp isn't defined, or we can't find any
-  ;; node that's a sexp, use the node at point.
-  (let* ((node (or (treesit-thing-at-point 'sexp 'nested)
-                   (treesit-node-at (point))))
-         (parent (treesit-node-parent node))
-         (child (treesit-node-child parent 0 t)))
-    (named-let loop ((prev child)
-                     (next (treesit-node-next-sibling child t)))
-      (when (and prev next)
-        (if (< (point) (treesit-node-end next))
-            (if (= arg -1)
-                (cons (treesit-node-start prev)
-                      (treesit-node-end prev))
-              (when-let* ((n (treesit-node-child
-                              parent (+ arg (treesit-node-index prev t)) t)))
-                (cons (treesit-node-end n)
-                      (treesit-node-start n))))
-          (loop (treesit-node-next-sibling prev t)
-                (treesit-node-next-sibling next t)))))))
+  (let* ((pred #'treesit-node-named)
+         (arg (or arg 1))
+         (cnt arg)
+         (inc (if (> arg 0) 1 -1))
+         (pos (point))
+         first sibling)
+    (while (and pos (/= cnt 0))
+      (setq sibling (if (> arg 0)
+                        (treesit-thing-next pos pred)
+                      (treesit-thing-prev pos pred)))
+      (unless first
+        (setq first (if (> arg 0)
+                        (treesit-node-start sibling)
+                      (treesit-node-end sibling))))
+      (setq pos (when sibling
+                  (if (> arg 0)
+                      (treesit-node-end sibling)
+                    (treesit-node-start sibling))))
+      (setq cnt (- cnt inc)))
+    (or (and sibling (cons pos first))
+        (transpose-sexps-default-function arg))))
 
 ;;; Navigation, defun, things
 ;;
@@ -2857,7 +3070,9 @@ function is called recursively."
           (if (eq tactic 'restricted)
               (setq pos (funcall
                          advance
-                         (cond ((and (null next) (null prev)) parent)
+                         (cond ((and (null next) (null prev)
+                                     (not (eq thing 'sexp-list)))
+                                parent)
                                ((> arg 0) next)
                                (t prev))))
             ;; For `nested', it's a bit more work:
@@ -2989,6 +3204,31 @@ node and returns the name of that defun node.  If NAME-FN is nil,
 `treesit-major-mode-setup' automatically sets up Imenu if this
 variable is non-nil.")
 
+;; `treesit-simple-imenu-settings' doesn't support multiple languages,
+;; and we need to add multi-lang support for Imenu.  One option is to
+;; extend treesit-simple-imenu-settings to specify language, either by
+;; making it optionally an alist (just like
+;; `treesit-aggregated-simple-imenu-settings'), or add a fifth element
+;; to each setting.  But either way makes borrowing Imenu settings from
+;; other modes difficult: with the alist approach, you'd need to check
+;; whether other mode uses a plain list or an alist; with the fifth
+;; element approach, again, you need to check if each setting has the
+;; fifth element, and add it if not.
+;;
+;; OTOH, with `treesit-aggregated-simple-imenu-settings', borrowing
+;; Imenu settings is easy: if `treesit-aggregated-simple-imenu-settings'
+;; is non-nil, copy everything over; if `treesit-simple-imenu-settings'
+;; is non-nil, copy the settings and put them under a language symbol.
+(defvar treesit-aggregated-simple-imenu-settings nil
+  "Settings that configure `treesit-simple-imenu' for multi-language modes.
+
+The value should be an alist of (LANG . SETTINGS), where LANG is a
+language symbol, and SETTINGS has the same form as
+`treesit-simple-imenu-settings'.
+
+When both this variable and `treesit-simple-imenu-settings' are non-nil,
+this variable takes priority.")
+
 (defun treesit--simple-imenu-1 (node pred name-fn)
   "Given a sparse tree, create an Imenu index.
 
@@ -3036,20 +3276,69 @@ ENTRY.  MARKER marks the start of each tree-sitter node."
      ;; Leaf node, return a (list of) plain index entry.
      (t (list (cons name marker))))))
 
+(defun treesit--imenu-merge-entries (entries)
+  "Merge ENTRIES by category.
+
+ENTRIES is a list of (CATEGORY . SUB-ENTRIES...).  Merge them so there's
+no duplicate CATEGORY.  CATEGORY's are strings.  The merge is stable,
+meaning the order of elements are kept."
+  (let ((return-entries nil))
+    (dolist (entry entries)
+      (let* ((category (car entry))
+             (sub-entries (cdr entry))
+             (existing-entries
+              (alist-get category return-entries nil nil #'equal)))
+        (if (not existing-entries)
+            (push entry return-entries)
+          (setf (alist-get category return-entries nil nil #'equal)
+                (append existing-entries sub-entries)))))
+    (nreverse return-entries)))
+
+(defun treesit--generate-simple-imenu (node settings)
+  "Return an Imenu index for NODE with SETTINGS.
+
+NODE usually should be a root node of a parser.  SETTINGS is described
+by `treesit-simple-imenu-settings'."
+  (mapcan (lambda (setting)
+            (pcase-let ((`(,category ,regexp ,pred ,name-fn)
+                         setting))
+              (when-let* ((tree (treesit-induce-sparse-tree
+                                 node regexp))
+                          (index (treesit--simple-imenu-1
+                                  tree pred name-fn)))
+                (if category
+                    (list (cons category index))
+                  index))))
+          settings))
+
 (defun treesit-simple-imenu ()
   "Return an Imenu index for the current buffer."
-  (let ((root (treesit-buffer-root-node)))
-    (mapcan (lambda (setting)
-              (pcase-let ((`(,category ,regexp ,pred ,name-fn)
-                           setting))
-                (when-let* ((tree (treesit-induce-sparse-tree
-                                   root regexp))
-                            (index (treesit--simple-imenu-1
-                                    tree pred name-fn)))
-                  (if category
-                      (list (cons category index))
-                    index))))
-            treesit-simple-imenu-settings)))
+  (if (not treesit-aggregated-simple-imenu-settings)
+      (treesit--generate-simple-imenu
+       (treesit-parser-root-node treesit-primary-parser)
+       treesit-simple-imenu-settings)
+    ;; Use `treesit-aggregated-simple-imenu-settings'.  Remove languages
+    ;; that doesn't have any Imenu entries.
+    (seq-filter
+     #'cdr
+     (mapcar
+      (lambda (entry)
+        (let* ((lang (car entry))
+               (settings (cdr entry))
+               (global-parser (car (treesit-parser-list nil lang)))
+               (local-parsers
+                (treesit-parser-list nil lang 'embedded)))
+          (cons (treesit-language-display-name lang)
+                ;; No one says you can't have both global and local
+                ;; parsers for the same language.  E.g., Rust uses
+                ;; local parsers for the same language to handle
+                ;; macros.
+                (treesit--imenu-merge-entries
+                 (mapcan (lambda (parser)
+                           (treesit--generate-simple-imenu
+                            (treesit-parser-root-node parser) settings))
+                         (cons global-parser local-parsers))))))
+      treesit-aggregated-simple-imenu-settings))))
 
 ;;; Outline minor mode
 
@@ -3123,6 +3412,50 @@ For BOUND, MOVE, BACKWARD, LOOKING-AT, see the descriptions in
       (setq level (1+ level)))
     (if (zerop level) 1 level)))
 
+;;; Show paren mode
+
+(defun treesit-show-paren-data--categorize (pos &optional end-p)
+  (let* ((pred 'sexp-list)
+         (parent (treesit-node-at (if end-p (1- pos) pos)))
+         (_ (while (and parent (not (treesit-node-match-p parent pred t)))
+              (setq parent (treesit-node-parent parent))))
+         (first (when parent (treesit-node-child parent 0)))
+         (first-start (when first (treesit-node-start first)))
+         (first-end (when first (treesit-node-end first)))
+         (last (when parent (treesit-node-child parent -1)))
+         (last-start (when last (treesit-node-start last)))
+         (last-end (when last (treesit-node-end last)))
+         (dir (if show-paren-when-point-inside-paren
+                  (cond
+                   ((and first (<= first-start pos first-end)) 1)
+                   ((and last (<= last-start pos last-end)) -1))
+                (cond
+                 ((and first (= first-start pos)) 1)
+                 ((and last (= pos last-end)) -1)))))
+    (cond
+     ((eq dir 1) (list first-start first-end last-start last-end))
+     ((eq dir -1) (list last-start last-end first-start first-end)))))
+
+(defun treesit-show-paren-data ()
+  "A function suitable for `show-paren-data-function' (which see)."
+  (or (treesit-show-paren-data--categorize (point))
+      (unless (bobp) (treesit-show-paren-data--categorize (point) t))
+      (when show-paren-when-point-in-periphery
+        (let* ((ind-pos (save-excursion (back-to-indentation) (point)))
+               (eol-pos
+                (save-excursion
+                  (end-of-line) (skip-chars-backward " \t" ind-pos) (point))))
+          (cond
+           ((<= (point) ind-pos)
+            (or (treesit-show-paren-data--categorize ind-pos)
+                (unless (bobp)
+                  (treesit-show-paren-data--categorize (1- eol-pos)))))
+           ((>= (point) eol-pos)
+            (unless (bobp)
+              (treesit-show-paren-data--categorize (1- eol-pos)))))))
+      ;; Fall back for parens in e.g. 'for_statement'
+      (show-paren--default)))
+
 ;;; Activating tree-sitter
 
 (defun treesit-ready-p (language &optional quiet)
@@ -3187,7 +3520,8 @@ and `end-of-defun-function'.
 If `treesit-defun-name-function' is non-nil, set up
 `add-log-current-defun'.
 
-If `treesit-simple-imenu-settings' is non-nil, set up Imenu.
+If `treesit-simple-imenu-settings' or
+`treesit-aggregated-simple-imenu-settings' is non-nil, set up Imenu.
 
 If either `treesit-outline-predicate' or `treesit-simple-imenu-settings'
 are non-nil, and Outline minor mode settings don't already exist, setup
@@ -3254,11 +3588,19 @@ before calling this function."
     (setq-local forward-sexp-function #'treesit-forward-sexp)
     (setq-local transpose-sexps-function #'treesit-transpose-sexps))
 
+  (when (treesit-thing-defined-p 'sexp-list nil)
+    (setq-local forward-sexp-function #'treesit-forward-sexp-list)
+    (setq-local forward-list-function #'treesit-forward-list)
+    (setq-local down-list-function #'treesit-down-list)
+    (setq-local up-list-function #'treesit-up-list)
+    (setq-local show-paren-data-function 'treesit-show-paren-data))
+
   (when (treesit-thing-defined-p 'sentence nil)
     (setq-local forward-sentence-function #'treesit-forward-sentence))
 
   ;; Imenu.
-  (when treesit-simple-imenu-settings
+  (when (or treesit-aggregated-simple-imenu-settings
+            treesit-simple-imenu-settings)
     (setq-local imenu-create-index-function
                 #'treesit-simple-imenu))
 
@@ -3278,6 +3620,12 @@ before calling this function."
     (when-let* ((parser (overlay-get ov 'treesit-parser)))
       (treesit-parser-delete parser)
       (delete-overlay ov))))
+
+;;; Helpers
+
+(defun treesit-node-named (node)
+  "Return non-nil if NODE has the property `named'."
+  (treesit-node-check node 'named))
 
 ;;; Debugging
 
@@ -3698,8 +4046,10 @@ covers point.  PARSER-NAME are unique."
   (interactive
    (list (let* ((parser-alist
                  (treesit--explorer-generate-parser-alist))
-                (parser-name (completing-read
-                              "Parser: " (mapcar #'car parser-alist))))
+                (parser-name (if (= (length parser-alist) 1)
+                                 (car parser-alist)
+                               (completing-read
+                                "Parser: " (mapcar #'car parser-alist)))))
            (alist-get parser-name parser-alist
                       nil nil #'equal))))
   (unless treesit-explore-mode
@@ -3739,11 +4089,19 @@ window."
           (unless (memq 'treesit--explorer-tree-mode
                         desktop-modes-not-to-save)
             (push 'treesit--explorer-tree-mode
-                  desktop-modes-not-to-save))))
+                  desktop-modes-not-to-save)))
+        ;; Tell `desktop-save' to not save this minor mode
+        ;; that might disrupt loading the desktop
+        ;; with the prompt to select a parser.
+        (when (boundp 'desktop-minor-mode-table)
+          (unless (member '(treesit-explore-mode nil)
+                          desktop-minor-mode-table)
+            (push '(treesit-explore-mode nil)
+                  desktop-minor-mode-table))))
     ;; Turn off explore mode.
     (remove-hook 'post-command-hook
                  #'treesit--explorer-post-command t)
-    (remove-hook 'post-command-hook
+    (remove-hook 'kill-buffer-hook
                  #'treesit--explorer-kill-explorer-buffer t)
     (treesit--explorer-kill-explorer-buffer)))
 
@@ -3762,14 +4120,16 @@ window."
 
 The value should be an alist where each element has the form
 
-    (LANG . (URL REVISION SOURCE-DIR CC C++))
+    (LANG . (URL REVISION SOURCE-DIR CC C++ COMMIT))
 
 Only LANG and URL are mandatory.  LANG is the language symbol.
 URL is the URL of the grammar's Git repository or a directory
 where the repository has been cloned.
 
-REVISION is the Git tag or branch of the desired version,
-defaulting to the latest default branch.
+REVISION is the Git tag or branch of the desired version, defaulting to
+the latest default branch.  If COMMIT is non-nil, checkout this commit
+hash after cloning the repo.  COMMIT has precedence over REVISION if
+both are non-nil.
 
 SOURCE-DIR is the relative subdirectory in the repository in which
 the grammar's parser.c file resides, defaulting to \"src\".
@@ -3815,6 +4175,12 @@ See `treesit-language-source-alist' for details."
 (defvar treesit--install-language-grammar-out-dir-history nil
   "History for OUT-DIR for `treesit-install-language-grammar'.")
 
+(defvar treesit--install-language-grammar-full-clone nil
+  "If non-nil, do a full clone when cloning git repos.")
+
+(defvar treesit--install-language-grammar-blobless nil
+  "If non-nil, create a blobless clone when cloning git repos.")
+
 ;;;###autoload
 (defun treesit-install-language-grammar (lang &optional out-dir)
   "Build and install the tree-sitter language grammar library for LANG.
@@ -3841,51 +4207,77 @@ nil, the grammar is installed to the standard location, the
                        "Language: "
                        (mapcar #'car treesit-language-source-alist)))
                      'interactive))
-  (when-let* ((recipe
-               (or (assoc lang treesit-language-source-alist)
-                   (if (eq out-dir 'interactive)
-                       (treesit--install-language-grammar-build-recipe
-                        lang)
-                     (signal 'treesit-error `("Cannot find recipe for this language" ,lang)))))
-              (default-out-dir
-               (or (car treesit--install-language-grammar-out-dir-history)
-                   (locate-user-emacs-file "tree-sitter")))
-              (out-dir
-               (if (eq out-dir 'interactive)
-                   (read-string
-                    (format "Install to (default: %s): "
-                            default-out-dir)
-                    nil
-                    'treesit--install-language-grammar-out-dir-history
-                    default-out-dir)
-                 ;; When called non-interactively, OUT-DIR should
-                 ;; default to DEFAULT-OUT-DIR.
-                 (or out-dir default-out-dir))))
-    (condition-case err
-        (progn
-          (apply #'treesit--install-language-grammar-1
-                 (cons out-dir recipe))
+  (let* ((recipe
+          (or (assoc lang treesit-language-source-alist)
+              (if (eq out-dir 'interactive)
+                  (treesit--install-language-grammar-build-recipe
+                   lang)
+                (signal 'treesit-error `("Cannot find recipe for this language" ,lang)))))
+         (default-out-dir
+          (or (car treesit--install-language-grammar-out-dir-history)
+              (locate-user-emacs-file "tree-sitter")))
+         (out-dir
+          (if (eq out-dir 'interactive)
+              (read-string
+               (format "Install to (default: %s): "
+                       default-out-dir)
+               nil
+               'treesit--install-language-grammar-out-dir-history
+               default-out-dir)
+            ;; When called non-interactively, OUT-DIR should
+            ;; default to DEFAULT-OUT-DIR.
+            (or out-dir default-out-dir))))
+    (when recipe
+      (condition-case err
+          (progn
+            (apply #'treesit--install-language-grammar-1
+                   (cons out-dir recipe))
 
-          ;; Check that the installed language grammar is loadable.
-          (pcase-let ((`(,available . ,err)
-                       (treesit-language-available-p lang t)))
-            (if (not available)
-                (display-warning
-                 'treesit
-                 (format "The installed language grammar for %s cannot be located or has problems (%s): %s"
-                         lang (nth 0 err)
-                         (string-join
-                          (mapcar (lambda (x) (format "%s" x))
-                                  (cdr err))
-                          " ")))
-              ;; If success, Save the recipe for the current session.
-              (setf (alist-get lang treesit-language-source-alist)
-                    (cdr recipe)))))
-      (error
-       (display-warning
-        'treesit
-        (format "Error encountered when installing language grammar: %s"
-                err))))))
+            ;; Check that the installed language grammar is loadable.
+            (pcase-let ((`(,available . ,err)
+                         (treesit-language-available-p lang t)))
+              (if (not available)
+                  (display-warning
+                   'treesit
+                   (format "The installed language grammar for %s cannot be located or has problems (%s): %s"
+                           lang (nth 0 err)
+                           (string-join
+                            (mapcar (lambda (x) (format "%s" x))
+                                    (cdr err))
+                            " ")))
+                ;; If success, Save the recipe for the current session.
+                (setf (alist-get lang treesit-language-source-alist)
+                      (cdr recipe)))))
+        (error
+         (display-warning
+          'treesit
+          (format "Error encountered when installing language grammar: %s"
+                  err)))))))
+
+(defun treesit--language-git-revision (repo-dir)
+  "Return the Git revision of the repo in REPO-DIR.
+
+Return the output of \"git describe\". If anything goes wrong, return
+nil."
+  (with-temp-buffer
+    (cond
+     ((eq 0 (call-process "git" nil t nil "-C" repo-dir "describe" "--tags"))
+      (string-trim (buffer-string)))
+     ((eq 0 (progn (erase-buffer)
+                   (call-process "git" nil t nil
+                                 "-C" repo-dir "rev-parse" "HEAD")))
+      (string-trim (buffer-string)))
+     (t nil))))
+
+(defun treesit--language-git-timestamp (repo-dir)
+  "Return the commit date in REPO-DIR in UNIX epoch.
+
+Return nil if failed to run command."
+  (with-temp-buffer
+    (if (eq 0 (call-process
+               "git" nil t nil "-C" repo-dir "log" "-1" "--format=%ct"))
+        (string-to-number (string-trim (buffer-string)))
+      nil)))
 
 (defun treesit--call-process-signal (&rest args)
   "Run `call-process' with ARGS.
@@ -3909,36 +4301,75 @@ content as signal data, and erase buffer afterwards."
   "Clone repo pointed by URL at commit REVISION to WORKDIR.
 
 REVISION may be nil, in which case the cloned repo will be at its
-default branch."
+default branch.
+
+Use shallow clone by default.  Do a full clone when
+`treesit--install-language-grammar-full-clone' is t.  Do a blobless
+clone if `treesit--install-language-grammar-blobless' is t."
   (message "Cloning repository")
   ;; git clone xxx --depth 1 --quiet [-b yyy] workdir
-  (if revision
-      (treesit--call-process-signal
-       "git" nil t nil "clone" url "--depth" "1" "--quiet"
-       "-b" revision workdir)
-    (treesit--call-process-signal
-     "git" nil t nil "clone" url "--depth" "1" "--quiet"
-     workdir)))
+  (let ((args (list "git" nil t nil "clone" url "--quiet")))
+    (when (not treesit--install-language-grammar-full-clone)
+      (setq args (append args (list "--depth" "1"))))
+    (when treesit--install-language-grammar-blobless
+      (setq args (append args (list "--filter=blob:none"))))
+    (when revision
+      (setq args (append args (list "-b" revision))))
+    (setq args (append args (list workdir)))
+    (apply #'treesit--call-process-signal args)))
 
 (defun treesit--install-language-grammar-1
-    (out-dir lang url &optional revision source-dir cc c++)
-  "Install and compile a tree-sitter language grammar library.
+    (out-dir lang url &optional revision source-dir cc c++ commit)
+  "Compile and install a tree-sitter language grammar library.
 
 OUT-DIR is the directory to put the compiled library file.  If it
 is nil, the \"tree-sitter\" directory under user's Emacs
 configuration directory is used (and automatically created if it
 does not exist).
 
-For LANG, URL, REVISION, SOURCE-DIR, GRAMMAR-DIR, CC, C++, see
-`treesit-language-source-alist'.  If anything goes wrong, this
-function signals an error."
-  (let* ((lang (symbol-name lang))
+For LANG, URL, REVISION, SOURCE-DIR, GRAMMAR-DIR, CC, C++, COMMIT, see
+`treesit-language-source-alist'.
+
+Return the git revision of the installed grammar.  The revision is
+generated by \"git describe\".  It only works when
+`treesit--install-language-grammar-full-clone' is t.
+
+If anything goes wrong, this function signals an `treesit-error'."
+  (let* ((default-directory (make-temp-file "treesit-workdir" t))
          (maybe-repo-dir (expand-file-name url))
          (url-is-dir (file-accessible-directory-p maybe-repo-dir))
-         (default-directory (make-temp-file "treesit-workdir" t))
          (workdir (if url-is-dir
                       maybe-repo-dir
                     (expand-file-name "repo")))
+         version)
+    (unwind-protect
+        (with-temp-buffer
+          (if url-is-dir
+              (when revision
+                (treesit--git-checkout-branch workdir revision))
+            (treesit--git-clone-repo url revision workdir))
+          (when commit
+            (treesit--git-checkout-branch workdir commit))
+          (setq version (treesit--language-git-revision workdir))
+          (treesit--build-grammar workdir out-dir lang source-dir cc c++))
+      ;; Remove workdir if it's not a repo owned by user and we
+      ;; managed to create it in the first place.
+      (when (and (not url-is-dir) (file-exists-p workdir))
+        (delete-directory workdir t)))
+    version))
+
+(defun treesit--build-grammar (workdir out-dir lang source-dir cc c++)
+  "Compile a tree-sitter language grammar library.
+
+WORKDIR is the cloned repo's directory.  OUT-DIR is the directory to put
+the compiled library file.  If it is nil, the \"tree-sitter\" directory
+under user's Emacs configuration directory is used (and automatically
+created if it does not exist).
+
+For LANG, SOURCE-DIR, CC, C++, see `treesit-language-source-alist'.
+
+If anything goes wrong, this function signals an `treesit-error'."
+  (let* ((lang (symbol-name lang))
          (source-dir (expand-file-name (or source-dir "src") workdir))
          (cc (or cc (seq-find #'executable-find '("cc" "gcc" "c99"))
                  ;; If no C compiler found, just use cc and let
@@ -3951,103 +4382,53 @@ function signals an error."
          (out-dir (or (and out-dir (expand-file-name out-dir))
                       (locate-user-emacs-file "tree-sitter")))
          (lib-name (concat "libtree-sitter-" lang soext)))
-    (unwind-protect
-        (with-temp-buffer
-          (if url-is-dir
-              (when revision
-                (treesit--git-checkout-branch workdir revision))
-            (treesit--git-clone-repo url revision workdir))
-          ;; We need to go into the source directory because some
-          ;; header files use relative path (#include "../xxx").
-          ;; cd "${sourcedir}"
-          (setq default-directory source-dir)
-          (message "Compiling library")
-          ;; cc -fPIC -c -I. parser.c
-          (treesit--call-process-signal
-           cc nil t nil "-fPIC" "-c" "-I." "parser.c")
-          ;; cc -fPIC -c -I. scanner.c
-          (when (file-exists-p "scanner.c")
-            (treesit--call-process-signal
-             cc nil t nil "-fPIC" "-c" "-I." "scanner.c"))
-          ;; c++ -fPIC -I. -c scanner.cc
-          (when (file-exists-p "scanner.cc")
-            (treesit--call-process-signal
-             c++ nil t nil "-fPIC" "-c" "-I." "scanner.cc"))
-          ;; cc/c++ -fPIC -shared *.o -o "libtree-sitter-${lang}.${soext}"
-          (apply #'treesit--call-process-signal
-                 (if (file-exists-p "scanner.cc") c++ cc)
-                 nil t nil
-                 (if (eq system-type 'cygwin)
-                     `("-shared" "-Wl,-dynamicbase"
-                       ,@(directory-files
-                          default-directory nil
-                          (rx bos (+ anychar) ".o" eos))
-                       "-o" ,lib-name)
-                   `("-fPIC" "-shared"
-                     ,@(directory-files
-                        default-directory nil
-                        (rx bos (+ anychar) ".o" eos))
-                     "-o" ,lib-name)))
-          ;; Copy out.
-          (unless (file-exists-p out-dir)
-            (make-directory out-dir t))
-          (let* ((library-fname (expand-file-name lib-name out-dir))
-                 (old-fname (concat library-fname ".old")))
-            ;; Rename the existing shared library, if any, then
-            ;; install the new one, and try deleting the old one.
-            ;; This is for Windows systems, where we cannot simply
-            ;; overwrite a DLL that is being used.
-            (if (file-exists-p library-fname)
-                (rename-file library-fname old-fname t))
-            (copy-file lib-name (file-name-as-directory out-dir) t t)
-            ;; Ignore errors, in case the old version is still used.
-            (ignore-errors (delete-file old-fname)))
-          (message "Library installed to %s/%s" out-dir lib-name))
-      ;; Remove workdir if it's not a repo owned by user and we
-      ;; managed to create it in the first place.
-      (when (and (not url-is-dir) (file-exists-p workdir))
-        (delete-directory workdir t)))))
-
-;;; Etc
-
-(declare-function find-library-name "find-func.el")
-(defun treesit--check-manual-coverage ()
-  "Print tree-sitter functions missing from the manual in message buffer."
-  (interactive)
-  (require 'find-func)
-  (let ((functions-in-source
-         (with-temp-buffer
-           (insert-file-contents (find-library-name "treesit"))
-           (cl-remove-if
-            (lambda (name) (string-search "treesit--" name))
-            (cl-sort
-             (save-excursion
-               (goto-char (point-min))
-               (cl-loop while (re-search-forward
-                               "^(defun \\([^ ]+\\)" nil t)
-                        collect (match-string-no-properties 1)))
-             #'string<))))
-        (functions-in-manual
-         (with-temp-buffer
-           (insert-file-contents (expand-file-name
-                                  "doc/lispref/parsing.texi"
-                                  source-directory))
-           (insert-file-contents (expand-file-name
-                                  "doc/lispref/modes.texi"
-                                  source-directory))
-           (cl-sort
-            (save-excursion
-              (goto-char (point-min))
-              (cl-loop while (re-search-forward
-                              "^@defun \\([^ ]+\\)" nil t)
-                       collect (match-string-no-properties 1)))
-            #'string<))))
-    (message "Missing: %s"
-             (string-join
-              (cl-remove-if
-               (lambda (name) (member name functions-in-manual))
-               functions-in-source)
-              "\n"))))
+    (with-temp-buffer
+      ;; We need to go into the source directory because some
+      ;; header files use relative path (#include "../xxx").
+      ;; cd "${sourcedir}"
+      (setq default-directory source-dir)
+      (message "Compiling library")
+      ;; cc -fPIC -c -I. parser.c
+      (treesit--call-process-signal
+       cc nil t nil "-fPIC" "-c" "-I." "parser.c")
+      ;; cc -fPIC -c -I. scanner.c
+      (when (file-exists-p "scanner.c")
+        (treesit--call-process-signal
+         cc nil t nil "-fPIC" "-c" "-I." "scanner.c"))
+      ;; c++ -fPIC -I. -c scanner.cc
+      (when (file-exists-p "scanner.cc")
+        (treesit--call-process-signal
+         c++ nil t nil "-fPIC" "-c" "-I." "scanner.cc"))
+      ;; cc/c++ -fPIC -shared *.o -o "libtree-sitter-${lang}.${soext}"
+      (apply #'treesit--call-process-signal
+             (if (file-exists-p "scanner.cc") c++ cc)
+             nil t nil
+             (if (eq system-type 'cygwin)
+                 `("-shared" "-Wl,-dynamicbase"
+                   ,@(directory-files
+                      default-directory nil
+                      (rx bos (+ anychar) ".o" eos))
+                   "-o" ,lib-name)
+               `("-fPIC" "-shared"
+                 ,@(directory-files
+                    default-directory nil
+                    (rx bos (+ anychar) ".o" eos))
+                 "-o" ,lib-name)))
+      ;; Copy out.
+      (unless (file-exists-p out-dir)
+        (make-directory out-dir t))
+      (let* ((library-fname (expand-file-name lib-name out-dir))
+             (old-fname (concat library-fname ".old")))
+        ;; Rename the existing shared library, if any, then
+        ;; install the new one, and try deleting the old one.
+        ;; This is for Windows systems, where we cannot simply
+        ;; overwrite a DLL that is being used.
+        (if (file-exists-p library-fname)
+            (rename-file library-fname old-fname t))
+        (copy-file lib-name (file-name-as-directory out-dir) t t)
+        ;; Ignore errors, in case the old version is still used.
+        (ignore-errors (delete-file old-fname)))
+      (message "Library installed to %s/%s" out-dir lib-name))))
 
 ;;; Shortdocs
 
@@ -4242,6 +4623,22 @@ function signals an error."
    :eval (treesit-pattern-expand '(identifier))
    :eval (treesit-pattern-expand :equal))
 
+  "Tree-sitter things and navigation"
+  (treesit-thing-defined-p
+   :no-eval (treesit-thing-defined-p 'sexp)
+   :eg-result nil)
+  (treesit-thing-definition
+   :no-eval (treesit-thing-defined 'sexp)
+   :eg-result (not ,(rx (or "{" "}" "[" "]" "(" ")" ","))))
+  (treesit-thing-at
+   :no-eval (treesit-thing-at 3943)
+   :eg-result-string "#<treesit-node (identifier) in 3941-3949>")
+  (treesit-thing-next
+   :no-eval (treesit-thing-next 3943 'sexp))
+  (treesit-navigate-thing
+   :no-eval (treesit-navigate-thing 3943 1 'beg 'sexp))
+  (treesit-beginning-of-thing
+   :no-eval (treesit-beginning-of-thing 'defun 1 'nested))
 
   "Parsing a string"
   (treesit-parse-string
@@ -4254,7 +4651,15 @@ function signals an error."
   "Misc"
   (treesit-subtree-stat
    :no-eval (treesit-subtree-stat node)
-   :eg-result (6 33 487)))
+   :eg-result (6 33 487))
+  (treesit-language-abi-version
+   :no-eval (treesit-language-abi-version 'c)
+   :eg-result 14)
+  (treesit-grammar-location
+   :no-eval (treesit-language-abi-version 'c))
+  (treesit-language-display-name
+   :no-eval (treesit-language-display-name 'cpp)
+   :eg-result "C++"))
 
 (provide 'treesit)
 

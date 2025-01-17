@@ -1,6 +1,6 @@
 ;;; minibuffer.el --- Minibuffer and completion functions -*- lexical-binding: t -*-
 
-;; Copyright (C) 2008-2024 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 ;; Package: emacs
@@ -138,6 +138,9 @@ This metadata is an alist.  Currently understood keys are:
    of completions.  Can operate destructively.
 - `cycle-sort-function': function to sort entries when cycling.
    Works like `display-sort-function'.
+- `eager-display': non-nil to request eager display of the
+  completion candidates.  Can also be a function which is invoked
+  after minibuffer setup.
 The metadata of a completion table should be constant between two boundaries."
   (let ((metadata (if (functionp table)
                       (funcall table string pred 'metadata))))
@@ -275,6 +278,15 @@ If DONT-FOLD is non-nil, return a completion table that is
 case sensitive instead."
   (lambda (string pred action)
     (let ((completion-ignore-case (not dont-fold)))
+      (complete-with-action action table string pred))))
+
+(defun completion-table-with-metadata (table metadata)
+  "Return new completion TABLE with METADATA.
+METADATA should be an alist of completion metadata.  See
+`completion-metadata' for a list of supported metadata."
+  (lambda (string pred action)
+    (if (eq action 'metadata)
+        `(metadata . ,metadata)
       (complete-with-action action table string pred))))
 
 (defun completion-table-subvert (table s1 s2)
@@ -1031,6 +1043,25 @@ If the current buffer is not a minibuffer, erase its entire contents."
 (defvar completion-show-inline-help t
   "If non-nil, print helpful inline messages during completion.")
 
+(defcustom completion-eager-display 'auto
+  "Whether completion commands should display *Completions* buffer eagerly.
+
+If the variable is set to t, completion commands show the *Completions*
+buffer always immediately.  Setting the variable to nil disables the
+eager *Completions* display for all commands.
+
+For the value `auto', completion commands show the *Completions* buffer
+immediately only if requested by the completion command.  Completion
+tables can request eager display via the `eager-display' metadata.
+
+See also the variables `completion-category-overrides' and
+`completion-extra-properties' for the `eager-display' completion
+metadata."
+  :type '(choice (const :tag "Never show *Completions* eagerly" nil)
+                 (const :tag "Always show *Completions* eagerly" t)
+                 (const :tag "If requested by the completion command" auto))
+  :version "31.1")
+
 (defcustom completion-auto-help t
   "Non-nil means automatically provide help for invalid completion input.
 If the value is t, the *Completions* buffer is displayed whenever completion
@@ -1179,6 +1210,7 @@ an association list that can specify properties such as:
 - `group-function': function for grouping the completion candidates.
 - `annotation-function': function to add annotations in *Completions*.
 - `affixation-function': function to prepend/append a prefix/suffix.
+- `eager-display': function to show *Completions* eagerly.
 
 Categories are symbols such as `buffer' and `file', used when
 completing buffer and file names, respectively.
@@ -1200,6 +1232,7 @@ possible values are the same as in `completions-sort'.
 - `group-function': function for grouping the completion candidates.
 - `annotation-function': function to add annotations in *Completions*.
 - `affixation-function': function to prepend/append a prefix/suffix.
+- `eager-display': function to show *Completions* eagerly.
 See more description of metadata in `completion-metadata'.
 
 Categories are symbols such as `buffer' and `file', used when
@@ -1247,7 +1280,11 @@ overrides the default specified in `completion-category-defaults'."
            (cons :tag "Completion Affixation"
                  (const :tag "Select one value from the menu."
                         affixation-function)
-                 (choice (function :tag "Custom function"))))))
+                 (choice (function :tag "Custom function")))
+           (cons :tag "Eager display"
+                 (const :tag "Select one value from the menu."
+                        eager-display)
+                 boolean))))
 
 (defun completion--category-override (category tag)
   (or (assq tag (cdr (assq category completion-category-overrides)))
@@ -2498,6 +2535,8 @@ These include:
 `:display-sort-function': Function to sort entries in *Completions*.
 
 `:cycle-sort-function': Function to sort entries when cycling.
+
+`:eager-display': Show the *Completions* buffer eagerly.
 
 See more information about these functions above
 in `completion-metadata'.
@@ -3912,17 +3951,18 @@ the commands start with a \"-\" or a SPC."
 	 trivial)))
 
 (defcustom completion-pcm-leading-wildcard nil
-  "If non-nil, partial-completion completes as if there's a leading wildcard.
+  "If non-nil, partial-completion behaves as if each word is preceded by wildcard.
 
-If nil (the default), partial-completion requires a matching completion
-alternative to have the same beginning as the first \"word\" in the
-minibuffer text, where \"word\" is determined by
+If nil (the default), partial-completion requires each word in a
+matching completion alternative to have the same beginning as each
+\"word\" in the minibuffer text, where \"word\" is determined by
 `completion-pcm-word-delimiters'.
 
 If non-nil, partial-completion allows any string of characters to occur
-at the beginning of a completion alternative, as if a wildcard such as
-\"*\" was present at the beginning of the minibuffer text.  This makes
-partial-completion behave more like the substring completion style."
+at the beginning of each word in a completion alternative, as if a
+wildcard such as \"*\" was present at the beginning of each word.  This
+makes partial-completion behave more like the substring completion
+style."
   :version "31.1"
   :type 'boolean)
 
@@ -3969,7 +4009,7 @@ or a symbol, see `completion-pcm--merge-completions'."
               (setq p0 p)
             (push (substring string p (match-end 0)) pattern)
             ;; `any-delim' is used so that "a-b" also finds "array->beginning".
-            (setq pending 'any-delim)
+            (setq pending (if completion-pcm-leading-wildcard 'prefix 'any-delim))
             (setq p0 (match-end 0))))
         (setq p p0))
 
@@ -4815,7 +4855,19 @@ See `completing-read' for the meaning of the arguments."
                 (setq-local minibuffer--require-match require-match)
                 (setq-local minibuffer--original-buffer buffer)
                 ;; Copy the value from original buffer to the minibuffer.
-                (setq-local completion-ignore-case c-i-c))
+                (setq-local completion-ignore-case c-i-c)
+                ;; Show the completion help eagerly if
+                ;; `completion-eager-display' is t or if eager display
+                ;; has been requested by the completion table.
+                (when completion-eager-display
+                  (let* ((md (completion-metadata
+                              (buffer-substring-no-properties
+                               (minibuffer-prompt-end) (point))
+                              collection predicate))
+                         (fun (completion-metadata-get md 'eager-display)))
+                    (when (or fun (eq completion-eager-display t))
+                      (funcall (if (functionp fun)
+                                   fun #'minibuffer-completion-help))))))
             (read-from-minibuffer prompt initial-input keymap
                                   nil hist def inherit-input-method))))
     (when (and (equal result "") def)
@@ -4987,9 +5039,9 @@ contents."
     (error (minibuffer-complete-and-exit))))
 
 (defun minibuffer-complete-history ()
-  "Complete the minibuffer history as far as possible.
-Like `minibuffer-complete' but completes on the history items
-instead of the default completion table."
+  "Complete as far as possible using the minibuffer history.
+Like `minibuffer-complete' but completes using the history of minibuffer
+inputs for the prompting command, instead of the default completion table."
   (interactive)
   (let* ((history (symbol-value minibuffer-history-variable))
          (completions
@@ -5005,16 +5057,14 @@ instead of the default completion table."
            (lambda () (get-buffer-window "*Completions*" 0))))
       (completion-in-region
        (minibuffer--completion-prompt-end) (point-max)
-       (lambda (string pred action)
-         (if (eq action 'metadata)
-             '(metadata (display-sort-function . identity)
-                        (cycle-sort-function . identity))
-           (complete-with-action action completions string pred)))))))
+       (completion-table-with-metadata
+        completions '((display-sort-function . identity)
+                      (cycle-sort-function . identity)))))))
 
 (defun minibuffer-complete-defaults ()
-  "Complete minibuffer defaults as far as possible.
-Like `minibuffer-complete' but completes on the default items
-instead of the completion table."
+  "Complete as far as possible using the minibuffer defaults.
+Like `minibuffer-complete' but completes using the default items
+provided by the prompting command, instead of the completion table."
   (interactive)
   (when (and (not minibuffer-default-add-done)
              (functionp minibuffer-default-add-function))
@@ -5025,11 +5075,9 @@ instead of the completion table."
          (lambda () (get-buffer-window "*Completions*" 0))))
     (completion-in-region
      (minibuffer--completion-prompt-end) (point-max)
-     (lambda (string pred action)
-       (if (eq action 'metadata)
-           '(metadata (display-sort-function . identity)
-                      (cycle-sort-function . identity))
-         (complete-with-action action completions string pred))))))
+     (completion-table-with-metadata
+      completions '((display-sort-function . identity)
+                    (cycle-sort-function . identity))))))
 
 (define-key minibuffer-local-map [?\C-x up] 'minibuffer-complete-history)
 (define-key minibuffer-local-map [?\C-x down] 'minibuffer-complete-defaults)

@@ -2838,9 +2838,6 @@ mac_scroll_run (struct window *w, struct run *run)
   struct frame *f = XFRAME (w->frame);
   int x, y, width, height, from_y, to_y, bottom_y;
 
-  if (FRAME_OBSCURED_P (f))
-    return;
-
   /* Get frame-relative bounding box of the text display area of W,
      without mode lines.  Include in this box the left and right
      fringe of W.  */
@@ -4320,7 +4317,7 @@ mac_handle_visibility_change (struct frame *f)
 	visible = 2;
     }
 
-  if (!FRAME_VISIBLE_P (f) && visible)
+  if (visible)
     {
       if (FRAME_CHECK_FULLSCREEN_NEEDED_P (f))
 	mac_check_fullscreen (f);
@@ -4334,9 +4331,9 @@ mac_handle_visibility_change (struct frame *f)
 	  kbd_buffer_store_event (&buf);
 	}
     }
-  else if (FRAME_OBSCURED_P (f) && visible == 1)
+  else if (visible == 1)
     SET_FRAME_GARBAGED (f);
-  else if (FRAME_VISIBLE_P (f) && !visible)
+  else if (!visible)
     if (iconified)
       {
 	EVENT_INIT (buf);
