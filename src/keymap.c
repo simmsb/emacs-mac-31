@@ -1745,12 +1745,22 @@ like in the respective argument of `key-binding'.  */)
 		  && XFIXNUM (pos) >= 0
 		  && XFIXNUM (pos) < SCHARS (string))
 		{
-		  Lisp_Object map = Fget_text_property (pos, Qlocal_map, string);
-		  if (!NILP (map))
+		  Lisp_Object map = Fget_text_property (pos, Qlocal_map,
+							string);
+		  Lisp_Object pos_area = POSN_POSN (position);
+		  /* For clicks on mode line or header line, override
+		     the maps we found at POSITION unconditionally, even
+		     if the corresponding properties of the mode- or
+		     header-line string are nil, because propertries at
+		     point are not relevant in that case.  */
+		  if (!NILP (map)
+		      || EQ (pos_area, Qmode_line)
+		      || EQ (pos_area, Qheader_line))
 		    local_map = map;
-
 		  map = Fget_text_property (pos, Qkeymap, string);
-		  if (!NILP (map))
+		  if (!NILP (map)
+		      || EQ (pos_area, Qmode_line)
+		      || EQ (pos_area, Qheader_line))
 		    keymap = map;
 		}
 	    }
