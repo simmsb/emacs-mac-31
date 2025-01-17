@@ -634,7 +634,8 @@ at least 3 (which is the default value)."
                                        '("jsx_element"
                                          "jsx_self_closing_element"))))
                    (text ,(regexp-opt '("comment"
-                                        "template_string"))))))
+                                        "template_string"))
+                         'symbols))))
 
     ;; Font-lock.
     (setq-local treesit-font-lock-settings
