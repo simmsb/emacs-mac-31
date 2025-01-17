@@ -482,7 +482,7 @@ See `treesit-thing-settings' for more information.")
   "Nodes that designate sexps in TypeScript.
 See `treesit-thing-settings' for more information.")
 
-(defvar typescript-ts-mode--sexp-list-nodes
+(defvar typescript-ts-mode--list-nodes
   '("export_clause"
     "named_imports"
     "statement_block"
@@ -536,7 +536,7 @@ This mode is intended to be inherited by concrete major modes."
   (setq-local treesit-thing-settings
               `((typescript
                  (sexp ,(regexp-opt typescript-ts-mode--sexp-nodes 'symbols))
-                 (sexp-list ,(regexp-opt typescript-ts-mode--sexp-list-nodes
+                 (list ,(regexp-opt typescript-ts-mode--list-nodes
                                          'symbols))
                  (sentence ,(regexp-opt
                              typescript-ts-mode--sentence-nodes 'symbols))
@@ -621,9 +621,9 @@ at least 3 (which is the default value)."
                    (sexp ,(regexp-opt
                            (append typescript-ts-mode--sexp-nodes
                                    '("jsx"))))
-                   (sexp-list ,(concat "^"
+                   (list ,(concat "^"
                                        (regexp-opt
-                                        (append typescript-ts-mode--sexp-list-nodes
+                                        (append typescript-ts-mode--list-nodes
                                                 '(
                                                   "jsx_element"
                                                   "jsx_self_closing_element"
@@ -693,7 +693,11 @@ at least 3 (which is the default value)."
                                      ne t)
              (put-text-property
               (match-beginning 0) (match-end 0)
-              'syntax-table (string-to-syntax ".")))))))))
+              'syntax-table (string-to-syntax
+                             (cond
+                              ((equal (match-string 0) "<") "(<")
+                              ((equal (match-string 0) ">") ")>")
+                              (t ".")))))))))))
 
 (if (treesit-ready-p 'tsx)
     (add-to-list 'auto-mode-alist '("\\.tsx\\'" . tsx-ts-mode)))
