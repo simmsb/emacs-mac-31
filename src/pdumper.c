@@ -226,6 +226,8 @@ enum
    EMACS_RELOC_LENGTH_BITS = DUMP_OFF_WIDTH - EMACS_RELOC_TYPE_BITS
   };
 
+static_assert (RELOC_EMACS_EMACS_LV <= (1 << EMACS_RELOC_TYPE_BITS));
+
 struct emacs_reloc
 {
   ENUM_BF (emacs_reloc_type) type : EMACS_RELOC_TYPE_BITS;
@@ -675,8 +677,8 @@ static Lisp_Object
 dump_ptr_referrer (const char *label, void const *address)
 {
   char buf[128];
-  buf[0] = '\0';
-  sprintf (buf, "%s @ %p", label, address);
+  if (sizeof buf <= snprintf (buf, sizeof buf, "%s @ %p", label, address))
+    strcpy (buf + sizeof buf - 4, "...");
   return build_string (buf);
 }
 
@@ -2734,7 +2736,7 @@ dump_hash_table_contents (struct dump_context *ctx, struct Lisp_Hash_Table *h)
 static dump_off
 dump_hash_table (struct dump_context *ctx, Lisp_Object object)
 {
-#if CHECK_STRUCTS && !defined HASH_Lisp_Hash_Table_0360833954
+#if CHECK_STRUCTS && !defined HASH_Lisp_Hash_Table_267C58D687
 # error "Lisp_Hash_Table changed. See CHECK_STRUCTS comment in config.h."
 #endif
   const struct Lisp_Hash_Table *hash_in = XHASH_TABLE (object);
@@ -3143,8 +3145,10 @@ dump_vectorlike (struct dump_context *ctx,
     case PVEC_TS_NODE:
       break;
     }
-  char msg[60];
-  snprintf (msg, sizeof msg, "pseudovector type %d", (int) ptype);
+  int iptype = ptype;
+  static char const fmt[] = "pseudovector type %d";
+  char msg[sizeof fmt - sizeof "%d" + INT_STRLEN_BOUND (iptype) + 1];
+  sprintf (msg, fmt, iptype);
   error_unsupported_dump_object (ctx, lv, msg);
 }
 
@@ -3238,7 +3242,8 @@ dump_object (struct dump_context *ctx, Lisp_Object object)
     case Lisp_Float:
       offset = dump_float (ctx, XFLOAT (object));
       break;
-    case_Lisp_Int:
+    case Lisp_Int0:
+    case Lisp_Int1:
       eassert ("should not be dumping int: is self-representing" && 0);
       abort ();
     default:
