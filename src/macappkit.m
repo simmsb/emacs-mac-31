@@ -9441,7 +9441,7 @@ update_frame_tool_bar (struct frame *f)
 		Lisp_Object names = Qnil;
 		if (!NILP (specified_file)
 		    && !NILP (Ffboundp (Qmac_map_system_symbol)))
-		  names = call1 (Qmac_map_system_symbol, specified_file);
+		  names = calln (Qmac_map_system_symbol, specified_file);
 
 		if (CONSP (names))
 		  {

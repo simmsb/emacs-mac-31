@@ -2093,7 +2093,7 @@ containing an unresolvable alias.  */)
      call the corresponding file handler.  */
   handler = Ffind_file_name_handler (filename, Qmac_file_alias_p);
   if (!NILP (handler))
-    return call2 (handler, Qmac_file_alias_p, filename);
+    return calln (handler, Qmac_file_alias_p, filename);
 
   block_input ();
   encoded_filename = ENCODE_FILE (filename);
@@ -2192,7 +2192,7 @@ DEFUN ("system-move-file-to-trash", Fsystem_move_file_to_trash,
 
   handler = Ffind_file_name_handler (filename, operation);
   if (!NILP (handler))
-    return call2 (handler, operation, filename);
+    return calln (handler, operation, filename);
 
   encoded_file = ENCODE_FILE (filename);
 

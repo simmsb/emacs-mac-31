@@ -570,9 +570,8 @@ init_cmdargs (int argc, char **argv, int skip_args, char const *original_pwd)
 	{
 	  if (NILP (Vpurify_flag))
 	    {
-	      Lisp_Object file_truename = intern ("file-truename");
-	      if (!NILP (Ffboundp (file_truename)))
-		dir = call1 (file_truename, dir);
+	      if (!NILP (Ffboundp (Qfile_truename)))
+		dir = calln (Qfile_truename, dir);
 	    }
 	  dir = Fexpand_file_name (build_string ("../../../../src"), dir);
 	}
