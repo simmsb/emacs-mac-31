@@ -463,7 +463,7 @@ File Handling
 * Copying and Naming::  Copying, naming and renaming files.
 * Misc File Ops::       Other things you can do on files.
 * Compressed Files::    Accessing compressed files.
-* File Archives::       Operating on tar, zip, jar etc. archive files.
+* File Archives::       Operating on tar, zip, jar etc.@: archive files.
 * Remote Files::        Accessing files on other machines.
 * Quoted File Names::   Quoting special characters in file names.
 * File Name Cache::     Completion against a list of files you often use.
@@ -589,7 +589,7 @@ International Character Set Support
 
 Major and Minor Modes
 
-* Major Modes::         Text mode vs. Lisp mode vs. C mode...
+* Major Modes::         Text mode vs.@: Lisp mode vs.@: C mode...
 * Minor Modes::         Each minor mode is a feature you can turn on
                           independently of any others.
 * Choosing Modes::      How modes are chosen when visiting files.
@@ -910,7 +910,7 @@ Tags Tables
 Merging Files with Emerge
 
 * Overview of Emerge::  How to start Emerge.  Basic concepts.
-* Submodes of Emerge::  Fast mode vs. Edit mode.
+* Submodes of Emerge::  Fast mode vs.@: Edit mode.
                           Skip Prefers mode and Auto Advance mode.
 * State of Difference:: You do the merge by specifying state A or B
                           for each difference.
@@ -1122,7 +1122,7 @@ Hyperlinking and Navigation Features
 * Embedded WebKit Widgets:: Embedding browser widgets in Emacs buffers.
 * Browse-URL::          Following URLs.
 * Goto Address mode::   Activating URLs.
-* FFAP::                Finding files etc. at point.
+* FFAP::                Finding files etc.@: at point.
 
 Emacs Lisp Packages
 

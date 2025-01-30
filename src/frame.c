@@ -1098,8 +1098,9 @@ make_frame (bool mini_p)
   {
     Lisp_Object buf = Fcurrent_buffer ();
 
-    /* If current buffer is hidden, try to find another one.  */
-    if (BUFFER_HIDDEN_P (XBUFFER (buf)))
+    /* If the current buffer is hidden and shall not be exposed, try to find
+       another one.  */
+    if (BUFFER_HIDDEN_P (XBUFFER (buf)) && NILP (expose_hidden_buffer))
       buf = other_buffer_safely (buf);
 
     /* Use set_window_buffer, not Fset_window_buffer, and don't let
@@ -1287,8 +1288,6 @@ static struct frame *
 make_terminal_frame (struct terminal *terminal, Lisp_Object parent,
 		     Lisp_Object params)
 {
-  char name[sizeof "F" + INT_STRLEN_BOUND (tty_frame_count)];
-
   if (!terminal->name)
     error ("Terminal is not live, can't create new frames on it");
 
@@ -1368,7 +1367,7 @@ make_terminal_frame (struct terminal *terminal, Lisp_Object parent,
   XSETFRAME (frame, f);
   Vframe_list = Fcons (frame, Vframe_list);
 
-  fset_name (f, make_formatted_string (name, "F%"PRIdMAX, ++tty_frame_count));
+  fset_name (f, make_formatted_string ("F%"PRIdMAX, ++tty_frame_count));
 
   SET_FRAME_VISIBLE (f, true);
 
@@ -3305,19 +3304,13 @@ DEFUN ("frame-visible-p", Fframe_visible_p, Sframe_visible_p,
 Return the symbol `icon' if FRAME is iconified or \"minimized\".
 Return nil if FRAME was made invisible, via `make-frame-invisible'.
 On graphical displays, invisible frames are not updated and are
-usually not displayed at all, even in a window system's \"taskbar\".
-
-If FRAME is a text terminal frame, this always returns t.
-Such frames are always considered visible, whether or not they are
-currently being displayed on the terminal.  */)
+usually not displayed at all, even in a window system's \"taskbar\".  */)
   (Lisp_Object frame)
 {
   CHECK_LIVE_FRAME (frame);
   struct frame *f = XFRAME (frame);
 
   if (FRAME_VISIBLE_P (f))
-    return Qt;
-  else if (is_tty_root_frame (f))
     return Qt;
   if (FRAME_ICONIFIED_P (f))
     return Qicon;
@@ -3520,14 +3513,12 @@ set_term_frame_name (struct frame *f, Lisp_Object name)
   /* If NAME is nil, set the name to F<num>.  */
   if (NILP (name))
     {
-      char namebuf[sizeof "F" + INT_STRLEN_BOUND (tty_frame_count)];
-
       /* Check for no change needed in this very common case
 	 before we do any consing.  */
       if (frame_name_fnn_p (SSDATA (f->name), SBYTES (f->name)))
 	return;
 
-      name = make_formatted_string (namebuf, "F%"PRIdMAX, ++tty_frame_count);
+      name = make_formatted_string ("F%"PRIdMAX, ++tty_frame_count);
     }
   else
     {
@@ -4954,7 +4945,6 @@ gui_report_frame_params (struct frame *f, Lisp_Object *alistptr)
 {
   Lisp_Object tem;
   uintmax_t w;
-  char buf[INT_BUFSIZE_BOUND (w)];
 
   /* Represent negative positions (off the top or left screen edge)
      in a way that Fmodify_frame_parameters will understand correctly.  */
@@ -5005,7 +4995,7 @@ gui_report_frame_params (struct frame *f, Lisp_Object *alistptr)
      warnings.  */
   w = (uintptr_t) FRAME_NATIVE_WINDOW (f);
   store_in_alist (alistptr, Qwindow_id,
-		  make_formatted_string (buf, "%"PRIuMAX, w));
+		  make_formatted_string ("%"PRIuMAX, w));
 #ifdef HAVE_X_WINDOWS
 #ifdef USE_X_TOOLKIT
   /* Tooltip frame may not have this widget.  */
@@ -5013,7 +5003,7 @@ gui_report_frame_params (struct frame *f, Lisp_Object *alistptr)
 #endif
     w = (uintptr_t) FRAME_OUTER_WINDOW (f);
   store_in_alist (alistptr, Qouter_window_id,
-		  make_formatted_string (buf, "%"PRIuMAX, w));
+		  make_formatted_string ("%"PRIuMAX, w));
 #endif
   store_in_alist (alistptr, Qicon_name, f->icon_name);
   store_in_alist (alistptr, Qvisibility,
@@ -7174,11 +7164,11 @@ Gtk+ tooltips are not used) and on Windows.  */);
   tooltip_reuse_hidden_frame = false;
 
   DEFVAR_BOOL ("use-system-tooltips", use_system_tooltips,
-	       doc: /* Use the toolkit to display tooltips.
-This option is only meaningful when Emacs is built with GTK+ or Haiku
-windowing support, and results in tooltips that look like those
-displayed by other GTK+ or Haiku programs, but will not be able to
-display text properties inside tooltip text.  */);
+	       doc: /* Whether to use the toolkit to display tooltips.
+This option is only meaningful when Emacs is built with GTK+, NS or Haiku
+windowing support, and, if it's non-nil (the default), it results in
+tooltips that look like those displayed by other GTK+/NS/Haiku programs,
+but will not be able to display text properties inside tooltip text.  */);
   use_system_tooltips = true;
 
   DEFVAR_LISP ("iconify-child-frame", iconify_child_frame,
@@ -7195,6 +7185,20 @@ attempt is not honored by all window managers and may even lead to
 making the child frame unresponsive to user actions, the default is to
 iconify the top level frame instead.  */);
   iconify_child_frame = Qiconify_top_level;
+
+  DEFVAR_LISP ("expose-hidden-buffer", expose_hidden_buffer,
+	       doc: /* Non-nil means to make a hidden buffer more visible.
+A buffer is considered "hidden" if its name starts with a space.  By
+default, many functions disregard hidden buffers.  In particular,
+`make-frame' does not show the current buffer in the new frame's
+selected window if that buffer is hidden.  Rather, `make-frame' will
+show a buffer that is not hidden instead.
+
+If this variable is non-nil, it will override the default behavior and
+allow `make-frame' to show the current buffer even if its hidden.  */);
+  expose_hidden_buffer = Qnil;
+  DEFSYM (Qexpose_hidden_buffer, "expose-hidden-buffer");
+  Fmake_variable_buffer_local (Qexpose_hidden_buffer);
 
   DEFVAR_LISP ("frame-internal-parameters", frame_internal_parameters,
 	       doc: /* Frame parameters specific to every frame.  */);
