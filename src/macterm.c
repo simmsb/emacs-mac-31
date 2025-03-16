@@ -1806,34 +1806,38 @@ mac_draw_box_rect (struct glyph_string *s,
 
 static void
 mac_draw_rounded_rect (struct glyph_string *s,
-		   int left_x, int top_y, int right_x, int bottom_y, int width,
+		   int left_x, int top_y, int right_x, int bottom_y, int hwidth, int vwidth,
 		   bool left_p, bool right_p,
 		   NativeRectangle *clip_rect)
 {
-  int hwidth = right_x - left_x + 1;
-  int vwidth = bottom_y - top_y + 1;
+  int width = right_x - left_x + 1;
+  int height = bottom_y - top_y + 1;
 
   CGFloat radius = 3.0;
 
   GC gc = s->gc;
+
+
+  CGRect rect = CGRectMake (left_x, top_y, width, height);
+  struct frame *f = s->f;
 
   XGCValues xgcv;
 
   mac_get_gc_values (gc, GCForeground, &xgcv);
   mac_set_foreground (gc, s->face->box_color);
 
-  CGRect rect = CGRectMake (left_x, top_y, hwidth, vwidth);
-  struct frame *f = s->f;
-
   unsigned int background = FRAME_BACKGROUND_PIXEL(s->f);
+  unsigned int fill_colour = s->face->background;
 
   MAC_BEGIN_DRAW_TO_FRAME (f, gc, rect, context);
 
-  CGRect mrect = CGRectMake (0, 0, hwidth, vwidth);
+
+  CGRect mrect = CGRectMake (0, 0, width, height);
   CGFloat minx = CGRectGetMinX(mrect), midx = CGRectGetMidX(mrect), maxx = CGRectGetMaxX(mrect);
   CGFloat miny = CGRectGetMinY(mrect), midy = CGRectGetMidY(mrect), maxy = CGRectGetMaxY(mrect);
 
-  CGContextRef tc = CGBitmapContextCreate(NULL, hwidth, vwidth, 8, 0, NULL, kCGImageAlphaOnly);
+  // construct a mask of a filled rounded rectangle, we'll use this to stamp the corners
+  CGContextRef tc = CGBitmapContextCreate(NULL, width, height, 8, 0, NULL, kCGImageAlphaOnly);
   CGColorRef alpha = CGColorCreateGenericGray(1.0, 1.0);
   CGContextSetFillColorWithColor(tc, alpha);
   CGContextMoveToPoint(tc, minx, midy);
@@ -1858,12 +1862,44 @@ mac_draw_rounded_rect (struct glyph_string *s,
   CGImageRelease(maskImg);
 
   CGContextSaveGState(context);
+  CGColorRef fill = mac_cg_color_create(fill_colour, 0);
+  CGContextSetFillColorWithColor(context, fill);
+  CGColorRelease(fill);
+
+  // top
+  {
+    CGRect rect = CGRectMake (left_x, top_y, right_x - left_x + 1, hwidth);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Left.  */
+  if (left_p) {
+    CGRect rect = CGRectMake (left_x, top_y, vwidth, bottom_y - top_y + 1);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Bottom.  */
+  {
+    CGRect rect = CGRectMake (left_x, bottom_y - hwidth + 1, right_x - left_x + 1, hwidth);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Right.  */
+  if (right_p) {
+    CGRect rect = CGRectMake (right_x - vwidth + 1, top_y, vwidth, bottom_y - top_y + 1);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  CGContextRestoreGState(context);
+
+  // Stamp the background using the mask
+  CGContextSaveGState(context);
   CGContextClipToMask(context, rect, finalMaskImage);
   CGColorRef color = mac_cg_color_create(background, 0);
   CGContextSetFillColorWithColor(context, color);
+  CGColorRelease(color);
   CGContextFillRects(context, &rect, 1);
   CGImageRelease(finalMaskImage);
-  CGColorRelease(color);
   CGContextRestoreGState(context);
 
   minx = CGRectGetMinX(rect), midx = CGRectGetMidX(rect), maxx = CGRectGetMaxX(rect);
@@ -1960,7 +1996,7 @@ mac_draw_glyph_string_box (struct glyph_string *s)
 
   if (s->face->box == FACE_SIMPLE_BOX)
     mac_draw_rounded_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
-		       left_p, right_p, &clip_rect);
+		       vwidth, left_p, right_p, &clip_rect);
     /* mac_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth, */
     /* 		       vwidth, left_p, right_p, &clip_rect); */
   else
