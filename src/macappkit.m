@@ -5216,7 +5216,8 @@ mac_set_frame_window_background (struct frame *f, unsigned long color)
 	  + BLUE_FROM_ULONG (color)) >= (int) (0xff * 3 * .6)
 	 ? NSAppearanceNameVibrantLight : NSAppearanceNameVibrantDark);
 
-      window.appearanceCustomization.appearance =
+      window.titlebarAppearsTransparent = true;
+      window.appearance =
 	[NSAppearance appearanceNamed:name];
     });
 }
