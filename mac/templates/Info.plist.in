@@ -569,7 +569,9 @@ along with GNU Emacs Mac port.  If not, see <http://www.gnu.org/licenses/>.
 	<key>CFBundleExecutable</key>
 	<string>Emacs</string>
 	<key>CFBundleIconFile</key>
-	<string>Emacs.icns</string>
+	<string>Assets.car</string>
+	<key>CFBundleIconName</key>
+	<string>EmacsLG1</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.gnu.Emacs</string>
 	<key>CFBundleInfoDictionaryVersion</key>
