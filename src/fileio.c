@@ -4038,9 +4038,9 @@ DEFUN ("insert-file-contents", Finsert_file_contents, Sinsert_file_contents,
        doc: /* Insert contents of file FILENAME after point.
 Returns list of absolute file name and number of characters inserted.
 If second argument VISIT is non-nil, the buffer's visited filename and
-last save file modtime are set, and it is marked unmodified.  If
-visiting and the file does not exist, visiting is completed before the
-error is signaled.
+last save file modtime are set, and it is marked unmodified.  Signal an
+error if FILENAME cannot be read or is a directory.  If visiting and the
+file does not exist, visiting is completed before the error is signaled.
 
 The optional third and fourth arguments BEG and END specify what portion
 of the file to insert.  These arguments count bytes in the file, not
@@ -4186,6 +4186,16 @@ by calling `format-decode', which see.  */)
     struct stat st;
     if (emacs_fd_fstat (fd, &st) < 0)
       report_file_error ("Input file status", orig_filename);
+
+    /* Normally there is no need for an S_ISDIR test here,
+       as the first 'read' syscall will fail with EISDIR.
+       However, for backwards compatibility to traditional Unix,
+       POSIX allows 'read' to succeed on directories.
+       So do an explicit S_ISDIR test now, so that callers can rely on
+       this function rejecting directories on all platforms.  */
+    if (S_ISDIR (st.st_mode))
+      report_file_errno ("Read error", orig_filename, EISDIR);
+
     regular = S_ISREG (st.st_mode) != 0;
     bool memory_object = S_TYPEISSHM (&st) || S_TYPEISTMO (&st);
 
@@ -4243,22 +4253,18 @@ by calling `format-decode', which see.  */)
 
   /* Check now whether the buffer will become too large,
      in the likely case where the file's length is not changing.
-     This saves a lot of needless work before a buffer overflow.  */
-  if (regular)
+     This saves a lot of needless work before a buffer overflow.
+     If LIKELY_END is nonnegative, it is likely where we will stop reading.
+     We could read more (or less), if the file grows (or shrinks).  */
+  off_t likely_end = min (end_offset, file_size_hint);
+  if (beg_offset < likely_end)
     {
-      /* The likely offset where we will stop reading.  We could read
-	 more (or less), if the file grows (or shrinks) as we read it.  */
-      off_t likely_end = min (end_offset, file_size_hint);
-
-      if (beg_offset < likely_end)
-	{
-	  ptrdiff_t buf_bytes
-	    = Z_BYTE - (!NILP (replace) ? ZV_BYTE - BEGV_BYTE  : 0);
-	  ptrdiff_t buf_growth_max = BUF_BYTES_MAX - buf_bytes;
-	  off_t likely_growth = likely_end - beg_offset;
-	  if (buf_growth_max < likely_growth)
-	    buffer_overflow ();
-	}
+      ptrdiff_t buf_bytes
+	= Z_BYTE - (!NILP (replace) ? ZV_BYTE - BEGV_BYTE  : 0);
+      ptrdiff_t buf_growth_max = BUF_BYTES_MAX - buf_bytes;
+      off_t likely_growth = likely_end - beg_offset;
+      if (buf_growth_max < likely_growth)
+	buffer_overflow ();
     }
 
   /* Prevent redisplay optimizations.  */
@@ -4891,8 +4897,9 @@ by calling `format-decode', which see.  */)
 	else
 	  {
 	    buf = (char *) BEG_ADDR + PT_BYTE - BEG_BYTE + inserted;
-	    bufsize = min (min (gap_size, total - inserted), IO_BUFSIZE);
+	    bufsize = min (gap_size, IO_BUFSIZE);
 	  }
+	bufsize = min (bufsize, total - inserted);
 
 	if (!seekable && end_offset == TYPE_MAXIMUM (off_t))
 	  {
