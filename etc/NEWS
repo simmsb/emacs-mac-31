@@ -229,6 +229,13 @@ that your popup interface uses for a more integrated experience.
 ('completion-preview-sort-function' was already present in Emacs 30.1,
 but as a plain Lisp variable, not a user option.)
 
+** Mouse
+
+---
+*** context-menu-mode now includes a "Send to..." menu item.
+The menu item enables sending current file(s) or region text to external
+(non-Emacs) applications or services.  See send-to.el for customisations.
+
 ** Windows
 
 +++
@@ -258,7 +265,9 @@ deleted implicitly by functions like 'kill-buffer', 'bury-buffer' and
 +++
 *** New user option 'quit-window-kill-buffer'.
 This option specifies whether 'quit-window' should preferably kill or
-bury the buffer shown by the window to quit.
+bury the buffer shown by the window to quit.  The default is nil.
+Customize it to t to always kill the buffer; customize to a list of
+major mode to kill if the buffer's major mode is one of those.
 
 +++
 *** New user option 'kill-buffer-quit-windows'.
@@ -2499,6 +2508,9 @@ instead, which gives the time offset as +/-hh or +/-hh:mm.  A designator
 "Z" for UTC time is also supported.  Less formal space-separated time
 formats, like "2025-06-04 13:21:00 EDT", without the ISO 8601 "T"
 separator, are also supported.
+
+---
+** The obsolete variable 'load-convert-to-unibyte' has been removed.
 
 
 * Lisp Changes in Emacs 31.1

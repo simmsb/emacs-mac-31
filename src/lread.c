@@ -238,7 +238,7 @@ static struct saved_string saved_strings[2];
 static Lisp_Object Vloads_in_progress;
 
 static void readevalloop (Lisp_Object, struct infile *, Lisp_Object, bool,
-                          Lisp_Object, Lisp_Object,
+                          Lisp_Object,
                           Lisp_Object, Lisp_Object);
 
 static void build_load_history (Lisp_Object, bool);
@@ -1784,14 +1784,14 @@ Return t if the file exists and loads successfully.  */)
 
       if (! version || version >= 22)
         readevalloop (Qget_file_char, &input, hist_file_name,
-                      0, Qnil, Qnil, Qnil, Qnil);
+                      0, Qnil, Qnil, Qnil);
       else
         {
           /* We can't handle a file which was compiled with
              byte-compile-dynamic by older version of Emacs.  */
           specbind (Qload_force_doc_strings, Qt);
           readevalloop (Qget_emacs_mule_file_char, &input, hist_file_name,
-                        0, Qnil, Qnil, Qnil, Qnil);
+                        0, Qnil, Qnil, Qnil);
         }
     }
   unbind_to (count, Qnil);
@@ -2376,12 +2376,6 @@ build_load_history (Lisp_Object filename, bool entire)
     }
 }
 
-static void
-readevalloop_1 (int old)
-{
-  load_convert_to_unibyte = old;
-}
-
 /* Signal an `end-of-file' error, if possible with file name
    information.  */
 
@@ -2415,9 +2409,7 @@ readevalloop_eager_expand_eval (Lisp_Object val, Lisp_Object macroexpand)
   return val;
 }
 
-/* UNIBYTE specifies how to set load_convert_to_unibyte
-   for this invocation.
-   READFUN, if non-nil, is used instead of `read'.
+/* READFUN, if non-nil, is used instead of `read'.
 
    START, END specify region to read in current buffer (from eval-region).
    If the input is not from a buffer, they must be nil.  */
@@ -2427,7 +2419,7 @@ readevalloop (Lisp_Object readcharfun,
 	      struct infile *infile0,
 	      Lisp_Object sourcename,
 	      bool printflag,
-	      Lisp_Object unibyte, Lisp_Object readfun,
+	      Lisp_Object readfun,
 	      Lisp_Object start, Lisp_Object end)
 {
   int c;
@@ -2470,8 +2462,6 @@ readevalloop (Lisp_Object readcharfun,
     emacs_abort ();
 
   specbind (Qstandard_input, readcharfun);
-  record_unwind_protect_int (readevalloop_1, load_convert_to_unibyte);
-  load_convert_to_unibyte = !NILP (unibyte);
 
   /* If lexical binding is active (either because it was specified in
      the file's header, or via a buffer-local variable), create an empty
@@ -2630,8 +2620,7 @@ PRINTFLAG controls printing of output by any output functions in the
   a value of nil means discard it; anything else is the stream to print to.
   See Info node `(elisp)Output Streams' for details on streams.
 FILENAME specifies the file name to use for `load-history'.
-UNIBYTE, if non-nil, specifies `load-convert-to-unibyte' for this
- invocation.
+UNIBYTE is obsolete and ignored.
 DO-ALLOW-PRINT, if non-nil, specifies that output functions in the
  evaluated code should work normally even if PRINTFLAG is nil, in
  which case the output is displayed in the echo area.
@@ -2677,7 +2666,7 @@ This function preserves the position of point.  */)
     specbind (Qlexical_binding, get_lexical_binding (buf, buf));
   BUF_TEMP_SET_PT (XBUFFER (buf), BUF_BEGV (XBUFFER (buf)));
   readevalloop (buf, 0, filename,
-		!NILP (printflag), unibyte, Qnil, Qnil, Qnil);
+		!NILP (printflag), Qnil, Qnil, Qnil);
   return unbind_to (count, Qnil);
 }
 
@@ -2711,7 +2700,7 @@ This function does not move point.  */)
 
   /* `readevalloop' calls functions which check the type of start and end.  */
   readevalloop (cbuf, 0, BVAR (XBUFFER (cbuf), filename),
-		!NILP (printflag), Qnil, read_function,
+		!NILP (printflag), read_function,
 		start, end);
 
   return unbind_to (count, Qnil);
@@ -4927,10 +4916,6 @@ string_to_number (char const *string, int base, ptrdiff_t *plen)
 
 static Lisp_Object initial_obarray;
 
-/* `oblookup' stores the bucket number here, for the sake of Funintern.  */
-
-static size_t oblookup_last_bucket_number;
-
 static Lisp_Object make_obarray (unsigned bits);
 
 /* Slow path obarray check: return the obarray to use or signal an error.  */
@@ -5141,83 +5126,6 @@ it defaults to the value of `obarray'.  */)
     }
 }
 
-DEFUN ("unintern", Funintern, Sunintern, 2, 2, 0,
-       doc: /* Delete the symbol named NAME, if any, from OBARRAY.
-The value is t if a symbol was found and deleted, nil otherwise.
-NAME may be a string or a symbol.  If it is a symbol, that symbol
-is deleted, if it belongs to OBARRAY--no other symbol is deleted.
-OBARRAY, if nil, defaults to the value of the variable `obarray'.  */)
-  (Lisp_Object name, Lisp_Object obarray)
-{
-  register Lisp_Object tem;
-  Lisp_Object string;
-
-  if (NILP (obarray)) obarray = Vobarray;
-  obarray = check_obarray (obarray);
-
-  if (SYMBOLP (name))
-    {
-      if (!BARE_SYMBOL_P (name))
-	name = XSYMBOL_WITH_POS (name)->sym;
-      string = SYMBOL_NAME (name);
-    }
-  else
-    {
-      CHECK_STRING (name);
-      string = name;
-    }
-
-  char *longhand = NULL;
-  ptrdiff_t longhand_chars = 0;
-  ptrdiff_t longhand_bytes = 0;
-  tem = oblookup_considering_shorthand (obarray, SSDATA (string),
-					SCHARS (string), SBYTES (string),
-					&longhand, &longhand_chars,
-					&longhand_bytes);
-  if (longhand)
-    xfree(longhand);
-
-  if (FIXNUMP (tem))
-    return Qnil;
-  /* If arg was a symbol, don't delete anything but that symbol itself.  */
-  if (BARE_SYMBOL_P (name) && !BASE_EQ (name, tem))
-    return Qnil;
-
-  /* There are plenty of other symbols which will screw up the Emacs
-     session if we unintern them, as well as even more ways to use
-     `setq' or `fset' or whatnot to make the Emacs session
-     unusable.  Let's not go down this silly road.  --Stef  */
-  /* if (NILP (tem) || EQ (tem, Qt))
-       error ("Attempt to unintern t or nil"); */
-
-  struct Lisp_Symbol *sym = XBARE_SYMBOL (tem);
-  sym->u.s.interned = SYMBOL_UNINTERNED;
-
-  ptrdiff_t idx = oblookup_last_bucket_number;
-  Lisp_Object *loc = &XOBARRAY (obarray)->buckets[idx];
-
-  eassert (BARE_SYMBOL_P (*loc));
-  struct Lisp_Symbol *prev = XBARE_SYMBOL (*loc);
-  if (sym == prev)
-    *loc = sym->u.s.next ? make_lisp_symbol (sym->u.s.next) : make_fixnum (0);
-  else
-    while (1)
-      {
-	struct Lisp_Symbol *next = prev->u.s.next;
-	if (next == sym)
-	  {
-	    prev->u.s.next = next->u.s.next;
-	    break;
-	  }
-	prev = next;
-      }
-
-  XOBARRAY (obarray)->count--;
-
-  return Qt;
-}
-
-
 /* Bucket index of the string STR of length SIZE_BYTE bytes in obarray OA.  */
 static ptrdiff_t
 obarray_index (struct Lisp_Obarray *oa, const char *str, ptrdiff_t size_byte)
@@ -5226,12 +5134,78 @@ obarray_index (struct Lisp_Obarray *oa, const char *str, ptrdiff_t size_byte)
   return knuth_hash (reduce_emacs_uint_to_hash_hash (hash), oa->size_bits);
 }
 
+DEFUN ("unintern", Funintern, Sunintern, 2, 2, 0,
+       doc: /* Delete the symbol named NAME, if any, from OBARRAY.
+The value is t if a symbol was found and deleted, nil otherwise.
+NAME may be a string or a symbol.  If it is a symbol, that symbol
+is deleted, if it belongs to OBARRAY--no other symbol is deleted.
+OBARRAY, if nil, defaults to the value of the variable `obarray'.  */)
+  (Lisp_Object name, Lisp_Object obarray)
+{
+  if (NILP (obarray)) obarray = Vobarray;
+  obarray = check_obarray (obarray);
+
+  Lisp_Object sym;
+  if (SYMBOLP (name))
+    sym = BARE_SYMBOL_P (name) ? name : XSYMBOL_WITH_POS (name)->sym;
+  else
+    {
+      CHECK_STRING (name);
+      char *longhand = NULL;
+      ptrdiff_t longhand_chars = 0;
+      ptrdiff_t longhand_bytes = 0;
+      sym = oblookup_considering_shorthand (obarray, SSDATA (name),
+					    SCHARS (name), SBYTES (name),
+					    &longhand, &longhand_chars,
+					    &longhand_bytes);
+      xfree(longhand);
+      if (FIXNUMP (sym))
+	return Qnil;
+    }
+
+  /* There are plenty of symbols which will screw up the Emacs
+     session if we unintern them, as well as even more ways to use
+     `setq' or `fset' or whatnot to make the Emacs session
+     unusable.  We don't try to prevent such mistakes here.  */
+
+  struct Lisp_Obarray *o = XOBARRAY (obarray);
+  Lisp_Object symname = SYMBOL_NAME (sym);
+  ptrdiff_t idx = obarray_index (o, SSDATA (symname), SBYTES (symname));
+  Lisp_Object *loc = &o->buckets[idx];
+  if (BASE_EQ (*loc, make_fixnum (0)))
+    return Qnil;
+
+  struct Lisp_Symbol *s = XBARE_SYMBOL (sym);
+  struct Lisp_Symbol *prev = XBARE_SYMBOL (*loc);
+  if (prev == s)
+    *loc = s->u.s.next ? make_lisp_symbol (s->u.s.next) : make_fixnum (0);
+  else
+    {
+      do
+	{
+	  struct Lisp_Symbol *next = prev->u.s.next;
+	  if (next == s)
+	    {
+	      prev->u.s.next = next->u.s.next;
+	      goto removed;
+	    }
+	  prev = next;
+	}
+      while (prev);
+      return Qnil;
+    }
+
+ removed:
+  s->u.s.interned = SYMBOL_UNINTERNED;
+  o->count--;
+  return Qt;
+}
+
+
 /* Return the symbol in OBARRAY whose name matches the string
    of SIZE characters (SIZE_BYTE bytes) at PTR.
    If there is no such symbol, return the integer bucket number of
-   where the symbol would be if it were present.
-
-   Also store the bucket number in oblookup_last_bucket_number.  */
+   where the symbol would be if it were present.  */
 
 Lisp_Object
 oblookup (Lisp_Object obarray, register const char *ptr, ptrdiff_t size, ptrdiff_t size_byte)
@@ -5240,7 +5214,6 @@ oblookup (Lisp_Object obarray, register const char *ptr, ptrdiff_t size, ptrdiff
   ptrdiff_t idx = obarray_index (o, ptr, size_byte);
   Lisp_Object bucket = o->buckets[idx];
 
-  oblookup_last_bucket_number = idx;
   if (!BASE_EQ (bucket, make_fixnum (0)))
     {
       Lisp_Object sym = bucket;
@@ -6061,12 +6034,6 @@ and NOERROR and NOMESSAGE are the corresponding arguments passed to
 	       doc: /* Non-nil means `load' should force-load all dynamic doc strings.
 This is useful when the file being loaded is a temporary copy.  */);
   load_force_doc_strings = 0;
-
-  DEFVAR_BOOL ("load-convert-to-unibyte", load_convert_to_unibyte,
-	       doc: /* Non-nil means `read' converts strings to unibyte whenever possible.
-This is normally bound by `load' and `eval-buffer' to control `read',
-and is not meant for users to change.  */);
-  load_convert_to_unibyte = 0;
 
   DEFVAR_LISP ("source-directory", Vsource_directory,
 	       doc: /* Directory in which Emacs sources were found when Emacs was built.
