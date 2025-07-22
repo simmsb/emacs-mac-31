@@ -1995,8 +1995,8 @@ static void unset_global_focus_view_frame (void);
 static void mac_move_frame_window_structure_1 (struct frame *, int, int);
 
 #define DEFAULT_NUM_COLS (80)
-#define RESIZE_CONTROL_WIDTH (15)
-#define RESIZE_CONTROL_HEIGHT (15)
+#define RESIZE_CONTROL_WIDTH (1)
+#define RESIZE_CONTROL_HEIGHT (1)
 
 @implementation EmacsWindow
 
@@ -6223,6 +6223,8 @@ static BOOL emacsViewUpdateLayerDisabled;
 	   name:@"NSViewFrameDidChangeNotification"
 	 object:self];
 
+  [self setTextContentType:nil];
+
   return self;
 }
 
@@ -6424,6 +6426,8 @@ static BOOL emacsViewUpdateLayerDisabled;
   backingSizeOutOfSync = YES;
 }
 
+@synthesize contentType;
+
 @end				// EmacsView
 
 @implementation EmacsMainView
@@ -6455,6 +6459,8 @@ static BOOL emacsViewUpdateLayerDisabled;
 				   owner:self userInfo:nil];
   [self addTrackingArea:trackingAreaForCursor];
   MRC_RELEASE (trackingAreaForCursor);
+
+  [self setTextContentType:nil];
 
   return self;
 }

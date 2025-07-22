@@ -837,7 +837,7 @@ typedef NSInteger NSGlyphProperty;
    directly by tooltip frames, and indirectly by ordinary frames via
    inheritance.  */
 
-@interface EmacsView : NSView
+@interface EmacsView : NSView <NSTextContent>
 {
   /* Backing resources for applicaion-side double buffering.  */
   EmacsBacking *backing;
@@ -845,6 +845,7 @@ typedef NSInteger NSGlyphProperty;
   /* Whether the backing size is out of sync with the view size.  */
   BOOL backingSizeOutOfSync;
 }
+@property (nonatomic, copy) NSTextContentType textContentType;
 - (struct frame *)emacsFrame;
 + (void)globallyDisableUpdateLayer:(BOOL)flag;
 - (void)lockFocusOnBacking;
