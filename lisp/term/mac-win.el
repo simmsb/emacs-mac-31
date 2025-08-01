@@ -92,10 +92,9 @@
 (defvar mac-frame-tabbing)
 
 
-;; Define the macos-specific Window menu and add it to the global menu-bar map
+;; Define the macOS-specific Window menu and add it to the global menu-bar map
 (defvar-keymap mac-window-menu-map :name "Window")
-(bindings--define-key global-map [menu-bar window]
-  (cons "Window" mac-window-menu-map))
+(define-key global-map [menu-bar window] (cons "Window" mac-window-menu-map))
 
 
 ;;
@@ -691,7 +690,7 @@ language."
 (defun mac-select-convert-to-pasteboard-filenames (selection type value)
   (setq value (or (and (stringp value) (get-text-property 0 'FILE_NAME value))
                   value))
-  (if-let ((filename (cdr (xselect-convert-to-filename selection type value))))
+  (if-let* ((filename (cdr (xselect-convert-to-filename selection type value))))
       (let* ((coding (or file-name-coding-system
                          default-file-name-coding-system))
              (filenames (vconcat (mapcar
@@ -702,7 +701,7 @@ language."
         (cons type (mac-convert-property-list `(array . ,filenames) 'xml1)))))
 
 (setq selection-converter-alist
-      (nconc
+      (append
        '((NSStringPboardType . mac-select-convert-to-string)
 	 (NSTIFFPboardType . nil)
 	 (NSFilenamesPboardType . mac-select-convert-to-pasteboard-filenames)
@@ -1685,7 +1684,7 @@ modifiers, it changes the global tool-bar visibility setting."
 (defun mac-handle-new-frame (_event)
   "Create a new frame and activate."
   (interactive "e")
-  (when-let ((frame (make-frame)))
+  (when-let* ((frame (make-frame)))
     (mac-send-action 'activate)
     (raise-frame frame)))
 
@@ -1974,7 +1973,7 @@ reference URLs of the form \"file:///.file/id=...\"."
   (let ((filename (mac-coerce-ae-data "furl" data 'undecoded-file-name)))
     (if filename
         (let ((file-url (mac-local-file-name-to-file-url filename)))
-          (dnd-handle-one-url window action file-url)))))
+          (dnd-handle-multiple-urls window (list file-url) action)))))
 
 (defun mac-dnd-insert-TIFF (window action data)
   (dnd-insert-text window action (mac-TIFF-to-string data)))
@@ -2626,7 +2625,7 @@ tapped window."
 (defun mac-simulate-pinch-event (event)
   "Convert EVENT to a pinch event and unread it."
   (interactive "e")
-  (when-let ((phase (plist-get (nth 3 event) :phase)))
+  (when-let* ((phase (plist-get (nth 3 event) :phase)))
     (let ((magnification (plist-get (nth 3 event) :magnification))
           (modifiers (event-modifiers event))
           (type-strings '("pinch"))
@@ -2888,6 +2887,24 @@ visibility, then remap this command to `mac-previous-tab'."
   (mac-send-action 'arrangeInFront))
 
 
+;;; Windows
+(defun mac-toggle-frame-fullscreen (&optional frame)
+  "Toggle native macOS fullscreen state of FRAME.
+This works like `toggle-frame-fullscreen', except it uses native
+space-based full screen, by setting the `fullscreen' frame parameter to
+`fullscreen'."
+  (interactive)
+  (let ((fullscreen (frame-parameter frame 'fullscreen)))
+    (if (memq fullscreen '(fullscreen fullboth))
+	(let ((fullscreen-restore (frame-parameter frame 'fullscreen-restore)))
+	  (if (memq fullscreen-restore '(maximized fullheight fullwidth))
+	      (set-frame-parameter frame 'fullscreen fullscreen-restore)
+	    (set-frame-parameter frame 'fullscreen nil)))
+      (modify-frame-parameters
+       frame `((fullscreen . fullscreen) (fullscreen-restore . ,fullscreen))))))
+
+(define-key global-map [remap toggle-frame-fullscreen] 'mac-toggle-frame-fullscreen)
+
 ;;; Window system initialization.
 
 (defun mac-win-suspend-error ()
@@ -3103,11 +3120,11 @@ standard ones in `x-handle-args'."
     (define-key-after mac-window-menu-map [mac-next-tab]
       '(menu-item "Show Next Tab" mac-next-tab-or-toggle-tab-bar
                   :enable (mac-frame-multiple-tabs-p)))
-    (global-set-key [(control tab)] 'mac-next-tab-or-toggle-tab-bar)
+    ;; (global-set-key [(control tab)] 'mac-next-tab-or-toggle-tab-bar)
     (define-key-after mac-window-menu-map [mac-previous-tab]
       '(menu-item "Show Previous Tab" mac-previous-tab-or-toggle-tab-bar
                   :enable (mac-frame-multiple-tabs-p)))
-    (global-set-key [(control shift tab)] 'mac-previous-tab-or-toggle-tab-bar)
+    ;; (global-set-key [(control shift tab)] 'mac-previous-tab-or-toggle-tab-bar)
     (define-key-after mac-window-menu-map [mac-move-tab-to-new-frame]
       '(menu-item "Move Tab to New Frame" mac-move-tab-to-new-frame
                   :enable (mac-frame-multiple-tabs-p)))

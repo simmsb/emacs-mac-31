@@ -1627,8 +1627,11 @@ else cover the whole buffer."
   "Major mode for viewing/editing context diffs.
 Supports unified and context diffs as well as, to a lesser extent, diffs
 in the old \"normal\" format.  (Unified diffs have become the standard,
-most commonly encountered format.)  If you edit the buffer manually,
-`diff-mode' will try to update the hunk headers for you on-the-fly.
+most commonly encountered format.)
+
+When the buffer is read-only, the ESC prefix is not necessary.
+If you edit the buffer manually, `diff-mode' will try to update the hunk
+headers for you on-the-fly.
 
 You can also switch between context diff and unified diff with \\[diff-context->unified],
 or vice versa with \\[diff-unified->context] and you can also reverse the direction of
