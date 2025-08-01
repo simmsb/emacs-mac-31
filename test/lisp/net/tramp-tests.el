@@ -3902,7 +3902,11 @@ This tests also `access-file', `file-readable-p',
 	    (when test-file-ownership-preserved-p
 	      (should (file-ownership-preserved-p tmp-name1 'group)))
 	    (setq attr (file-attributes tmp-name1))
-	    (should (eq (file-attribute-type attr) t)))
+	    (should (eq (file-attribute-type attr) t))
+	    ;; A trailing slash shouldn't harm.
+	    (should
+	     (equal (file-attributes tmp-name1)
+		    (file-attributes (file-name-as-directory tmp-name1)))))
 
 	;; Cleanup.
 	(ignore-errors (delete-directory tmp-name1 'recursive))
@@ -4138,7 +4142,12 @@ They might differ only in time attributes or directory size."
 	    ;; Check the COUNT arg.
 	    (setq attr (directory-files-and-attributes
 			tmp-name2 nil (rx bos "b") nil nil 1))
-	    (should (equal (mapcar #'car attr) '("bar"))))
+	    (should (equal (mapcar #'car attr) '("bar")))
+
+	    ;; A trailing slash shouldn't harm.
+	    (should
+	     (equal (file-attributes tmp-name2)
+		    (file-attributes (file-name-as-directory tmp-name2)))))
 
 	;; Cleanup.
 	(ignore-errors (delete-directory tmp-name1 'recursive))))))
@@ -8095,7 +8104,10 @@ process sentinels.  They shall not disturb each other."
 ;; selector "remote".
 (ert-deftest tramp-test46-file-notifications ()
   "Check that Tramp handles file notifications."
+  :tags '(:unstable)
   (skip-unless (tramp--test-enabled))
+  ;; filenotify.el was reworked in Emacs 31.
+  (skip-unless (tramp--test-emacs31-p))
 
   (let* ((tmp-name (tramp--test-make-temp-name))
 	 ;(file-notify-debug t)
@@ -8114,12 +8126,13 @@ process sentinels.  They shall not disturb each other."
 	(progn
 	  (tramp--test-message "%S" desc1)
 	  (should-not (file-exists-p tmp-name))
-	  (should (file-notify-valid-p desc1))
 	  (should (file-notify-valid-p desc2))
 
-	  ;; Create the file.
+	  ;; Create the file.  `file-notify-valid-p' requires that the
+	  ;; watched file exists, so we cannot check it earlier for `desc1'.
 	  (write-region "foo" nil tmp-name)
 	  (should (file-exists-p tmp-name))
+	  (should (file-notify-valid-p desc1))
 	  ;; Modify.
 	  (write-region "foo" nil tmp-name)
 	  (should (file-exists-p tmp-name))

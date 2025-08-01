@@ -4017,7 +4017,8 @@ COUNT and ALL-FRAMES.  Otherwise, do not return a window for which
 This function uses `next-window' for finding the window to
 select.  The argument ALL-FRAMES has the same meaning as in
 `next-window', but the MINIBUF argument of `next-window' is
-always effectively nil."
+always effectively nil.  Interactively, ALL-FRAMES is always
+nil, which considers all windows on the selected frame."
   (interactive "p\ni\np")
   (let* ((window (selected-window))
          (original-window window)
@@ -5353,7 +5354,7 @@ Do not select an inactive minibuffer window."
 		 (not (eq frame (window-frame window))))
       (setq frame (window-frame window))
       (set-frame-selected-window frame window)
-      (select-frame-set-input-focus frame))))
+      (select-frame frame))))
 
 (defun quit-restore-window (&optional window bury-or-kill)
   "Quit WINDOW and deal with its buffer.

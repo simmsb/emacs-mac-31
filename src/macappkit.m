@@ -15396,7 +15396,7 @@ ax_get_selected_text_ranges (EmacsMainView *emacsView)
   if (index != NSNotFound)
     return (*ax_attribute_table[index].handler) (self);
   else if ([attribute isEqualToString:NSAccessibilityRoleAttribute])
-    return NSAccessibilityTextAreaRole;
+    return NSAccessibilityWindowRole;
   else
     return [super accessibilityAttributeValue:attribute];
 }

@@ -222,12 +222,6 @@ literals (Bug#20852)."
 (ert-deftest lread-circular-hash ()
   (should-error (read "#s(hash-table data #0=(#0# . #0#))")))
 
-(ert-deftest test-inhibit-interaction ()
-  (let ((inhibit-interaction t))
-    (should-error (read-char "foo: "))
-    (should-error (read-event "foo: "))
-    (should-error (read-char-exclusive "foo: "))))
-
 (ert-deftest lread-float ()
   (should (equal (read "13") 13))
   (should (equal (read "+13") 13))
@@ -357,6 +351,37 @@ literals (Bug#20852)."
   ;; ?\LF should signal an error; \LF is ignored inside string literals.
   (should-error (read-from-string "?\\\n x"))
   (should (equal (read-from-string "\"a\\\nb\"") '("ab" . 6))))
+
+(ert-deftest lread-char-escape-eof ()
+  ;; Check that unfinished char escapes signal an error.
+  (should-error (read "?\\"))
+
+  (should-error (read "?\\^"))
+  (should-error (read "?\\C"))
+  (should-error (read "?\\M"))
+  (should-error (read "?\\S"))
+  (should-error (read "?\\H"))
+  (should-error (read "?\\A"))
+
+  (should-error (read "?\\C-"))
+  (should-error (read "?\\M-"))
+  (should-error (read "?\\S-"))
+  (should-error (read "?\\H-"))
+  (should-error (read "?\\A-"))
+  (should-error (read "?\\s-"))
+
+  (should-error (read "?\\C-\\"))
+  (should-error (read "?\\C-\\M"))
+  (should-error (read "?\\C-\\M-"))
+
+  (should-error (read "?\\x"))
+  (should-error (read "?\\u"))
+  (should-error (read "?\\u234"))
+  (should-error (read "?\\U"))
+  (should-error (read "?\\U0010010"))
+  (should-error (read "?\\N"))
+  (should-error (read "?\\N{"))
+  (should-error (read "?\\N{SPACE")))
 
 (ert-deftest lread-force-load-doc-strings ()
   ;; Verify that lazy doc strings are loaded lazily by default,

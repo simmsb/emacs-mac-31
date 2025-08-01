@@ -232,7 +232,7 @@ but as a plain Lisp variable, not a user option.)
 ** Mouse
 
 ---
-*** context-menu-mode now includes a "Send to..." menu item.
+*** 'context-menu-mode now' includes a "Send to..." menu item.
 The menu item enables sending current file(s) or region text to external
 (non-Emacs) applications or services.  See send-to.el for customisations.
 
@@ -267,7 +267,7 @@ deleted implicitly by functions like 'kill-buffer', 'bury-buffer' and
 This option specifies whether 'quit-window' should preferably kill or
 bury the buffer shown by the window to quit.  The default is nil.
 Customize it to t to always kill the buffer; customize to a list of
-major mode to kill if the buffer's major mode is one of those.
+major modes to kill if the buffer's major mode is one of those.
 
 +++
 *** New user option 'kill-buffer-quit-windows'.
@@ -930,6 +930,11 @@ occasionally be surprising.  It can be re-enabled by adding 'omake' to
 Compilation mode now recognizes Lua language errors and stack traces.
 Every Lua error is recognized as a compilation error, and every Lua
 stack frame is recognized as a compilation info.
+
+---
+*** New user option 'tab-line-close-modified-button-show'.
+With this user option, if non-nil (the default), the tab close button
+will change its appearance if the tab buffer has been modified.
 
 ** Project
 
@@ -1840,6 +1845,14 @@ This contains the list of regular expressions used to match "Re:" and
 international variants of it when modifying the Subject field in
 replies.
 
+** Imap
+
+---
+*** 'imap-authenticate' can now use PLAIN authentication.
+"AUTH=PLAIN" support is auto-enabled if the IMAP server supports it.  Pass
+a specific authentication type to 'imap-authenticate' or remove 'plain'
+from 'imap-authenticators' if you do not wish to use "AUTH=PLAIN".
+
 ** Rmail
 
 +++
@@ -1847,6 +1860,13 @@ replies.
 'mail-re-regexps' is a new user option that is easier to customize than
 'rmail-re-abbrevs'.  'rmail-re-abbrevs' is still honored if it was
 already set.
+
++++
+*** New user option 'rmail-mime-save-action'.
+This option specifies an action to take after saving a MIME attachment.
+Predefined values include visiting the file in Emacs, jumping to the
+file in Dired, or opening the file with an external program.  You can
+also provide a custom function.
 
 ** Message
 
@@ -1905,6 +1925,15 @@ HTML 'doctype' declaration to have context-type "text/html".
 *** 'eww-switch-to-buffer' falls back to 'eww'.
 When there is no EWW buffer, 'eww-switch-to-buffer' falls back to
 calling 'eww'.
+
+** Url Queue
+
+---
+*** 'url-queue-retrieve' now makes use of some url request variables.
+The variables 'url-request-data', 'url-request-method', and
+'url-request-extra-headers' can now be bound around a call to
+'url-queue-retrieve'.  Binding them has the same effect as for
+'url-retrieve'.
 
 ** CC mode
 
@@ -2197,7 +2226,7 @@ Edit mode.
 ---
 *** New user option 'imenu-allow-duplicate-menu-items'.
 This specifies whether Imenu can include duplicate menu items.
-Duplicate items are now allowed by default (option value 't'), which
+Duplicate items are now allowed by default (option value t), which
 restores the behavior before Emacs 29.  Customize this to nil to get the
 behavior of Emacs 29 and Emacs 30.
 
@@ -2347,6 +2376,22 @@ appearance of the list can be customized with the new faces
 
 ** VC
 
++++
+*** New commands to handle repositories with multiple working trees.
+Some VCS support more than one working tree with the same backing
+revisions store, such as with Git's 'worktree' subcommand and
+Mercurial's 'share' extension.  Emacs now has some commands to manage
+other working trees:
+
+- 'C-x v w c': Add a new working tree.
+- 'C-x v w w': Visit this file in another working tree.
+- 'C-x v w x': Delete a working tree you no longer need.
+- 'C-x v w R': Relocate a working tree to another file name.
+
+In addition, Lisp programs that extend VC can invoke the new backend
+functions to obtain a list of other working trees, and to add, remove
+and relocate them.
+
 ---
 *** Using 'e' from Log View mode to modify change comments now works for Git.
 
@@ -2491,6 +2536,9 @@ You can customize 'log-edit-hook' to include its new
 changes to be committed in a window.  This is like the 'C-c C-d' command
 in Log Edit mode buffers, except that it does not select the "*vc-diff*"
 buffer's window, and so works well when added to 'log-edit-hook'.
+
++++
+*** 'vc-rename-file' is now bound to 'C-x v R'.
 
 ---
 *** 'vc-annotate' now abbreviates the Git revision in more cases.
@@ -2912,6 +2960,31 @@ command for reporting bugs).
 ** The elint package is now obsolete.
 Use the byte-compiler instead; it provides more and more useful warnings.
 
+** Newsticker
+
+---
+*** New user option 'newsticker-hide-old-feed-header'.
+It controls whether to automatically hide the header of feeds whose
+items are all old or obsolete in the plainview *newsticker* buffer.
+This is only visually interesting if the content of those feeds are also
+hidden (see 'newsticker-hide-old-items-in-newsticker-buffer' and
+'newsticker-show-descriptions-of-new-items')."
+
+---
+*** New commands to hide and show headers of old newsticker feeds.
+The new commands 'newsticker-hide-old-feed-header' and
+'newsticker-show-old-feed-header', bound to 'h h' and 's h' keys,
+respectively, hide and show the headers of feeds whose items are all old
+or obsolete.
+
+** CPerl mode
+
+*** Syntax of Perl up to version 5.42 is supported.
+
+CPerl mode creates imenu entries for ":writer" generated accessors and
+recognizes the new functions "all" and "any".
+See https://perldoc.perl.org/5.42.0/perldelta for details.
+
 
 * New Modes and Packages in Emacs 31.1
 
@@ -3016,6 +3089,12 @@ separator, are also supported.
 ---
 ** The obsolete variable 'load-convert-to-unibyte' has been removed.
 
++++
+** The 'exec-path' variable now uses same default PATH as other programs.
+That is, if the PATH environment variable is unset or empty, 'exec-path'
+now acts as if PATH is the system default, which is "/bin:/usr/bin"
+on GNU/Linux systems.
+
 
 * Lisp Changes in Emacs 31.1
 
@@ -3113,6 +3192,12 @@ sub-directories, recursively, which were not already natively compiled.
 ** New function 'color-blend'.
 This function takes two RGB lists and optional ALPHA and returns an RGB
 list whose elements are blended in linear space proportional to ALPHA.
+
++++
+** New function 'dom-inner-text'.
+This function gets all the text within a DOM node recursively, returning
+it as a concatenated string.  It replaces the now-obsolete functions
+'dom-text' and 'dom-texts'.
 
 +++
 ** The 'defcustom' ':local' keyword can now be 'permanent-only'.
@@ -3253,6 +3338,12 @@ sleep state.
 and set the top-level buffer-local value of a variable.  A top-level
 value is the one that variable has outside of any let-bindings.
 
+** New function 'exec-suffixes'.
+This function by default returns the value of the corresponding user
+option, but can optionally return the equivalent of 'exec-suffixes' from
+a remote host.  It must be used in conjunction with the function
+'exec-path'.
+
 
 * Changes in Emacs 31.1 on Non-Free Operating Systems
 
@@ -3289,6 +3380,12 @@ allowing Emacs users access to speech recognition utilities.
 
 Note: Accepting this permission allows the use of system APIs, which may
 send user data to Apple's speech recognition servers.
+
+---
+** Re-introduced dictation, lost in Emacs v30 (macOS).
+We lost macOS dictation in v30 when migrating to NSTextInputClient.
+Implemented 'selectedRange' in 'nsterm.m' to enable in new subsystem.
+You may notice a slight change in dictation UI provided by macOS.
 
 +++
 ** On Mac OS X, stipples now render with color.
