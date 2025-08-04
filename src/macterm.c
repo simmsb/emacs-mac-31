@@ -3704,6 +3704,26 @@ mac_clip_to_row (struct window *w, struct glyph_row *row,
   mac_set_clip_rectangles (f, gc, &clip_rect, 1);
 }
 
+static void set_saved_cursor_position(struct window *w, int x, int y, int c_w, int c_h, unsigned colour) {
+  /* printf("Setting cursor pos: %d %d %d %d\n", x, y, c_w, c_h); */
+  struct frame *f = XFRAME (WINDOW_FRAME (w));
+  f->cursor_x = x;
+  f->cursor_y = y;
+  f->cursor_w = c_w;
+  f->cursor_h = c_h;
+  f->cursor_r = RED_FROM_ULONG(colour);
+  f->cursor_g = GREEN_FROM_ULONG(colour);
+  f->cursor_b = BLUE_FROM_ULONG(colour);
+}
+
+static void set_no_saved_cursor_position(struct window *w) {
+  /* printf("Clearing cursor pos\n"); */
+  struct frame *f = XFRAME (WINDOW_FRAME (w));
+  f->cursor_x = 0;
+  f->cursor_y = 0;
+  f->cursor_w = 0;
+  f->cursor_h = 0;
+}
 
 /* Draw a hollow box cursor on window W in glyph row ROW.  */
 
@@ -3735,6 +3755,9 @@ mac_draw_hollow_cursor (struct window *w, struct glyph_row *row)
   else
     dpyinfo->scratch_cursor_gc = mac_create_gc (GCForeground, &xgcv);
   gc = dpyinfo->scratch_cursor_gc;
+
+  set_saved_cursor_position(w, x, y, wd, h, xgcv.foreground);
+
 
   /* When on R2L character, show cursor at the right edge of the
      glyph, unless the cursor box is as wide as the glyph or wider
@@ -3828,9 +3851,10 @@ mac_draw_bar_cursor (struct window *w, struct glyph_row *row, int width, enum te
 	  if ((cursor_glyph->resolved_level & 1) != 0)
 	    x += cursor_glyph->pixel_width - width;
 
-	  mac_fill_rectangle (f, gc, x,
-			      WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y),
+	  int y = WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y);
+	  mac_fill_rectangle (f, gc, x, y,
 			      width, row->height);
+	  set_saved_cursor_position(w, x, y, width, row->height, xgcv.foreground);
 	}
       else /* HBAR_CURSOR */
 	{
@@ -3848,10 +3872,12 @@ mac_draw_bar_cursor (struct window *w, struct glyph_row *row, int width, enum te
 	  if ((cursor_glyph->resolved_level & 1) != 0
 	      && cursor_glyph->pixel_width > w->phys_cursor_width)
 	    x += cursor_glyph->pixel_width - w->phys_cursor_width;
-	  mac_fill_rectangle (f, gc, x,
-			      WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y +
-						       row->height - width),
+	  int y = WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y +
+						       row->height - width);
+	  mac_fill_rectangle (f, gc, x, y,
 			      w->phys_cursor_width, width);
+	  set_saved_cursor_position(w, x, y, w->phys_cursor_width, width, xgcv.foreground);
+
 	}
 
       mac_reset_clip_rectangles (f, gc);
@@ -3888,8 +3914,14 @@ mac_draw_window_cursor (struct window *w, struct glyph_row *glyph_row, int x,
 		      int y, enum text_cursor_kinds cursor_type,
 		      int cursor_width, bool on_p, bool active_p)
 {
+  /* printf("draw_window_cursor: x %d y %d, type %d, on %d active %d \n", x, y, cursor_type, on_p, active_p); */
+
   if (on_p)
     {
+      if (active_p) {
+	set_no_saved_cursor_position(w);
+      }
+
       w->phys_cursor_type = cursor_type;
       w->phys_cursor_on_p = true;
 
@@ -3909,9 +3941,22 @@ mac_draw_window_cursor (struct window *w, struct glyph_row *glyph_row, int x,
 	      mac_draw_hollow_cursor (w, glyph_row);
 	      break;
 
-	    case FILLED_BOX_CURSOR:
+	    case FILLED_BOX_CURSOR: {
 	      draw_phys_cursor_glyph (w, glyph_row, DRAW_CURSOR);
+	      int x, y, wd, h;
+	      struct glyph *cursor_glyph;
+	      cursor_glyph = get_phys_cursor_glyph (w);
+	      if (cursor_glyph == NULL)
+		break;
+
+	      struct frame *f = XFRAME (WINDOW_FRAME (w));
+
+	      /* Compute frame-relative coordinates for phys cursor.  */
+	      get_phys_cursor_geometry (w, glyph_row, cursor_glyph, &x, &y, &h);
+	      wd = w->phys_cursor_width - 1;
+	      set_saved_cursor_position(w, x, y, wd, h, f->output_data.mac->cursor_pixel);
 	      break;
+	    }
 
 	    case BAR_CURSOR:
 	      mac_draw_bar_cursor (w, glyph_row, cursor_width, BAR_CURSOR);
