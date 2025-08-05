@@ -800,6 +800,9 @@ typedef NSInteger NSGlyphProperty;
      should be non-nil otherwise.  */
   id <MTLTexture> backTexture, frontTexture;
 
+  /* Used when blitting in the same buffer where we might overlap */
+  id <MTLTexture> tmpTexture;
+
   /* Command queue of the optimal GPU device for the display in which
      the view appears, or nil if the GPU does not support Metal.  */
   id <MTLCommandQueue> mtlCommandQueue;

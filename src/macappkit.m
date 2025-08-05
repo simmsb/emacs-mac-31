@@ -22,6 +22,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "macterm.h"
 
+#include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
 #include <sys/socket.h>
 
@@ -5905,6 +5906,7 @@ mac_iosurface_create (size_t width, size_t height)
 #if HAVE_MAC_METAL
   [backTexture release];
   [frontTexture release];
+  [tmpTexture release];
   [mtlCommandQueue release];
 #endif
   [super dealloc];
@@ -6023,6 +6025,22 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 				iosurface:surface plane:0];
 }
 
+static id <MTLTexture>
+mac_texture_create_blank (id <MTLDevice> device, size_t width, size_t height)
+{
+  if (!device)
+    return nil;
+
+  MTLTextureDescriptor *textureDescriptor =
+    [MTLTextureDescriptor
+      texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+				   width:width
+				  height:height
+			       mipmapped:NO];
+
+  return [device newTextureWithDescriptor:textureDescriptor];
+}
+
 - (void)updateMTLObjectsForView:(NSView *)view
 {
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101100
@@ -6036,6 +6054,8 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 
   if (newDevice != mtlCommandQueue.device)
     {
+      MRC_RELEASE (tmpTexture);
+      tmpTexture = mac_texture_create_blank(newDevice, IOSurfaceGetWidth (backSurface), IOSurfaceGetHeight (backSurface));
       MRC_RELEASE (backTexture);
       backTexture = mac_texture_create_with_surface (newDevice, backSurface);
       MRC_RELEASE (frontTexture);
@@ -6114,6 +6134,45 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
   srcX = NSMinX (rect), srcY = NSMinY (rect);
   width = NSWidth (rect), height = NSHeight (rect);
 
+#if HAVE_MAC_METAL
+  if (backTexture && tmpTexture) {
+    id <MTLCommandBuffer> commandBuffer = [mtlCommandQueue commandBuffer];
+
+    id<MTLBlitCommandEncoder> blitCommandEncoder =
+      [commandBuffer blitCommandEncoder];
+
+    MTLOrigin origin
+      = MTLOriginMake (NSMinX (rect), NSMinY (rect), 0);
+    MTLSize size = MTLSizeMake (NSWidth (rect), NSHeight (rect), 1);
+    NSRect dest = NSOffsetRect (rect, delta.width, delta.height);
+    MTLOrigin dstOrigin
+      = MTLOriginMake (NSMinX (dest), NSMinY (dest), 0);
+
+    [blitCommandEncoder copyFromTexture:backTexture
+			    sourceSlice:0
+			    sourceLevel:0
+			   sourceOrigin:origin
+			     sourceSize:size
+			      toTexture:tmpTexture
+		       destinationSlice:0
+		       destinationLevel:0
+		      destinationOrigin:origin];
+
+    [blitCommandEncoder copyFromTexture:tmpTexture
+			    sourceSlice:0
+			    sourceLevel:0
+			   sourceOrigin:origin
+			     sourceSize:size
+			      toTexture:backTexture
+		       destinationSlice:0
+		       destinationLevel:0
+		      destinationOrigin:dstOrigin];
+    [blitCommandEncoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+  } else
+#endif
+    {
   eassert (CGBitmapContextGetBitsPerPixel (backBitmap)
 	   == 8 * sizeof (Pixel_8888));
   NSInteger bytesPerRow = CGBitmapContextGetBytesPerRow (backBitmap);
@@ -6161,6 +6220,7 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 	  mac_vimage_copy_8888 (&buf, &dest, kvImageNoFlags);
 	  free (buf.data);
 	}
+    }
     }
 }
 
