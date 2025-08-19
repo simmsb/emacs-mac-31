@@ -509,8 +509,8 @@ typedef NSInteger NSGlyphProperty;
 @interface NSWindow (Emacs)
 - (Lisp_Object)lispFrame;
 - (NSWindow *)topLevelWindow;
-- (void)enumerateChildWindowsUsingBlock:(NS_NOESCAPE void
-					 (^)(NSWindow *child, BOOL *stop))block;
+- (void)enumerateChildWindowsUsingBlock:(void
+					 (NS_NOESCAPE ^)(NSWindow *child, BOOL *stop))block;
 @end
 
 @interface NSCursor (Emacs)
@@ -773,7 +773,7 @@ typedef NSInteger NSGlyphProperty;
 @end
 
 
-/* Class for applicaion-side double buffering.  */
+/* Class for application-side double buffering.  */
 
 @interface EmacsBacking : NSObject
 {
