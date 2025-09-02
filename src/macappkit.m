@@ -6752,6 +6752,11 @@ static BOOL emacsViewUpdateLayerDisabled;
 
       if ([defaults objectForKey:@"ApplePressAndHoldEnabled"] == nil)
 	[defaults registerDefaults:@{@"ApplePressAndHoldEnabled" : @"NO"}];
+
+      [defaults setBool:false forKey:@"NSAutomaticTextReplacementEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticSpellingCorrectionEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticDashSubstitutionEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticPeriodSubstitutionEnabled"];
     }
 }
 
