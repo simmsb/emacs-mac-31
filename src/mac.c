@@ -43,6 +43,8 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <mach/mach.h>
 #include <servers/bootstrap.h>
 
+#include "igc.h"
+
 
 /***********************************************************************
 			  Utility functions
@@ -99,9 +101,9 @@ static struct bstree_node **
 bstree_find (struct bstree_node **bstree, Lisp_Object obj)
 {
   while (*bstree)
-    if (XHASH (obj) < XHASH ((*bstree)->obj))
+    if (igc_hash (obj) < igc_hash ((*bstree)->obj))
       bstree = &(*bstree)->left;
-    else if (XHASH (obj) > XHASH ((*bstree)->obj))
+    else if (igc_hash (obj) > igc_hash ((*bstree)->obj))
       bstree = &(*bstree)->right;
     else
       break;
