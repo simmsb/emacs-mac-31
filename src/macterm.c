@@ -50,6 +50,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "font.h"
 #include "menu.h"
 
+#include "igc.h"
 
 
 /* This is a chain of structures for all the X displays currently in
@@ -5781,6 +5782,11 @@ mac_term_init (Lisp_Object display_name, char *xrm_option, char *resource_name)
 {
   struct terminal *terminal;
   struct mac_display_info *dpyinfo;
+
+#ifdef HAVE_MPS
+  igc_root_create_ambig (&one_mac_display_info, &one_mac_display_info + 1,
+			 "mac-display-info");
+#endif
 
   block_input ();
 

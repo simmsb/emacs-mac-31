@@ -39,6 +39,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "menu.h"
 #include "atimer.h"
 #include "regex-emacs.h"
+#include "igc.h"
 
 #import "macappkit.h"
 #import <objc/runtime.h>
@@ -2398,6 +2399,7 @@ static void mac_move_frame_window_structure_1 (struct frame *, int, int);
     return nil;
 
   emacsFrame = f;
+  igc_root_create_ambig(emacsFrame, emacsFrame + 1, "mac_frame_reference");
 
   [self setupEmacsView];
   [self setupWindow];
@@ -2695,6 +2697,7 @@ static void mac_move_frame_window_structure_1 (struct frame *, int, int);
      windowWillClose: delegate method, so we remove it here.  */
   [emacsView removeFromSuperview];
   [emacsWindow close];
+  igc_destroy_root_with_start(emacsFrame);
 }
 
 - (struct frame *)emacsFrame
