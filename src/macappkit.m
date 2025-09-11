@@ -2697,7 +2697,7 @@ static void mac_move_frame_window_structure_1 (struct frame *, int, int);
      windowWillClose: delegate method, so we remove it here.  */
   [emacsView removeFromSuperview];
   [emacsWindow close];
-  igc_destroy_root_with_start(emacsFrame);
+  // igc_destroy_root_with_start(emacsFrame);
 }
 
 - (struct frame *)emacsFrame
