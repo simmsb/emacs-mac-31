@@ -786,6 +786,8 @@ extern struct coding_system safe_terminal_coding;
 
 extern char emacs_mule_bytes[256];
 
+struct coding_system *coding_system_categories (int *n);
+
 INLINE_HEADER_END
 
 #endif /* EMACS_CODING_H */

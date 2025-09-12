@@ -596,6 +596,7 @@ OPTION_DEFAULT_ON([xinput2],[don't use version 2 of the X Input Extension for in
 OPTION_DEFAULT_OFF([small-ja-dic],[generate a smaller-size Japanese dictionary])
 OPTION_DEFAULT_OFF([android],[cross-compile Android application package])
 OPTION_DEFAULT_ON([android-debug],[don't build Emacs as a debug package on Android])
+OPTION_DEFAULT_OFF([mps],[use MPS for garbage collection])
 
 # Find out of Android support is enabled and mailutils has defaulted
 # to `yes-unless-android'.  Disable it if so.
@@ -714,6 +715,7 @@ AC_ARG_ENABLE([checking],
 		 enable only specific categories of checks.
 		 Categories are: all,yes,no.
 		 Flags are: stringbytes, stringoverrun, stringfreelist,
+		 igc_check_fwd, igc_debug,
 		 structs, glyphs])],
 [ac_checking_flags="${enableval}"],[])
 IFS="${IFS= 	}"; ac_save_IFS="$IFS"; IFS="$IFS,"
@@ -741,7 +743,10 @@ do
 	stringfreelist) ac_gc_check_string_free_list=1 ;;
 	structs)	CHECK_STRUCTS=true ;;
 	glyphs)		ac_glyphs_debug=1 ;;
-	*)	AC_MSG_ERROR([unknown check category $check]) ;;
+	# Very special case, so don't include it in all.
+	igc_check_fwd)	ac_igc_check_fwd=1 ;;
+	igc_debug)	ac_igc_debug=1 ;;
+	*)	AC_MSG_ERROR([uuu unknown check category $check]) ;;
 	esac
 done
 IFS="$ac_save_IFS"
@@ -763,11 +768,12 @@ AS_IF([test "$with_android" = no || test -n "$XCONFIGURE"],[
   fi
   if $CHECK_STRUCTS; then
     AC_DEFINE([CHECK_STRUCTS], [1],
-      [Define this to check whether someone updated the portable dumper
-       code after changing the layout of a structure that it uses.
-       If you change one of these structures, check that the pdumper.c
-       code is still valid, and update the pertinent hash in pdumper.c
-       by manually copying the hash from the newly-generated dmpstruct.h.])
+      [Define this to check whether someone updated the portable dumper and
+       igc code after changing the layout of a structure or enum that they
+       use. If you change one of these structures or enums, check that the
+       pdumper.c and igc.c code is still valid, and update the pertinent
+       hashes by manually copying the hash from the newly-generated
+       dmpstruct.h.])
   fi
   AC_SUBST([CHECK_STRUCTS])
   if test x$ac_gc_check_stringbytes != x ; then
@@ -787,6 +793,14 @@ AS_IF([test "$with_android" = no || test -n "$XCONFIGURE"],[
   if test x$ac_glyphs_debug != x ; then
     AC_DEFINE([GLYPH_DEBUG], [1],
   [Define this to enable glyphs debugging code.])
+  fi
+  if test x$ac_igc_check_fwd != x ; then
+    AC_DEFINE([IGC_CHECK_FWD], [1],
+  [Define this to enable igc forwarding check code.])
+  fi
+  if test x$ac_igc_debug != x ; then
+    AC_DEFINE([IGC_DEBUG], [1],
+  [Define this to enable igc assertions.])
   fi
 ],[AS_IF([test "x$ac_enable_checking" != x],
     [android_enable_checking=yes
@@ -1289,6 +1303,7 @@ packages targeting Android 2.2.])])
   passthrough="$passthrough --with-harfbuzz=$with_harfbuzz"
   passthrough="$passthrough --with-threads=$with_threads"
   passthrough="$passthrough --with-rsvg=$with_rsvg"
+  passthrough="$passthrough --with-mps=$with_mps"
 
   # Now pass through some checking-related options.
   emacs_val="--enable-check-lisp-object-type=$enable_check_lisp_object_type"
@@ -5622,6 +5637,55 @@ if test "${with_gpm}" != "no"; then
 fi
 AC_SUBST([LIBGPM])
 
+### Use -lmps if available, unless '--with-mps=no'.
+AC_SUBST([HAVE_MPS])
+HAVE_MPS=no
+LIBMPS=
+IGCOBJ=
+MPS_CFLAGS=
+if test "${with_mps}" != "no"; then
+  AC_CHECK_HEADER([mps.h],
+    [AC_CHECK_LIB([mps], [mps_arena_create], [HAVE_MPS=yes], [], [$LIB_PTHREAD])])
+
+  if test "${HAVE_MPS}" = "yes"; then
+    IGCOBJ="igc.o"
+    AC_DEFINE([HAVE_MPS], [1],
+      [Define to 1 if you have the mps library (-lmps).])
+    if test "${with_mps}" = "debug"; then
+      LIBMPS="-lmps-debug $LIB_PTHREAD"
+    else
+      LIBMPS="-lmps $LIB_PTHREAD"
+    fi
+    # Force -fno-omit-frame-pointer to avoid register scanning bug:
+    # https://github.com/Ravenbrook/mps/pull/38
+    MPS_CFLAGS="-fno-omit-frame-pointer"
+  else
+    AC_MSG_ERROR([The MPS library libmps is missing]):
+  fi
+fi
+
+
+if test "$REALLY_ANDROID" = "yes" && test "$with_mps" != "no"; then
+  HAVE_MPS=no
+  ndk_SEARCH_MODULE([mps], [MPS], [HAVE_MPS=yes])
+
+  if test "$HAVE_MPS" = "yes"; then
+    SAVE_CFLAGS="$CFLAGS"
+    CFLAGS="$CFLAGS $MPS_CFLAGS"
+    AC_CHECK_HEADERS([mps.h], [break])
+    CFLAGS="$SAVE_CFLAGS"
+    IGCOBJ="igc.o"
+    AC_DEFINE([HAVE_MPS], [1],
+       [Define to 1 if you have the mps library (-lmps).])
+    HAVE_MPS=yes
+    LIBMPS="$MPS_LIBS"
+  fi
+fi
+AC_SUBST([MPS_CFLAGS])
+AC_SUBST([LIBMPS])
+AC_SUBST([IGCOBJ])
+
+
 dnl Check for malloc/malloc.h on darwin
 AC_CHECK_HEADERS_ONCE([malloc/malloc.h])
 
@@ -7724,7 +7788,7 @@ optsep=
 emacs_config_features=
 for opt in ACL BE_APP CAIRO DBUS FREETYPE GCONF GIF GLIB GMP GNUTLS GPM GSETTINGS \
  HARFBUZZ IMAGEMAGICK JPEG LCMS2 LIBOTF LIBSELINUX LIBSYSTEMD LIBXML2 \
- M17N_FLT MODULES NATIVE_COMP NOTIFY NS OLDXMENU PDUMPER PGTK PNG RSVG SECCOMP \
+ M17N_FLT MODULES MPS NATIVE_COMP NOTIFY NS OLDXMENU PDUMPER PGTK PNG RSVG SECCOMP \
  SOUND SQLITE3 THREADS TIFF TOOLKIT_SCROLL_BARS TREE_SITTER \
  UNEXEC WEBP X11 XAW3D XDBE XFT XIM XINERAMA XINPUT2 XPM XRANDR XWIDGETS \
  X_TOOLKIT ZLIB; do
@@ -7785,6 +7849,7 @@ AS_ECHO(["  Does Emacs use -lXaw3d?                                 ${HAVE_XAW3D
   Does Emacs use native APIs for images?                  ${NATIVE_IMAGE_API}
   Does Emacs support sound?                               ${HAVE_SOUND}
   Does Emacs use -lgpm?                                   ${HAVE_GPM}
+  Does Emacs use -lmps?                                   ${HAVE_MPS}
   Does Emacs use -ldbus?                                  ${HAVE_DBUS}
   Does Emacs use -lgconf?                                 ${HAVE_GCONF}
   Does Emacs use GSettings?                               ${HAVE_GSETTINGS}

@@ -482,7 +482,7 @@ enum ns_return_frame_mode
   EmacsWindow *nonfs_window;
   BOOL fs_is_native;
 @public
-  struct frame *emacsframe;
+  struct frame **emacsframe;
   int scrollbarsNeedingUpdate;
   NSRect ns_userRect;
 }
@@ -713,8 +713,6 @@ enum ns_return_frame_mode
 
 @interface EmacsScroller : NSScroller
 {
-  struct window *window;
-  struct frame *frame;
   NSResponder *prevResponder;
 
   /* Offset to the bottom of knob of last mouse down.  */
@@ -731,8 +729,11 @@ enum ns_return_frame_mode
   int em_position;
   int em_portion;
   int em_whole;
+  struct window **m_lisp_window;
 }
 
+- (struct window *) lispWindow;
+- (struct frame *) lispFrame;
 - (void) mark;
 - (instancetype) initFrame: (NSRect )r window: (Lisp_Object)win;
 - (void)setFrame: (NSRect)r;

@@ -20,6 +20,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <config.h>
 #include <setjmp.h>
 #include "lisp.h"
+#include "igc.h"
 #include "character.h"
 #include "buffer.h"
 #include "process.h"
@@ -38,14 +39,11 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #define release_select_lock() do { } while (0)
 #endif
 
-union aligned_thread_state
-{
-  struct thread_state s;
-  GCALIGNED_UNION_MEMBER
-};
-static_assert (GCALIGNED (union aligned_thread_state));
+#ifdef HAVE_MPS
+static sys_jmp_buf main_thread_getcjmp;
+#endif
 
-static union aligned_thread_state main_thread
+union aligned_thread_state main_thread
   = {{
       .header.size = PVECHEADERSIZE (PVEC_THREAD,
 				     PSEUDOVECSIZE (struct thread_state,
@@ -53,6 +51,9 @@ static union aligned_thread_state main_thread
 				     VECSIZE (struct thread_state)),
       .m_last_thing_searched = LISPSYM_INITIALLY (Qnil),
       .m_saved_last_thing_searched = LISPSYM_INITIALLY (Qnil),
+#ifdef HAVE_MPS
+      .m_getcjmp = &main_thread_getcjmp,
+#endif
       .name = LISPSYM_INITIALLY (Qnil),
       .function = LISPSYM_INITIALLY (Qnil),
       .result = LISPSYM_INITIALLY (Qnil),
@@ -661,7 +662,7 @@ thread_select (select_func *func, int max_fds, fd_set *rfds,
 }
 
 
-
+#ifndef HAVE_MPS
 static void
 mark_one_thread (struct thread_state *thread)
 {
@@ -719,6 +720,7 @@ unmark_main_thread (void)
   main_thread.s.header.size &= ~ARRAY_MARK_FLAG;
 }
 
+#endif // not HAVE_MPS
 
 
 static void
@@ -807,7 +809,12 @@ run_thread (void *state)
   /* Put a dummy catcher at top-level so that handlerlist is never NULL.
      This is important since handlerlist->nextfree holds the freelist
      which would otherwise leak every time we unwind back to top-level.   */
+#ifdef HAVE_MPS
+  self->gc_info = igc_thread_add (self);
+  handlerlist_sentinel = igc_alloc_handler ();
+#else
   handlerlist_sentinel = xzalloc (sizeof (struct handler));
+#endif
   handlerlist = handlerlist_sentinel->nextfree = handlerlist_sentinel;
   struct handler *c = push_handler (Qunbound, CATCHER);
   eassert (c == handlerlist_sentinel);
@@ -823,17 +830,26 @@ run_thread (void *state)
   self->m_specpdl = NULL;
   self->m_specpdl_ptr = NULL;
   self->m_specpdl_end = NULL;
+#ifdef HAVE_MPS
+  igc_xfree (self->m_getcjmp);
+  self->m_getcjmp = NULL;
+#endif
 
-  {
-    struct handler *c, *c_next;
-    for (c = handlerlist_sentinel; c; c = c_next)
-      {
-	c_next = c->nextfree;
-	xfree (c);
-      }
-  }
+   for (struct handler *c = handlerlist_sentinel, *c_next; c; c = c_next)
+     {
+       c_next = c->nextfree;
+#ifndef HAVE_MPS
+       xfree (c);
+#else
+       igc_xfree (c);
+#endif
+     }
 
   xfree (self->thread_name);
+
+#ifdef HAVE_MPS
+  igc_thread_remove (&self->gc_info);
+#endif
 
   current_thread = NULL;
   sys_cond_broadcast (&self->thread_condvar);
@@ -907,17 +923,19 @@ will be signaled.  */)
 				    PVEC_THREAD);
   new_thread->function = function;
   new_thread->name = name;
+#ifdef HAVE_MPS
+  new_thread->m_getcjmp = igc_xzalloc_ambig (sizeof (*new_thread->m_getcjmp));
+#endif
   /* Perhaps copy m_last_thing_searched from parent?  */
   new_thread->m_current_buffer = current_thread->m_current_buffer;
 
   ptrdiff_t size = 50;
-  union specbinding *pdlvec = xmalloc ((1 + size) * sizeof (union specbinding));
+  union specbinding *pdlvec = xzalloc ((1 + size) * sizeof (union specbinding));
   new_thread->m_specpdl = pdlvec + 1;  /* Skip the dummy entry.  */
   new_thread->m_specpdl_end = new_thread->m_specpdl + size;
   new_thread->m_specpdl_ptr = new_thread->m_specpdl;
 
   init_bc_thread (&new_thread->bc);
-
   sys_cond_init (&new_thread->thread_condvar);
 
   /* We'll need locking here eventually.  */
@@ -1279,6 +1297,10 @@ init_threads (void)
   main_thread.s.thread_id = sys_thread_self ();
   main_thread.s.buffer_disposition = Qnil;
   init_bc_thread (&main_thread.s.bc);
+#ifdef HAVE_MPS
+  igc_on_alloc_main_thread_bc ();
+#endif
+  gc_init_header (&main_thread.s.header.gc_header, IGC_OBJ_VECTOR);
 }
 
 void

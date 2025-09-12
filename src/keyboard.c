@@ -23,6 +23,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <sys/stat.h>
 
 #include "lisp.h"
+#include "igc.h"
 #include "coding.h"
 #include "termchar.h"
 #include "termopts.h"
@@ -368,6 +369,15 @@ static Lisp_Object virtual_core_keyboard_name;
    menu bar.  */
 static Lisp_Object menu_bar_touch_id;
 
+#define ASYNC_WORK_QUEUE_CAPACITY 64
+
+struct async_work_queue {
+  uint8_t start, end;
+  struct async_work_item items[ASYNC_WORK_QUEUE_CAPACITY];
+};
+
+static struct async_work_queue async_work_queue;
+
 
 /* Global variable declarations.  */
 
@@ -409,13 +419,20 @@ static void deliver_user_signal (int);
 static char *find_user_signal_name (int);
 static void store_user_signal_events (void);
 static bool is_ignored_event (union buffered_input_event *);
+static void do_async_work (void);
 
 /* Advance or retreat a buffered input event pointer.  */
 
-static union buffered_input_event *
+union buffered_input_event *
 next_kbd_event (union buffered_input_event *ptr)
 {
   return ptr == kbd_buffer + KBD_BUFFER_SIZE - 1 ? kbd_buffer : ptr + 1;
+}
+
+union buffered_input_event *
+prev_kbd_event (union buffered_input_event *ptr)
+{
+  return ptr == kbd_buffer ? kbd_buffer + KBD_BUFFER_SIZE - 1 : ptr - 1;
 }
 
 /* Like EVENT_START, but assume EVENT is an event.
@@ -4731,6 +4748,10 @@ timer_check_2 (Lisp_Object timers, Lisp_Object idle_timers)
   if (! (CONSP (timers) || CONSP (idle_timers)))
     return invalid_timespec ();
 
+#ifdef HAVE_MPS
+  igc_on_idle ();
+#endif
+
   struct timespec
     now = current_timespec (),
     idleness_now = (timespec_valid_p (timer_idleness_start_time)
@@ -8400,6 +8421,8 @@ process_pending_signals (void)
   pending_signals = false;
   handle_async_input ();
   do_pending_atimers ();
+  do_async_work ();
+  process_pending_profiler_signals ();
 }
 
 /* Undo any number of BLOCK_INPUT calls down to level LEVEL,
@@ -8514,15 +8537,40 @@ add_user_signal (int sig, const char *name)
   sigaction (sig, &action, 0);
 }
 
+#ifdef HAVE_MPS
+/* This is a C string, not a Lisp_Object, so it never ends up behind a
+   memory barrier (bug#75632).  */
+static char * volatile special_event_name;
+
+static Lisp_Object
+watch_debug_on_event (Lisp_Object symbol, Lisp_Object newval,
+		      Lisp_Object operation, Lisp_Object where)
+{
+  char *old_special_event_name = special_event_name;
+  if (SYMBOLP (newval))
+    {
+      char *new_special_event_name = xstrdup (SSDATA (SYMBOL_NAME (newval)));
+      special_event_name = new_special_event_name;
+    }
+  else
+    special_event_name = NULL;
+  xfree (old_special_event_name);
+
+  return Qnil;
+}
+#endif
+
 static void
 handle_user_signal (int sig)
 {
   struct user_signal_info *p;
+
+#ifndef HAVE_MPS
   const char *special_event_name = NULL;
 
   if (SYMBOLP (Vdebug_on_event))
     special_event_name = SSDATA (SYMBOL_NAME (Vdebug_on_event));
-
+#endif
   for (p = user_signals; p; p = p->next)
     if (p->sig == sig)
       {
@@ -8532,6 +8580,8 @@ handle_user_signal (int sig)
             /* Enter the debugger in many ways.  */
             debug_on_next_call = true;
             debug_on_quit = true;
+	    /* FIXME/igc: if we ever decide to protect Lisp variables,
+	       this may cause crashes such as bug#75632.  */
             Vquit_flag = Qt;
             Vinhibit_quit = Qnil;
 
@@ -13168,7 +13218,11 @@ init_kboard (KBOARD *kb, Lisp_Object type)
 KBOARD *
 allocate_kboard (Lisp_Object type)
 {
+#ifdef HAVE_MPS
+  KBOARD *kb = igc_alloc_kboard ();
+#else
   KBOARD *kb = xmalloc (sizeof *kb);
+#endif
 
   init_kboard (kb, type);
   kb->next_kboard = all_kboards;
@@ -13184,7 +13238,11 @@ allocate_kboard (Lisp_Object type)
 static void
 wipe_kboard (KBOARD *kb)
 {
+#ifdef HAVE_MPS
+  igc_xfree (kb->kbd_macro_buffer);
+#else
   xfree (kb->kbd_macro_buffer);
+#endif
 }
 
 /* Free KB and memory referenced from it.  */
@@ -13227,7 +13285,11 @@ delete_kboard (KBOARD *kb)
     }
 
   wipe_kboard (kb);
+#ifdef HAVE_MPS
+  igc_xfree (kb);
+#else
   xfree (kb);
+#endif
 }
 
 void
@@ -13316,6 +13378,21 @@ init_keyboard (void)
       start_polling ();
     }
 #endif
+
+#ifdef HAVE_MPS
+  {
+    Lisp_Object watcher;
+
+    static union Aligned_Lisp_Subr Swatch_debug_on_event =
+      {{{ GC_HEADER_INIT PSEUDOVECTOR_FLAG | (PVEC_SUBR << PSEUDOVECTOR_AREA_BITS) },
+	{ .a4 = watch_debug_on_event },
+	4, 4, "watch_debug_on_event", {0}, 0, 0 }};
+    gc_init_header (&Swatch_debug_on_event.s.header.gc_header, IGC_OBJ_VECTOR);
+    XSETSUBR (watcher, &Swatch_debug_on_event);
+    Fadd_variable_watcher (Qdebug_on_event, watcher);
+    watch_debug_on_event (Qdebug_on_event, Vdebug_on_event, Qnil, Qnil);
+  }
+#endif
 }
 
 /* This type's only use is in syms_of_keyboard, to put properties on the
@@ -13393,6 +13470,58 @@ is_ignored_event (union buffered_input_event *event)
     }
 
   return !NILP (Fmemq (ignore_event, Vwhile_no_input_ignore_events));
+}
+
+static uint8_t
+async_work_queue_len (struct async_work_queue *q)
+{
+  uint8_t cap = ASYNC_WORK_QUEUE_CAPACITY;
+  return (q->start <= q->end
+	  ? q->end - q->start
+	  : cap - q->start + q->end);
+}
+
+static struct async_work_item
+async_work_queue_pop_front (struct async_work_queue *q)
+{
+  if (async_work_queue_len (q) == 0)
+    emacs_abort ();
+  struct async_work_item item = q->items[q->start];
+  uint8_t cap = ASYNC_WORK_QUEUE_CAPACITY;
+  q->start = (q->start + 1) % cap;
+  return item;
+}
+
+void
+enqueue_async_work (struct async_work_item item)
+{
+  struct async_work_queue *q = &async_work_queue;
+  uint8_t cap = ASYNC_WORK_QUEUE_CAPACITY;
+  if (async_work_queue_len (q) == cap)
+    emacs_abort ();
+  q->items[q->end] = item;
+  q->end = (q->end + 1) % cap;
+  pending_signals = 1;
+}
+
+static void
+do_async_work_1 (struct async_work_item item)
+{
+  switch (item.type)
+    {
+    case ASYNCWORK_SIGCHLD:
+      process_sigchld_async (item.u.sigchld);
+      return;
+    }
+  emacs_abort ();
+}
+
+static void
+do_async_work (void)
+{
+  struct async_work_queue *q = &async_work_queue;
+  while (async_work_queue_len (q) > 0)
+    do_async_work_1 (async_work_queue_pop_front (q));
 }
 
 static void syms_of_keyboard_for_pdumper (void);
@@ -14370,6 +14499,9 @@ of processing the event normally through `special-event-map'.
 Currently, the only supported values for this
 variable are `sigusr1' and `sigusr2'.  */);
   Vdebug_on_event = Qsigusr2;
+#ifdef HAVE_MPS
+  DEFSYM (Qdebug_on_event, "debug-on-event");
+#endif
 
   DEFVAR_BOOL ("attempt-stack-overflow-recovery",
                attempt_stack_overflow_recovery,
@@ -14600,6 +14732,7 @@ keys_of_keyboard (void)
 			    "ignore");
 }
 
+#ifndef HAVE_MPS
 /* Mark the pointers in the kboard objects.
    Called by Fgarbage_collect.  */
 void
@@ -14653,3 +14786,4 @@ mark_kboards (void)
 	}
     }
 }
+#endif // not HAVE_MPS

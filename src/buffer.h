@@ -285,6 +285,9 @@ struct buffer_text
     /* Properties of this buffer's text.  */
     INTERVAL intervals;
 
+# ifdef HAVE_MPS
+    Lisp_Object markers;
+# else
     /* The markers that refer to this buffer.
        This is actually a single marker ---
        successive elements in its marker `chain'
@@ -293,6 +296,7 @@ struct buffer_text
        very cheap to add a marker to the list and it's also very cheap
        to move a marker within a buffer.  */
     struct Lisp_Marker *markers;
+# endif
 
     /* Usually false.  Temporarily true in decode_coding_gap to
        prevent Fgarbage_collect from shrinking the gap and losing
@@ -318,7 +322,7 @@ enum { UNKNOWN_MODTIME_NSECS = -2 };
 
 struct buffer
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* The name of this buffer.  */
   Lisp_Object name_;
@@ -741,6 +745,114 @@ struct buffer
      the struct buffer. So we copy it around in set_buffer_internal.  */
   Lisp_Object undo_list_;
 };
+
+struct marker_it
+{
+# ifdef HAVE_MPS
+  struct Lisp_Vector *v;
+  Lisp_Object obj;
+  ptrdiff_t slot;
+# else
+  struct Lisp_Marker *marker;
+#endif
+};
+
+# ifdef HAVE_MPS
+
+enum
+{
+  IGC_IDX_FREE_LIST = 0,
+  IGC_IDX_HEAD = 1,
+  IGC_IDX_START = 2,
+
+  IGC_OFF_NEXT = 0,
+  IGC_OFF_PREV = 1,
+  IGC_OFF_MARKER = 2,
+  IGC_MA_NSLOTS = 3,
+};
+
+INLINE int
+slot_to_index (int slot)
+{
+  return (slot * IGC_MA_NSLOTS) + IGC_IDX_START;
+}
+
+#define IGC_MA_FREE_LIST(v) (v)->contents[IGC_IDX_FREE_LIST]
+#define IGC_MA_HEAD(v) (v)->contents[IGC_IDX_HEAD]
+
+#define IGC_MA_MARKER(v, slot) (v)->contents[slot_to_index (slot) + IGC_OFF_MARKER]
+#define IGC_MA_NEXT(v, slot) (v)->contents[slot_to_index (slot) + IGC_OFF_NEXT]
+#define IGC_MA_PREV(v, slot) (v)->contents[slot_to_index (slot) + IGC_OFF_PREV]
+
+#define IGC_MA_CAPACITY(v) (((v)->header.size - IGC_IDX_START) / IGC_MA_NSLOTS)
+
+INLINE struct marker_it
+marker_it_init (struct buffer *b)
+{
+  if (VECTORP (BUF_MARKERS (b)))
+    {
+      struct Lisp_Vector *v = XVECTOR (BUF_MARKERS (b));
+      ptrdiff_t slot = XFIXNUM (IGC_MA_HEAD (v));
+      if (slot >= 0)
+	return (struct marker_it)
+	  { .slot = slot, .v = v, .obj = IGC_MA_MARKER (v, slot) };
+    }
+  return (struct marker_it){ .obj = Qnil };
+}
+
+INLINE bool
+marker_it_valid (struct marker_it *it)
+{
+  return MARKERP (it->obj);
+}
+
+INLINE void
+marker_it_next (struct marker_it *it)
+{
+  it->slot = XFIXNUM (IGC_MA_NEXT (it->v, it->slot));
+  it->obj = it->slot < 0 ? Qnil : IGC_MA_MARKER (it->v, it->slot);
+}
+
+INLINE struct Lisp_Marker *
+marker_it_marker (struct marker_it *it)
+{
+  return XMARKER (it->obj);
+}
+
+# else
+INLINE struct marker_it
+marker_it_init (struct buffer *b)
+{
+  return (struct marker_it) { .marker = BUF_MARKERS (b) };
+}
+
+INLINE bool
+marker_it_valid (struct marker_it *it)
+{
+  return it->marker != NULL;
+}
+
+INLINE void
+marker_it_next (struct marker_it *it)
+{
+  it->marker = it->marker->next;
+}
+
+INLINE struct Lisp_Marker *
+marker_it_marker (struct marker_it *it)
+{
+  return it->marker;
+}
+
+# endif
+
+# define DO_MARKERS(b, m)                                                 \
+  for (struct marker_it it_ = marker_it_init (b); marker_it_valid (&it_); \
+       marker_it_next (&it_))                                             \
+    {									\
+       struct Lisp_Marker *m = marker_it_marker (&it_);
+
+# define END_DO_MARKERS }
 
 struct sortvec
 {

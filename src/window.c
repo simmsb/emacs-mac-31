@@ -46,6 +46,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "msdos.h"
 #endif
 #include "pdumper.h"
+#include "igc.h"
 
 static ptrdiff_t count_windows (struct window *);
 static ptrdiff_t get_leaf_windows (struct window *, struct window **,
@@ -2329,7 +2330,12 @@ where BUFFER is a buffer, WINDOW-START is the start position of the
 window for that buffer, and POS is a window-specific point value.  */)
   (Lisp_Object window)
 {
+#ifdef HAVE_MPS
+  struct window *w = decode_live_window (window);
+  return w->prev_buffers = igc_discard_killed_buffers (w->prev_buffers);
+#else
   return decode_live_window (window)->prev_buffers;
+#endif
 }
 
 DEFUN ("set-window-prev-buffers", Fset_window_prev_buffers,
@@ -2350,9 +2356,14 @@ DEFUN ("window-next-buffers", Fwindow_next_buffers, Swindow_next_buffers,
        0, 1, 0,
        doc:  /* Return list of buffers recently re-shown in WINDOW.
 WINDOW must be a live window and defaults to the selected one.  */)
-     (Lisp_Object window)
+  (Lisp_Object window)
 {
+#ifdef HAVE_MPS
+  struct window *w = decode_live_window (window);
+  return w->next_buffers = igc_discard_killed_buffers (w->next_buffers);
+#else
   return decode_live_window (window)->next_buffers;
+#endif
 }
 
 DEFUN ("set-window-next-buffers", Fset_window_next_buffers,
@@ -3432,10 +3443,18 @@ window_discard_buffer_from_window (Lisp_Object buffer, Lisp_Object window, bool 
 void
 window_discard_buffer_from_dead_windows (Lisp_Object buffer)
 {
+#ifdef HAVE_MPS
+  struct Lisp_Weak_Hash_Table *h = XWEAK_HASH_TABLE (window_dead_windows_table);
+
+  Lisp_Object k, v;
+  DOHASH_WEAK (h, k, v)
+    window_discard_buffer_from_window (buffer, v, true);
+#else
   struct Lisp_Hash_Table *h = XHASH_TABLE (window_dead_windows_table);
 
   DOHASH (h, k, v)
     window_discard_buffer_from_window (buffer, v, true);
+#endif
 }
 
 DEFUN ("window-discard-buffer-from-window", Fwindow_discard_buffer,
@@ -7346,7 +7365,7 @@ from the top of the window.  */)
 
 struct save_window_data
   {
-    union vectorlike_header header;
+    struct vectorlike_header header;
     Lisp_Object selected_frame;
     Lisp_Object current_window;
     Lisp_Object f_current_buffer;
@@ -7375,7 +7394,7 @@ struct save_window_data
 /* This is saved as a Lisp_Vector.  */
 struct saved_window
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   Lisp_Object window, buffer, start, pointm, old_pointm;
   Lisp_Object pixel_left, pixel_top, pixel_height, pixel_width;

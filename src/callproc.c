@@ -436,7 +436,7 @@ call_process (ptrdiff_t nargs, Lisp_Object *args, int filefd,
 	  val = Qraw_text;
 	else
 	  {
-	    SAFE_NALLOCA (args2, 1, nargs + 1);
+	    SAFE_ALLOCA_LISP (args2, nargs + 1);
 	    args2[0] = Qcall_process;
 	    for (i = 0; i < nargs; i++) args2[i + 1] = args[i];
 	    coding_systems = Ffind_operation_coding_system (nargs + 1, args2);
@@ -542,6 +542,9 @@ call_process (ptrdiff_t nargs, Lisp_Object *args, int filefd,
   /* Remove "/:" from PATH.  */
   path = remove_slash_colon (path);
 
+  /* Do this early, so any GC inside ENCODE_FILE is done with.  */
+  path = ENCODE_FILE (path);
+
   SAFE_NALLOCA (new_argv, 1, nargs < 4 ? 2 : nargs - 2);
 
   if (nargs > 4)
@@ -557,13 +560,24 @@ call_process (ptrdiff_t nargs, Lisp_Object *args, int filefd,
 	    args[i] = encode_coding_string (&argument_coding, args[i], 1);
 	}
       for (i = 4; i < nargs; i++)
-	new_argv[i - 3] = SSDATA (args[i]);
+	{
+#ifdef HAVE_MPS
+	  new_argv[i - 3] = xstrdup (SSDATA (args[i]));
+	  record_unwind_protect_ptr (xfree, new_argv[i - 3]);
+#else
+	  new_argv[i - 3] = SSDATA (args[i]);
+#endif
+	}
       new_argv[i - 3] = 0;
     }
   else
     new_argv[1] = 0;
-  path = ENCODE_FILE (path);
+#ifdef HAVE_MPS
+  new_argv[0] = xstrdup (SSDATA (path));
+  record_unwind_protect_ptr (xfree, new_argv[0]);
+#else
   new_argv[0] = SSDATA (path);
+#endif
 
   discard_output = FIXNUMP (buffer) || (NILP (buffer) && NILP (output_file));
 
@@ -750,7 +764,7 @@ call_process (ptrdiff_t nargs, Lisp_Object *args, int filefd,
 	    {
 	      ptrdiff_t i;
 
-	      SAFE_NALLOCA (args2, 1, nargs + 1);
+	      SAFE_ALLOCA_LISP (args2, nargs + 1);
 	      args2[0] = Qcall_process;
 	      for (i = 0; i < nargs; i++) args2[i + 1] = args[i];
 	      coding_systems
@@ -1042,7 +1056,7 @@ create_temp_file (ptrdiff_t nargs, Lisp_Object *args,
       Lisp_Object coding_systems;
       Lisp_Object *args2;
       USE_SAFE_ALLOCA;
-      SAFE_NALLOCA (args2, 1, nargs + 1);
+      SAFE_ALLOCA_LISP (args2, nargs + 1);
       args2[0] = Qcall_process_region;
       memcpy (args2 + 1, args, nargs * sizeof *args);
       coding_systems = Ffind_operation_coding_system (nargs + 1, args2);
@@ -1725,6 +1739,8 @@ getenv_internal_1 (const char *var, ptrdiff_t varlen, char **value,
 	{
 	  if (SBYTES (entry) > varlen && SREF (entry, varlen) == '=')
 	    {
+	      /* FIXME/igc: does this pointer ever leak to
+		 non-MPS-visible memory?  */
 	      *value = SSDATA (entry) + (varlen + 1);
 	      *valuelen = SBYTES (entry) - (varlen + 1);
 	      return 1;
@@ -1950,10 +1966,20 @@ make_environment_block (Lisp_Object current_dir)
 #endif /* !HAVE_ANDROID */
 
     /* Overrides.  */
+#ifdef HAVE_MPS
+    tem = Vprocess_environment;
+    FOR_EACH_TAIL (tem)
+      {
+	char *safe_string = xstrdup (SSDATA (XCAR (tem)));
+	record_unwind_protect_ptr (xfree, safe_string);
+	new_env = add_env (env, new_env, safe_string);
+      }
+#else
     for (tem = Vprocess_environment;
 	 CONSP (tem) && STRINGP (XCAR (tem));
 	 tem = XCDR (tem))
-      new_env = add_env (env, new_env, SSDATA (XCAR (tem)));
+	new_env = add_env (env, new_env, SSDATA (XCAR (tem)));
+#endif
 
     *new_env = 0;
 

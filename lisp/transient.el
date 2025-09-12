@@ -1961,10 +1961,9 @@ probably use this instead:
        (t nil))))
    ((and-let* ((obj (transient--suffix-prototype (or command this-command)))
                (obj (clone obj)))
-      (progn
-        (transient-init-scope obj)
-        (transient-init-value obj)
-        obj)))))
+      (transient-init-scope obj)
+      (transient-init-value obj)
+      obj))))
 
 (defun transient--suffix-prototype (command)
   (or (get command 'transient--suffix)
@@ -2480,9 +2479,8 @@ value.  Otherwise return CHILDREN as is.")
                      (oset obj inapt t))))
                (suffixes (mapcan (lambda (c) (transient--init-child levels c obj))
                                  (transient-setup-children obj children))))
-      (progn
-        (oset obj suffixes suffixes)
-        (list obj)))))
+      (oset obj suffixes suffixes)
+      (list obj))))
 
 (defun transient--init-suffix (levels spec parent)
   (let* ((class  (car spec))
@@ -4039,7 +4037,29 @@ the value."
               (and (not (and (slot-exists-p obj 'unsavable)
                              (oref obj unsavable)))
                    (transient--get-wrapped-value obj)))
-            (or transient--suffixes transient-current-suffixes))))
+            transient--suffixes)))
+
+(defun transient--get-extended-value ()
+  "Return the extended value of the extant prefix.
+
+Unlike `transient-get-value' also include the values of inactive and
+inapt arguments.  This function is mainly intended for internal use.
+It is used to preserve the full value when a menu is being refreshed,
+including the presently ineffective parts."
+  (transient--with-emergency-exit :get-value
+    (mapcan #'transient--get-wrapped-value transient--suffixes)))
+
+(defun transient--get-savable-value ()
+  "Return the value of the extant prefix, excluding unsavable parts.
+
+This function is only intended for internal use.  It is used to save
+the value."
+  (transient--with-emergency-exit :get-savable-value
+    (mapcan (lambda (obj)
+              (and (not (and (slot-exists-p obj 'unsavable)
+                             (oref obj unsavable)))
+                   (transient--get-wrapped-value obj)))
+            transient--suffixes)))
 
 (defun transient--get-wrapped-value (obj)
   "Return a list of the value(s) of suffix object OBJ.

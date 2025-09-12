@@ -533,6 +533,25 @@ extern char *dev_tty;
 /* Initial value for dev_tty.  */
 extern char const DEV_TTY[];
 
+union buffered_input_event *next_kbd_event (union buffered_input_event *);
+union buffered_input_event *prev_kbd_event (union buffered_input_event *);
+
 INLINE_HEADER_END
+
+enum async_work_type
+{
+  ASYNCWORK_SIGCHLD
+};
+
+struct async_work_item
+{
+  enum async_work_type type;
+  union
+  {
+    int sigchld;
+  } u;
+};
+
+extern void enqueue_async_work (struct async_work_item item);
 
 #endif /* EMACS_KEYBOARD_H */

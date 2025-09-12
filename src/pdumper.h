@@ -276,6 +276,22 @@ extern void pdumper_record_wd (const char *);
 
 void init_pdumper_once (void);
 void syms_of_pdumper (void);
+bool dump_loaded_p (void);
+
+#ifdef HAVE_MPS
+struct pdumper_object_it
+{
+  size_t i;
+  size_t nrelocs;
+  void *relocs;
+};
+
+/* Usage: struct pdumper_object_it it = {0};
+   while (p = pdumper_next_object (&it)) ... */
+void *pdumper_next_object (struct pdumper_object_it *it);
+#endif
+
+void dump_discard_mem (void *mem, size_t size);
 
 INLINE_HEADER_END
 #endif

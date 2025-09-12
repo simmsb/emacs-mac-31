@@ -147,6 +147,7 @@ enum charset_method
 
 struct charset
 {
+  GC_HEADER
   /* Index to charset_table.  */
   int id;
 
@@ -538,6 +539,8 @@ extern int string_xstring_p (Lisp_Object);
 extern void map_charset_chars (void (*) (Lisp_Object, Lisp_Object),
                                Lisp_Object, Lisp_Object,
                                struct charset *, unsigned, unsigned);
+
+extern struct charset charset_table_init[180];
 
 INLINE_HEADER_END
 

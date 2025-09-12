@@ -793,7 +793,7 @@ static bool xg_crazy_callback_abort;
 static void
 menubar_selection_callback (GtkWidget *widget, gpointer client_data)
 {
-  xg_menu_item_cb_data *cb_data = client_data;
+  xg_menu_item_cb_data *cb_data = get_glib_user_data (client_data);
 
   if (xg_crazy_callback_abort)
     return;
@@ -1478,7 +1478,7 @@ menu_position_func (GtkMenu *menu, gint *x, gint *y, gboolean *push_in, gpointer
 static void
 popup_selection_callback (GtkWidget *widget, gpointer client_data)
 {
-  xg_menu_item_cb_data *cb_data = client_data;
+  xg_menu_item_cb_data *cb_data = get_glib_user_data (client_data);
 
   if (xg_crazy_callback_abort) return;
   if (cb_data) menu_item_selection = cb_data->call_data;
@@ -2168,10 +2168,11 @@ x_menu_show (struct frame *f, int x, int y, int menuflags,
 static void
 dialog_selection_callback (GtkWidget *widget, gpointer client_data)
 {
+  Lisp_Object *selection_pointer = get_glib_user_data (client_data);
   /* Treat the pointer as an integer.  There's no problem
      as long as pointers have enough bits to hold small integers.  */
   if ((intptr_t) client_data != -1)
-    menu_item_selection = client_data;
+    menu_item_selection = selection_pointer;
 
   popup_activated_flag = 0;
 }
@@ -2604,10 +2605,12 @@ x_menu_show (struct frame *f, int x, int y, int menuflags,
       goto return_entry;
     }
 
+#ifndef HAVE_MPS
   /* Don't GC while we prepare and show the menu,
      because we give the oldxmenu library pointers to the
      contents of strings.  */
   inhibit_garbage_collection ();
+#endif
 
 #ifdef HAVE_X_WINDOWS
   x_translate_coordinates_to_root (f, x, y, &x, &y);

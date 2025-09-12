@@ -11307,7 +11307,7 @@ ssize_t
 emacs_gnutls_pull (gnutls_transport_ptr_t p, void* buf, size_t sz)
 {
   int n, err;
-  struct Lisp_Process *process = (struct Lisp_Process *)p;
+  struct Lisp_Process *process = *(struct Lisp_Process **)p;
   int fd = process->infd;
 
   n = sys_read (fd, (char*)buf, sz);
@@ -11329,7 +11329,7 @@ emacs_gnutls_pull (gnutls_transport_ptr_t p, void* buf, size_t sz)
 ssize_t
 emacs_gnutls_push (gnutls_transport_ptr_t p, const void* buf, size_t sz)
 {
-  struct Lisp_Process *process = (struct Lisp_Process *)p;
+  struct Lisp_Process *process = *(struct Lisp_Process **)p;
   int fd = process->outfd;
   ssize_t n = sys_write (fd, buf, sz);
 

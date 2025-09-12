@@ -128,7 +128,7 @@ record_marker_adjustments (ptrdiff_t from, ptrdiff_t to)
 {
   prepare_record ();
 
-  for (struct Lisp_Marker *m = BUF_MARKERS (current_buffer); m; m = m->next)
+  DO_MARKERS (current_buffer, m)
     {
       ptrdiff_t charpos = m->charpos;
       eassert (charpos <= Z);
@@ -154,6 +154,7 @@ record_marker_adjustments (ptrdiff_t from, ptrdiff_t to)
             }
         }
     }
+  END_DO_MARKERS;
 }
 
 /* Record that a deletion is about to take place, of the characters in
@@ -293,9 +294,13 @@ truncate_undo_list (struct buffer *b)
   Lisp_Object prev, next, last_boundary;
   intmax_t size_so_far = 0;
 
+#ifdef HAVE_MPS
+  specpdl_ref count = SPECPDL_INDEX ();
+#else
   /* Make sure that calling undo-outer-limit-function
      won't cause another GC.  */
   specpdl_ref count = inhibit_garbage_collection ();
+#endif
 
   /* Make the buffer current to get its local values of variables such
      as undo_limit.  Also so that Vundo_outer_limit_function can

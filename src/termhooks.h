@@ -483,7 +483,7 @@ extern struct tty_display_info *gpm_tty;
 struct terminal
 {
   /* This is for Lisp; the terminal code does not refer to it.  */
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* Parameter alist of this terminal.  */
   Lisp_Object param_alist;
@@ -984,7 +984,12 @@ extern void delete_terminal_internal (struct terminal *);
 extern Lisp_Object terminal_glyph_code (struct terminal *, int);
 
 /* The initial terminal device, created by initial_term_init.  */
+#ifdef HAVE_MPS
+extern Lisp_Object initial_terminal_lisp;
+#define initial_terminal XUNTAG (initial_terminal_lisp, Lisp_Vectorlike, struct terminal)
+#else
 extern struct terminal *initial_terminal;
+#endif
 
 extern unsigned char *encode_terminal_code (struct glyph *, int,
 					    struct coding_system *);

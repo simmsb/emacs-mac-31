@@ -28,6 +28,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <unistd.h>
 
 #include "lisp.h"
+#include "igc.h"
 #include "termchar.h"
 #include "tparam.h"
 #include "character.h"
@@ -3091,14 +3092,20 @@ tty_menu_make_room (tty_menu *menu)
   if (menu->allocated == menu->count)
     {
       ptrdiff_t allocated = menu->allocated;
+#ifdef HAVE_MPS
+      /* The text and help_text can point to Lisp string data.  */
+      menu->text = igc_xpalloc_ambig (menu->text, &allocated, 1, -1, sizeof *menu->text);
+      menu->help_text = igc_realloc_ambig (menu->help_text,
+					   allocated * sizeof *menu->help_text);
+#else
       menu->text = xpalloc (menu->text, &allocated, 1, -1, sizeof *menu->text);
-      menu->text = xrealloc (menu->text, allocated * sizeof *menu->text);
+      menu->help_text = xrealloc (menu->help_text,
+				  allocated * sizeof *menu->help_text);
+#endif
       menu->submenu = xrealloc (menu->submenu,
 				allocated * sizeof *menu->submenu);
       menu->panenumber = xrealloc (menu->panenumber,
 				   allocated * sizeof *menu->panenumber);
-      menu->help_text = xrealloc (menu->help_text,
-				  allocated * sizeof *menu->help_text);
       menu->allocated = allocated;
     }
 }
@@ -3736,10 +3743,15 @@ tty_menu_destroy (tty_menu *menu)
       for (i = 0; i < menu->count; i++)
 	if (menu->submenu[i])
 	  tty_menu_destroy (menu->submenu[i]);
+#ifdef HAVE_MPS
+      igc_xfree (menu->text);
+      igc_xfree (menu->help_text);
+#else
       xfree (menu->text);
+      xfree (menu->help_text);
+#endif
       xfree (menu->submenu);
       xfree (menu->panenumber);
-      xfree (menu->help_text);
     }
   xfree (menu);
   menu_help_message = prev_menu_help_message = NULL;
@@ -3884,7 +3896,6 @@ tty_menu_show (struct frame *f, int x, int y, int menuflags,
   int dispwidth, dispheight;
   int i, j, lines, maxlines;
   int maxwidth;
-  specpdl_ref specpdl_count;
 
   eassert (FRAME_TERMCAP_P (f));
 
@@ -3901,9 +3912,13 @@ tty_menu_show (struct frame *f, int x, int y, int menuflags,
   /* Make the menu on that window.  */
   menu = tty_menu_create ();
 
+#ifdef HAVE_MPS
+  specpdl_ref specpdl_count = SPECPDL_INDEX ();
+#else
   /* Don't GC while we prepare and show the menu, because we give the
      menu functions pointers to the contents of strings.  */
-  specpdl_count = inhibit_garbage_collection ();
+  specpdl_ref specpdl_count = inhibit_garbage_collection ();
+#endif
 
   /* Avoid crashes if, e.g., another client will connect while we
      are in a menu.  */

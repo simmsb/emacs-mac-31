@@ -75,6 +75,8 @@ To add a new module function, proceed as follows:
 
 #include <config.h>
 
+#include "lisp.h"
+#include "igc.h"
 #include "emacs-module.h"
 
 #include <stdarg.h>
@@ -83,7 +85,6 @@ To add a new module function, proceed as follows:
 #include <stdlib.h>
 #include <time.h>
 
-#include "lisp.h"
 #include "bignum.h"
 #include "dynlib.h"
 #include "coding.h"
@@ -119,10 +120,6 @@ typedef int (*emacs_init_function) (struct emacs_runtime *);
 
 
 /* Memory management.  */
-
-/* An `emacs_value' is just a pointer to a structure holding an
-   internal Lisp object.  */
-struct emacs_value_tag { Lisp_Object v; };
 
 /* Local value objects use a simple fixed-sized block allocation
    scheme without explicit deallocation.  All local values are
@@ -382,26 +379,10 @@ module_get_environment (struct emacs_runtime *runtime)
 
 static Lisp_Object Vmodule_refs_hash;
 
-/* Pseudovector type for global references.  The pseudovector tag is
-   PVEC_OTHER since these values are never printed and don't need to
-   be special-cased for garbage collection.  */
-
-struct module_global_reference {
-  /* Pseudovector header, must come first. */
-  union vectorlike_header header;
-
-  /* Holds the emacs_value for the object.  The Lisp_Object stored
-     therein must be the same as the hash key.  */
-  struct emacs_value_tag value;
-
-  /* Reference count, always positive.  */
-  ptrdiff_t refcount;
-};
-
 static struct module_global_reference *
 XMODULE_GLOBAL_REFERENCE (Lisp_Object o)
 {
-  eassert (PSEUDOVECTORP (o, PVEC_OTHER));
+  eassert (PSEUDOVECTORP (o, PVEC_MODULE_GLOBAL_REFERENCE));
   return XUNTAG (o, Lisp_Vectorlike, struct module_global_reference);
 }
 
@@ -448,13 +429,17 @@ module_make_global_ref (emacs_env *env, emacs_value value)
     }
   else
     {
+#ifdef HAVE_MPS
+      struct module_global_reference *ref = igc_alloc_global_ref ();
+#else
       struct module_global_reference *ref
         = ALLOCATE_PLAIN_PSEUDOVECTOR (struct module_global_reference,
-                                       PVEC_OTHER);
+                                       PVEC_MODULE_GLOBAL_REFERENCE);
+#endif
       ref->value.v = new_obj;
       ref->refcount = 1;
       Lisp_Object value;
-      XSETPSEUDOVECTOR (value, ref, PVEC_OTHER);
+      XSETPSEUDOVECTOR (value, ref, PVEC_MODULE_GLOBAL_REFERENCE);
       hash_put (h, new_obj, value, hashcode);
       MODULE_INTERNAL_CLEANUP ();
       return &ref->value;
@@ -568,7 +553,7 @@ module_non_local_exit_throw (emacs_env *env, emacs_value tag, emacs_value value)
 
 struct Lisp_Module_Function
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* Fields traced by GC; these must come first.  */
   Lisp_Object documentation, interactive_form, command_modes;
@@ -1508,6 +1493,9 @@ finalize_storage (struct emacs_value_storage *storage)
     {
       struct emacs_value_frame *current = next;
       next = current->next;
+#ifdef HAVE_MPS
+      igc_destroy_root_with_start (current);
+#endif
       free (current);
     }
 }
@@ -1529,6 +1517,13 @@ allocate_emacs_value (emacs_env *env, Lisp_Object obj)
           module_out_of_memory (env);
           return NULL;
         }
+#ifdef HAVE_MPS
+      {
+	char *start = (char *) storage->current->next;
+	char *end = start + sizeof *storage->current->next;
+	igc_root_create_ambig (start, end, "emacs_value_frame");
+      }
+#endif
       initialize_frame (storage->current->next);
       storage->current = storage->current->next;
     }
@@ -1538,6 +1533,7 @@ allocate_emacs_value (emacs_env *env, Lisp_Object obj)
   return value;
 }
 
+#ifndef HAVE_MPS
 /* Mark all objects allocated from local environments so that they
    don't get garbage-collected.  */
 void
@@ -1552,6 +1548,7 @@ mark_module_environment (void *ptr)
     for (int i = 0; i < frame->offset; ++i)
       mark_object (frame->objects[i].v);
 }
+#endif // not HAVE_MPS
 
 
 /* Environment lifetime management.  */

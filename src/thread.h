@@ -19,6 +19,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #ifndef THREAD_H
 #define THREAD_H
 
+#include "config.h"
 #include "regex-emacs.h"
 
 #ifdef WINDOWSNT
@@ -61,7 +62,7 @@ struct bc_thread_state {
 
 struct thread_state
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* The buffer in which the last search was performed, or
      Qt if the last search was done in a string;
@@ -188,8 +189,15 @@ struct thread_state
      so that if more than one thread calls read_char, they don't
      clobber each other's getcjmp, which will cause
      quit_throw_to_read_char crash due to using a wrong stack.  */
+#ifdef HAVE_MPS
+  /* For MPS, we need to use an indirect setjmp buffer so we can mark it
+     conservatively.  */
+  sys_jmp_buf *m_getcjmp;
+#define getcjmp (*(current_thread->m_getcjmp))
+#else
   sys_jmp_buf m_getcjmp;
 #define getcjmp (current_thread->m_getcjmp)
+#endif
 
   /* The OS identifier for this thread.  */
   sys_thread_t thread_id;
@@ -217,6 +225,11 @@ struct thread_state
   struct thread_state *next_thread;
 
   struct bc_thread_state bc;
+
+# ifdef HAVE_MPS
+  void *gc_info;
+# endif
+
 } GCALIGNED_STRUCT;
 
 INLINE bool
@@ -257,7 +270,7 @@ typedef struct
 /* A mutex as a lisp object.  */
 struct Lisp_Mutex
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* The name of the mutex, or nil.  */
   Lisp_Object name;
@@ -288,7 +301,7 @@ XMUTEX (Lisp_Object a)
 /* A condition variable as a lisp object.  */
 struct Lisp_CondVar
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
 
   /* The associated mutex.  */
   Lisp_Object mutex;
@@ -344,6 +357,15 @@ int thread_select  (select_func *func, int max_fds, fd_set *rfds,
 		    sigset_t *sigmask);
 
 bool thread_check_current_buffer (struct buffer *);
+
+union aligned_thread_state
+{
+  struct thread_state s;
+  GCALIGNED_UNION_MEMBER
+};
+static_assert (GCALIGNED (union aligned_thread_state));
+
+extern union aligned_thread_state main_thread;
 
 void thread_all_before_buffer_killed (Lisp_Object buffer);
 

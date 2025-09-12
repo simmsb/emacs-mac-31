@@ -14,7 +14,7 @@ test-lib-src-inotify:
         - test/lib-src/*resources/**
         - test/lib-src/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lib-src
 
 test-lisp-inotify:
@@ -33,7 +33,7 @@ test-lisp-inotify:
         - test/lisp/*resources/**
         - test/lisp/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp
 
 test-lisp-calc-inotify:
@@ -50,7 +50,7 @@ test-lisp-calc-inotify:
         - test/lisp/calc/*resources/**
         - test/lisp/calc/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-calc
 
 test-lisp-calendar-inotify:
@@ -67,7 +67,7 @@ test-lisp-calendar-inotify:
         - test/lisp/calendar/*resources/**
         - test/lisp/calendar/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-calendar
 
 test-lisp-cedet-inotify:
@@ -84,7 +84,7 @@ test-lisp-cedet-inotify:
         - test/lisp/cedet/*resources/**
         - test/lisp/cedet/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-cedet
 
 test-lisp-cedet-semantic-inotify:
@@ -101,7 +101,7 @@ test-lisp-cedet-semantic-inotify:
         - test/lisp/cedet/semantic/*resources/**
         - test/lisp/cedet/semantic/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-cedet-semantic
 
 test-lisp-cedet-semantic-bovine-inotify:
@@ -118,7 +118,7 @@ test-lisp-cedet-semantic-bovine-inotify:
         - test/lisp/cedet/semantic/bovine/*resources/**
         - test/lisp/cedet/semantic/bovine/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-cedet-semantic-bovine
 
 test-lisp-cedet-srecode-inotify:
@@ -135,7 +135,7 @@ test-lisp-cedet-srecode-inotify:
         - test/lisp/cedet/srecode/*resources/**
         - test/lisp/cedet/srecode/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-cedet-srecode
 
 test-lisp-emacs-lisp-inotify:
@@ -156,7 +156,7 @@ test-lisp-emacs-lisp-inotify:
         - test/lisp/emacs-lisp/*resources/**
         - test/lisp/emacs-lisp/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-emacs-lisp
 
 test-lisp-emulation-inotify:
@@ -173,7 +173,7 @@ test-lisp-emulation-inotify:
         - test/lisp/emulation/*resources/**
         - test/lisp/emulation/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-emulation
 
 test-lisp-erc-inotify:
@@ -190,7 +190,7 @@ test-lisp-erc-inotify:
         - test/lisp/erc/*resources/**
         - test/lisp/erc/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-erc
 
 test-lisp-eshell-inotify:
@@ -207,7 +207,7 @@ test-lisp-eshell-inotify:
         - test/lisp/eshell/*resources/**
         - test/lisp/eshell/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-eshell
 
 test-lisp-gnus-inotify:
@@ -224,7 +224,7 @@ test-lisp-gnus-inotify:
         - test/lisp/gnus/*resources/**
         - test/lisp/gnus/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-gnus
 
 test-lisp-image-inotify:
@@ -241,7 +241,7 @@ test-lisp-image-inotify:
         - test/lisp/image/*resources/**
         - test/lisp/image/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-image
 
 test-lisp-international-inotify:
@@ -258,7 +258,7 @@ test-lisp-international-inotify:
         - test/lisp/international/*resources/**
         - test/lisp/international/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-international
 
 test-lisp-mail-inotify:
@@ -275,7 +275,7 @@ test-lisp-mail-inotify:
         - test/lisp/mail/*resources/**
         - test/lisp/mail/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-mail
 
 test-lisp-mh-e-inotify:
@@ -292,7 +292,7 @@ test-lisp-mh-e-inotify:
         - test/lisp/mh-e/*resources/**
         - test/lisp/mh-e/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-mh-e
 
 test-lisp-net-inotify:
@@ -309,7 +309,7 @@ test-lisp-net-inotify:
         - test/lisp/net/*resources/**
         - test/lisp/net/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-net
 
 test-lisp-nxml-inotify:
@@ -326,7 +326,7 @@ test-lisp-nxml-inotify:
         - test/lisp/nxml/*resources/**
         - test/lisp/nxml/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-nxml
 
 test-lisp-obsolete-inotify:
@@ -343,7 +343,7 @@ test-lisp-obsolete-inotify:
         - test/lisp/obsolete/*resources/**
         - test/lisp/obsolete/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-obsolete
 
 test-lisp-org-inotify:
@@ -360,7 +360,7 @@ test-lisp-org-inotify:
         - test/lisp/org/*resources/**
         - test/lisp/org/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-org
 
 test-lisp-play-inotify:
@@ -377,7 +377,7 @@ test-lisp-play-inotify:
         - test/lisp/play/*resources/**
         - test/lisp/play/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-play
 
 test-lisp-progmodes-inotify:
@@ -401,7 +401,7 @@ test-lisp-progmodes-inotify:
         - test/lisp/progmodes/*resources/**
         - test/lisp/progmodes/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-progmodes
 
 test-lisp-term-inotify:
@@ -418,7 +418,7 @@ test-lisp-term-inotify:
         - test/lisp/term/*resources/**
         - test/lisp/term/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-term
 
 test-lisp-textmodes-inotify:
@@ -440,7 +440,7 @@ test-lisp-textmodes-inotify:
         - test/lisp/textmodes/*resources/**
         - test/lisp/textmodes/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-textmodes
 
 test-lisp-url-inotify:
@@ -457,7 +457,7 @@ test-lisp-url-inotify:
         - test/lisp/url/*resources/**
         - test/lisp/url/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-url
 
 test-lisp-use-package-inotify:
@@ -474,7 +474,7 @@ test-lisp-use-package-inotify:
         - test/lisp/use-package/*resources/**
         - test/lisp/use-package/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-use-package
 
 test-lisp-vc-inotify:
@@ -493,7 +493,7 @@ test-lisp-vc-inotify:
         - test/lisp/vc/*resources/**
         - test/lisp/vc/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-lisp-vc
 
 test-misc-inotify:
@@ -510,7 +510,7 @@ test-misc-inotify:
         - test/misc/*resources/**
         - test/misc/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-misc
 
 test-src-inotify:
@@ -531,7 +531,7 @@ test-src-inotify:
         - test/src/*resources/**
         - test/src/*.el
   variables:
-    target: emacs-inotify
+    target: emacs-igc
     make_params: -C test check-src
 
 .tree-sitter-files:

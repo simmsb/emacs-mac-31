@@ -21,6 +21,9 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <config.h>
 
 #include "lisp.h"
+#include "igc.h"
+#include "comp.h"
+#include "pdumper.h"
 
 #ifdef HAVE_NATIVE_COMP
 
@@ -564,6 +567,10 @@ typedef struct {
   gcc_jit_type *size_t_type;
   gcc_jit_type *lisp_word_type;
   gcc_jit_type *lisp_word_tag_type;
+#ifdef HAVE_MPS
+  gcc_jit_field *gc_header_v;
+  gcc_jit_struct *gc_header_s;
+#endif
 #ifdef LISP_OBJECT_IS_STRUCT
   gcc_jit_field *lisp_obj_i;
   gcc_jit_struct *lisp_obj_s;
@@ -579,9 +586,15 @@ typedef struct {
   gcc_jit_field *lisp_cons_u_s_u_cdr;
   gcc_jit_type *lisp_cons_type;
   gcc_jit_type *lisp_cons_ptr_type;
+#ifdef HAVE_MPS
+  gcc_jit_field *lisp_cons_gc_header;
+#endif
   /* struct Lisp_Symbol_With_Position */
   gcc_jit_rvalue *f_symbols_with_pos_enabled_ref;
   gcc_jit_struct *lisp_symbol_with_position;
+#ifdef HAVE_MPS
+  gcc_jit_field *lisp_symbol_with_position_gc_header;
+#endif
   gcc_jit_field *lisp_symbol_with_position_header;
   gcc_jit_field *lisp_symbol_with_position_sym;
   gcc_jit_field *lisp_symbol_with_position_pos;
@@ -3120,6 +3133,15 @@ define_lisp_cons (void)
 						    NULL,
 						    cdr_u,
 						    "u");
+
+#ifdef HAVE_MPS
+  comp.lisp_cons_gc_header =
+    gcc_jit_context_new_field (comp.ctxt,
+			       NULL,
+			       gcc_jit_struct_as_type (comp.gc_header_s),
+			       "gc_header");
+#endif
+
   gcc_jit_field *cons_s_fields[] =
     { comp.lisp_cons_u_s_car,
       comp.lisp_cons_u_s_u };
@@ -3159,14 +3181,28 @@ define_lisp_cons (void)
 			       NULL,
 			       lisp_cons_u_type,
 			       "u");
+  gcc_jit_field *cons_fields[] =
+    {
+#ifdef HAVE_MPS
+      comp.lisp_cons_gc_header,
+#endif
+      comp.lisp_cons_u
+    };
   gcc_jit_struct_set_fields (comp.lisp_cons_s,
-			     NULL, 1, &comp.lisp_cons_u);
+			     NULL, ARRAYELTS (cons_fields), cons_fields);
 
 }
 
 static void
 define_lisp_symbol_with_position (void)
 {
+#ifdef HAVE_MPS
+  comp.lisp_symbol_with_position_gc_header =
+    gcc_jit_context_new_field (comp.ctxt,
+			       NULL,
+			       gcc_jit_struct_as_type (comp.gc_header_s),
+			       "gc_header");
+#endif
   comp.lisp_symbol_with_position_header =
     gcc_jit_context_new_field (comp.ctxt,
 			       NULL,
@@ -3182,14 +3218,20 @@ define_lisp_symbol_with_position (void)
 			       NULL,
 			       comp.lisp_obj_type,
 			       "pos");
-  gcc_jit_field *fields [3] = {comp.lisp_symbol_with_position_header,
-			       comp.lisp_symbol_with_position_sym,
-			       comp.lisp_symbol_with_position_pos};
+  gcc_jit_field *fields[] =
+    {
+#ifdef HAVE_MPS
+      comp.lisp_symbol_with_position_gc_header,
+#endif
+      comp.lisp_symbol_with_position_header,
+      comp.lisp_symbol_with_position_sym,
+      comp.lisp_symbol_with_position_pos
+    };
   comp.lisp_symbol_with_position =
     gcc_jit_context_new_struct_type (comp.ctxt,
 				     NULL,
 				     "comp_lisp_symbol_with_position",
-				     3,
+				     ARRAYELTS (fields),
 				     fields);
   comp.lisp_symbol_with_position_type =
     gcc_jit_struct_as_type (comp.lisp_symbol_with_position);
@@ -4567,6 +4609,17 @@ Return t on success.  */)
 #endif
   comp.lisp_word_tag_type
     = gcc_jit_context_get_int_type (comp.ctxt, sizeof (Lisp_Word_tag), false);
+#ifdef HAVE_MPS
+  comp.gc_header_v = gcc_jit_context_new_field (comp.ctxt,
+						NULL,
+						comp.unsigned_long_long_type,
+						"v");
+  comp.gc_header_s = gcc_jit_context_new_struct_type (comp.ctxt,
+						      NULL,
+						      "gc_header",
+						      1,
+						      &comp.gc_header_v);
+#endif
 #ifdef LISP_OBJECT_IS_STRUCT
   comp.lisp_obj_i = gcc_jit_context_new_field (comp.ctxt,
                                                NULL,
@@ -4964,7 +5017,7 @@ static bool
 helper_PSEUDOVECTOR_TYPEP_XUNTAG (Lisp_Object a, enum pvec_type code)
 {
   return PSEUDOVECTOR_TYPEP (XUNTAG (a, Lisp_Vectorlike,
-				     union vectorlike_header),
+				     struct vectorlike_header),
 			     code);
 }
 
@@ -5039,8 +5092,8 @@ eln_load_path_final_clean_up (void)
 static void
 register_native_comp_unit (Lisp_Object comp_u)
 {
-  Fputhash (
-    XNATIVE_COMP_UNIT (comp_u)->file, comp_u, Vcomp_loaded_comp_units_h);
+  Fputhash (XNATIVE_COMP_UNIT (comp_u)->file, comp_u,
+	    Vcomp_loaded_comp_units_h);
 }
 
 
@@ -5252,6 +5305,10 @@ load_comp_unit (struct Lisp_Native_Comp_Unit *comp_u, bool loading_dump,
   /* Always set data_imp_relocs pointer in the compilation unit (in can be
      used in 'dump_do_dump_relocation').  */
   comp_u->data_relocs = dynlib_sym (handle, DATA_RELOC_SYM);
+#ifdef HAVE_MPS
+  comp_u->comp_unit = dynlib_sym (handle, COMP_UNIT_SYM);
+  comp_u->comp_unit_root = igc_root_create_n (saved_cu, 1);
+#endif
 
   if (!comp_u->loaded_once)
     {
@@ -5287,6 +5344,11 @@ load_comp_unit (struct Lisp_Native_Comp_Unit *comp_u, bool loading_dump,
 	}
 
       EMACS_INT d_vec_len = XFIXNUM (Flength (comp_u->data_vec));
+#ifdef HAVE_MPS
+      comp_u->n_data_relocs = d_vec_len;
+      if (d_vec_len > 0)
+	comp_u->data_relocs_root = igc_root_create_n (data_relocs, d_vec_len);
+#endif
       for (EMACS_INT i = 0; i < d_vec_len; i++)
 	data_relocs[i] = AREF (comp_u->data_vec, i);
     }
@@ -5313,9 +5375,19 @@ load_comp_unit (struct Lisp_Native_Comp_Unit *comp_u, bool loading_dump,
 	    load_static_obj (comp_u, TEXT_DATA_RELOC_EPHEMERAL_SYM);
 
 	  EMACS_INT d_vec_len = XFIXNUM (Flength (data_ephemeral_vec));
+# ifdef HAVE_MPS
+	  /* The root is only needed until top_level_run below has
+	     completed.  Beware of recursice loads. */
+	  comp_u->data_eph_relocs = data_eph_relocs;
+	  comp_u->n_data_eph_relocs = d_vec_len;
+	  if (d_vec_len > 0)
+	    comp_u->data_eph_relocs_root
+	      = igc_root_create_n (data_eph_relocs, d_vec_len);
+# endif
 	  for (EMACS_INT i = 0; i < d_vec_len; i++)
 	    data_eph_relocs[i] = AREF (data_ephemeral_vec, i);
 	}
+
       /* Executing this will perform all the expected environment
 	 modifications.  */
       res = top_level_run (comp_u_lisp_obj);
@@ -5323,7 +5395,13 @@ load_comp_unit (struct Lisp_Native_Comp_Unit *comp_u, bool loading_dump,
 	 Guard against sibling call optimization (or any other).  */
       data_ephemeral_vec = data_ephemeral_vec;
       eassert (check_comp_unit_relocs (comp_u));
+
+# ifdef HAVE_MPS
+      if (!recursive_load)
+	igc_root_destroy_comp_unit_eph (comp_u);
+# endif
     }
+
 
   if (!recursive_load)
     /* Clean-up the load ongoing flag in case.  */
@@ -5339,6 +5417,10 @@ unload_comp_unit (struct Lisp_Native_Comp_Unit *cu)
 {
   if (cu->handle == NULL)
     return;
+
+# ifdef HAVE_MPS
+  igc_root_destroy_comp_unit (cu);
+# endif
 
   Lisp_Object *saved_cu = dynlib_sym (cu->handle, COMP_UNIT_SYM);
   Lisp_Object this_cu;
@@ -5708,6 +5790,15 @@ natively compiled one.  */);
   staticpro (&comp.func_blocks_h);
   staticpro (&comp.emitter_dispatcher);
   comp.emitter_dispatcher = Qnil;
+  staticpro (&comp.compiler_options);
+  comp.compiler_options = Qnil;
+  staticpro (&comp.driver_options);
+  comp.driver_options = Qnil;
+  staticpro (&comp.d_default_idx);
+  comp.d_default_idx = Qnil;
+  staticpro (&comp.d_ephemeral_idx);
+  comp.d_ephemeral_idx = Qnil;
+
   staticpro (&loadsearch_re_list);
   loadsearch_re_list = Qnil;
 

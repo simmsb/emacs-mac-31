@@ -2892,6 +2892,71 @@ includes uncommitted changes."
                       nil
                       (called-interactively-p 'interactive))))
 
+;; For the following two commands, the default meaning for
+;; UPSTREAM-LOCATION may become dependent on whether we are on a
+;; shorter-lived or longer-lived ("trunk") branch.  If we are on the
+;; trunk then it will always be the place `vc-push' would push to.  If
+;; we are on a shorter-lived branch, it may instead become the remote
+;; trunk branch from which the shorter-lived branch was branched.  That
+;; way you can use these commands to get a summary of all unmerged work
+;; outstanding on the short-lived branch.
+;;
+;; The obstacle to doing this is that VC lacks any distinction between
+;; shorter-lived and trunk branches.  But we all work with both of
+;; these, for almost any VCS workflow.  E.g. modern workflows which
+;; eschew traditional feature branches still have a long-lived trunk
+;; plus shorter-lived local branches for merge requests or patch series.
+;; --spwhitton
+
+;;;###autoload
+(defun vc-root-diff-outgoing-base (&optional upstream-location)
+  "Report diff of all changes since the merge base with UPSTREAM-LOCATION.
+The merge base with UPSTREAM-LOCATION means the common ancestor of the
+working revision and UPSTREAM-LOCATION.
+Uncommitted changes are included in the diff.
+
+When unspecified UPSTREAM-LOCATION is the place \\[vc-push] would push
+to.  This default meaning for UPSTREAM-LOCATION may change in a future
+release of Emacs.
+
+When called interactively with a prefix argument, prompt for
+UPSTREAM-LOCATION.  In some version control systems, UPSTREAM-LOCATION
+can be a remote branch name.
+
+This command is like `vc-root-diff-outgoing' except that it includes
+uncommitted changes."
+  (interactive (list (vc--maybe-read-upstream-location)))
+  (vc--with-backend-in-rootdir "VC root-diff"
+    (vc-diff-outgoing-base upstream-location `(,backend (,rootdir)))))
+
+;;;###autoload
+(defun vc-diff-outgoing-base (&optional upstream-location fileset)
+  "Report changes to VC fileset since the merge base with UPSTREAM-LOCATION.
+
+The merge base with UPSTREAM-LOCATION means the common ancestor of the
+working revision and UPSTREAM-LOCATION.
+Uncommitted changes are included in the diff.
+
+When unspecified UPSTREAM-LOCATION is the place \\[vc-push] would push
+to.  This default meaning for UPSTREAM-LOCATION may change in a future
+release of Emacs.
+
+When called interactively with a prefix argument, prompt for
+UPSTREAM-LOCATION.  In some version control systems, UPSTREAM-LOCATION
+can be a remote branch name.
+
+This command is like to `vc-fileset-diff-outgoing' except that it
+includes uncommitted changes."
+  (interactive (list (vc--maybe-read-upstream-location) nil))
+  (let* ((fileset (or fileset (vc-deduce-fileset t)))
+         (backend (car fileset))
+         (incoming (vc--incoming-revision backend
+                                          (or upstream-location ""))))
+    (vc-diff-internal vc-allow-async-diff fileset
+                      (vc-call-backend backend 'mergebase incoming)
+                      nil
+                      (called-interactively-p 'interactive))))
+
 (declare-function ediff-load-version-control "ediff" (&optional silent))
 (declare-function ediff-vc-internal "ediff-vers"
                   (rev1 rev2 &optional startup-hooks))

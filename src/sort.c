@@ -32,6 +32,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 #include "lisp.h"
+#include "igc.h"
 
 
 /* Reverse a slice of a vector in place, from lo up to (exclusive) hi. */
@@ -529,6 +530,8 @@ merge_init (merge_state *ms, const ptrdiff_t list_size,
 static void
 merge_markmem (void *arg)
 {
+#ifndef HAVE_MPS
+
   merge_state *ms = arg;
   eassume (ms != NULL);
 
@@ -542,6 +545,7 @@ merge_markmem (void *arg)
       eassume (src != NULL);
       mark_objects (src, *ms->reloc.size);
     }
+#endif
 }
 
 
@@ -576,13 +580,21 @@ cleanup_mem (void *arg)
   /* Free any remaining temp storage.  */
   if (ms->a.keys != ms->temparray)
     {
+#ifdef HAVE_MPS
+      igc_xfree (ms->a.keys);
+# else
       xfree (ms->a.keys);
+#endif
       ms->a.keys = NULL;
     }
 
   if (ms->allocated_keys != NULL)
     {
+#ifdef HAVE_MPS
+      igc_xfree (ms->allocated_keys);
+#else
       xfree (ms->allocated_keys);
+#endif
       ms->allocated_keys = NULL;
     }
 }
@@ -618,10 +630,18 @@ merge_getmem (merge_state *ms, const ptrdiff_t need)
          what's in the block we don't use realloc which would waste
          cycles copying the old data.  We just free and alloc
          again.  */
+#ifdef HAVE_MPS
+      igc_xfree (ms->a.keys);
+#else
       xfree (ms->a.keys);
+#endif
     }
   ptrdiff_t bytes = (need * word_size) << (ms->a.values != NULL ? 1 : 0);
+# ifdef HAVE_MPS
+  ms->a.keys = igc_xzalloc_ambig (bytes);
+#else
   ms->a.keys = xmalloc (bytes);
+#endif
   ms->alloced = need;
   if (ms->a.values != NULL)
     ms->a.values = &ms->a.keys[need];
@@ -1114,7 +1134,11 @@ tim_sort (Lisp_Object predicate, Lisp_Object keyfunc,
 	  /* Fill with valid Lisp values in case a GC occurs before all
 	     keys have been computed.  */
 	  static_assert (NIL_IS_ZERO);
+#ifdef HAVE_MPS
+	  keys = allocated_keys = igc_xzalloc_ambig (length * word_size);
+#else
 	  keys = allocated_keys = xzalloc (length * word_size);
+#endif
 	}
 
       lo.keys = keys;

@@ -224,6 +224,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <math.h>
 
 #include "lisp.h"
+#include "igc.h"
 #include "character.h"
 #include "frame.h"
 
@@ -302,11 +303,6 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 /* True if face attribute ATTR is `reset'.  */
 
 #define RESET_P(ATTR) EQ (ATTR, Qreset)
-
-/* Size of hash table of realized faces in face caches (should be a
-   prime number).  */
-
-#define FACE_CACHE_BUCKETS_SIZE 1009
 
 char unspecified_fg[] = "unspecified-fg", unspecified_bg[] = "unspecified-bg";
 
@@ -3054,9 +3050,18 @@ Value is a vector of face attributes.  */)
 	 The mapping from Lisp face to Lisp face id is given by the
 	 property `face' of the Lisp face name.  */
       if (next_lface_id == lface_id_to_name_size)
-	lface_id_to_name =
-	  xpalloc (lface_id_to_name, &lface_id_to_name_size, 1, MAX_FACE_ID,
-		   sizeof *lface_id_to_name);
+	{
+#ifdef HAVE_MPS
+	  lface_id_to_name
+	    = igc_xpalloc_lisp_objs_exact (lface_id_to_name,
+					   &lface_id_to_name_size,
+					   1, MAX_FACE_ID,
+					   "lface-id-to-name");
+#else
+	  lface_id_to_name = xpalloc (lface_id_to_name, &lface_id_to_name_size,
+				      1, MAX_FACE_ID, sizeof *lface_id_to_name);
+#endif
+	}
 
       Lisp_Object face_id = make_fixnum (next_lface_id);
       lface_id_to_name[next_lface_id] = face;
@@ -4595,14 +4600,20 @@ hash_string_case_insensitive (Lisp_Object string)
 static uintptr_t
 lface_hash (Lisp_Object *v)
 {
+#ifdef HAVE_MPS
+#define xhash(x) igc_hash (x)
+#else
+#define xhash(x) XHASH (x)
+#endif
   return (hash_string_case_insensitive (v[LFACE_FAMILY_INDEX])
 	  ^ hash_string_case_insensitive (v[LFACE_FOUNDRY_INDEX])
 	  ^ hash_string_case_insensitive (v[LFACE_FOREGROUND_INDEX])
 	  ^ hash_string_case_insensitive (v[LFACE_BACKGROUND_INDEX])
-	  ^ XHASH (v[LFACE_WEIGHT_INDEX])
-	  ^ XHASH (v[LFACE_SLANT_INDEX])
-	  ^ XHASH (v[LFACE_SWIDTH_INDEX])
-	  ^ XHASH (v[LFACE_HEIGHT_INDEX]));
+	  ^ xhash (v[LFACE_WEIGHT_INDEX])
+	  ^ xhash (v[LFACE_SLANT_INDEX])
+	  ^ xhash (v[LFACE_SWIDTH_INDEX])
+	  ^ xhash (v[LFACE_HEIGHT_INDEX]));
+#undef xhash
 }
 
 #ifdef HAVE_WINDOW_SYSTEM
@@ -4646,13 +4657,16 @@ lface_same_font_attributes_p (Lisp_Object *lface1, Lisp_Object *lface2)
 static struct face *
 make_realized_face (Lisp_Object *attr)
 {
+#ifdef HAVE_MPS
+  struct face *face = igc_make_face ();
+  memcpy (face->lface, attr, sizeof face->lface);
+#else
   enum { off = offsetof (struct face, id) };
   struct face *face = xmalloc (sizeof *face);
-
   memcpy (face->lface, attr, sizeof face->lface);
   memset (&face->id, 0, sizeof *face - off);
+#endif
   face->ascii_face = face;
-
   return face;
 }
 
@@ -4699,7 +4713,10 @@ free_realized_face (struct frame *f, struct face *face)
 #ifdef HAVE_X_WINDOWS
     free_face:
 #endif /* HAVE_X_WINDOWS */
+#ifndef HAVE_MPS
       xfree (face);
+#endif
+      (void) 0;  /* prevent the above label being the end of a compound statement */
     }
 }
 
@@ -4845,13 +4862,18 @@ the triangle inequality.  */)
 static struct face_cache *
 make_face_cache (struct frame *f)
 {
-  struct face_cache *c = xmalloc (sizeof *c);
+  struct face_cache *c;
+#ifdef HAVE_MPS
+  c = igc_make_face_cache ();
+#else
+  c = xmalloc (sizeof *c);
+#endif
 
-  c->buckets = xzalloc (FACE_CACHE_BUCKETS_SIZE * sizeof *c->buckets);
+  c->f = f;
   c->size = 50;
   c->used = 0;
-  c->faces_by_id = xmalloc (c->size * sizeof *c->faces_by_id);
-  c->f = f;
+  c->buckets = xzalloc (FACE_CACHE_BUCKETS_SIZE * sizeof *c->buckets);
+  c->faces_by_id = xzalloc (c->size * sizeof *c->faces_by_id);
   c->menu_face_changed_p = menu_face_changed_default;
   return c;
 }
@@ -4958,9 +4980,15 @@ free_face_cache (struct face_cache *c)
   if (c)
     {
       free_realized_faces (c);
-      xfree (c->buckets);
-      xfree (c->faces_by_id);
+      struct face **p = c->buckets;
+      c->buckets = NULL;
+      xfree (p);
+      p = c->faces_by_id;
+      c->faces_by_id = NULL;
+      xfree (p);
+#ifndef HAVE_MPS
       xfree (c);
+#endif
     }
 }
 
@@ -5031,8 +5059,11 @@ cache_face (struct face_cache *c, struct face *face, uintptr_t hash)
   if (i == c->used)
     {
       if (c->used == c->size)
-	c->faces_by_id = xpalloc (c->faces_by_id, &c->size, 1, MAX_FACE_ID,
-				  sizeof *c->faces_by_id);
+	{
+	  c->faces_by_id
+	    = xpalloc (c->faces_by_id, &c->size, 1, MAX_FACE_ID,
+		       sizeof *c->faces_by_id);
+	}
       c->used++;
     }
 
@@ -6231,7 +6262,11 @@ realize_non_ascii_face (struct frame *f, Lisp_Object font_object,
   struct face_cache *cache = FRAME_FACE_CACHE (f);
   struct face *face;
 
+#ifdef HAVE_MPS
+  face = igc_make_face ();
+#else
   face = xmalloc (sizeof *face);
+#endif
   *face = *base_face;
   face->gc = 0;
   face->overstrike
@@ -7402,8 +7437,12 @@ init_xfaces (void)
 	{
 	  /* Allocate the lface_id_to_name[] array.  */
 	  lface_id_to_name_size = next_lface_id = nfaces;
+#ifdef HAVE_MPS
+	  lface_id_to_name = igc_xalloc_lisp_objs_exact (next_lface_id,
+							 "lface-id-to-name");
+#else
 	  lface_id_to_name = xnmalloc (next_lface_id, sizeof *lface_id_to_name);
-
+#endif
 	  /* Store the faces.  */
 	  struct Lisp_Hash_Table* table = XHASH_TABLE (Vface_new_frame_defaults);
 	  for (ptrdiff_t idx = 0; idx < nfaces; ++idx)

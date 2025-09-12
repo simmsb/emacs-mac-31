@@ -27,6 +27,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "syntax.h"
 #include "intervals.h"
 #include "category.h"
+#include "pdumper.h"
+#include "igc.h"
 
 /* Make syntax table lookup grant data in gl_state.  */
 #define SYNTAX(c) syntax_property (c, 1)
@@ -3723,6 +3725,15 @@ init_syntax_once (void)
   char_table_set_range (Vstandard_syntax_table, 0x80, MAX_CHAR, temp);
 }
 
+#ifdef HAVE_MPS
+static void
+protect_global_intervals (void)
+{
+  igc_root_create_exact_ptr (&gl_state.forward_i);
+  igc_root_create_exact_ptr (&gl_state.backward_i);
+}
+#endif
+
 void
 syms_of_syntax (void)
 {
@@ -3739,6 +3750,9 @@ syms_of_syntax (void)
   staticpro (&gl_state.global_code);
   staticpro (&gl_state.current_syntax_table);
   staticpro (&gl_state.old_prop);
+#ifdef HAVE_MPS
+  pdumper_do_now_and_after_load (protect_global_intervals);
+#endif
 
   DEFSYM (Qscan_error, "scan-error");
   Fput (Qscan_error, Qerror_conditions,

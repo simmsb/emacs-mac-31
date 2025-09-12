@@ -32,6 +32,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <math.h>
 #include <stat-time.h>
 #include "lisp.h"
+#include "igc.h"
 #include "dispextern.h"
 #include "intervals.h"
 #include "character.h"
@@ -3218,7 +3219,9 @@ vector_from_rev_list (Lisp_Object elems)
     {
       vec[i] = XCAR (elems);
       Lisp_Object next = XCDR (elems);
+#ifndef HAVE_MPS
       free_cons (XCONS (elems));
+#endif
       elems = next;
     }
   return obj;
@@ -3287,8 +3290,11 @@ bytecode_from_rev_list (Lisp_Object elems, source_t *source)
            Convert them back to the original unibyte form.  */
         vec[CLOSURE_CODE] = Fstring_as_unibyte (vec[CLOSURE_CODE]);
 
-      /* Bytecode must be immovable.  */
+#ifndef HAVE_MPS
+  /* Bytecode must be immovable.  */
       pin_string (vec[CLOSURE_CODE]);
+#endif
+      /* Bytecode must be immovable.  */
     }
 
   XSETPVECTYPE (XVECTOR (obj), PVEC_CLOSURE);
@@ -3564,67 +3570,9 @@ skip_space_and_comments (source_t *source)
   unreadchar (source, c);
 }
 
-/* When an object is read, the type of the top read stack entry indicates
-   the syntactic context.  */
-enum read_entry_type
-{
-				/* preceding syntactic context */
-  RE_list_start,		/* "(" */
+struct read_stack rdstack = {NULL, 0, 0};
 
-  RE_list,			/* "(" (+ OBJECT) */
-  RE_list_dot,			/* "(" (+ OBJECT) "." */
-
-  RE_vector,			/* "[" (* OBJECT) */
-  RE_record,			/* "#s(" (* OBJECT) */
-  RE_char_table,		/* "#^[" (* OBJECT) */
-  RE_sub_char_table,		/* "#^^[" (* OBJECT) */
-  RE_byte_code,			/* "#[" (* OBJECT) */
-  RE_string_props,		/* "#(" (* OBJECT) */
-
-  RE_special,			/* "'" | "#'" | "`" | "," | ",@" */
-
-  RE_numbered,			/* "#" (+ DIGIT) "=" */
-};
-
-struct read_stack_entry
-{
-  enum read_entry_type type;
-  union {
-    /* RE_list, RE_list_dot */
-    struct {
-      Lisp_Object head;		/* first cons of list */
-      Lisp_Object tail;		/* last cons of list */
-    } list;
-
-    /* RE_vector, RE_record, RE_char_table, RE_sub_char_table,
-       RE_byte_code, RE_string_props */
-    struct {
-      Lisp_Object elems;	/* list of elements in reverse order */
-      bool old_locate_syms;	/* old value of locate_syms */
-    } vector;
-
-    /* RE_special */
-    struct {
-      Lisp_Object symbol;	/* symbol from special syntax */
-    } special;
-
-    /* RE_numbered */
-    struct {
-      Lisp_Object number;	/* number as a fixnum */
-      Lisp_Object placeholder;	/* placeholder object */
-    } numbered;
-  } u;
-};
-
-struct read_stack
-{
-  struct read_stack_entry *stack;  /* base of stack */
-  ptrdiff_t size;		   /* allocated size in entries */
-  ptrdiff_t sp;			   /* current number of entries */
-};
-
-static struct read_stack rdstack = {NULL, 0, 0};
-
+#ifndef HAVE_MPS
 void
 mark_lread (void)
 {
@@ -3659,6 +3607,7 @@ mark_lread (void)
 	}
     }
 }
+#endif // not HAVE_MPS
 
 static inline struct read_stack_entry *
 read_stack_top (void)
@@ -3667,11 +3616,16 @@ read_stack_top (void)
   return &rdstack.stack[rdstack.sp - 1];
 }
 
-static inline struct read_stack_entry *
+static inline struct read_stack_entry
 read_stack_pop (void)
 {
   eassume (rdstack.sp > 0);
-  return &rdstack.stack[--rdstack.sp];
+  struct read_stack_entry e = *read_stack_top ();
+  --rdstack.sp;
+#ifdef HAVE_MPS
+  rdstack.stack[rdstack.sp].type = RE_free;
+#endif
+  return e;
 }
 
 static inline bool
@@ -3685,7 +3639,11 @@ grow_read_stack (void)
 {
   struct read_stack *rs = &rdstack;
   eassert (rs->sp == rs->size);
+#ifdef HAVE_MPS
+  igc_grow_rdstack (rs);
+#else
   rs->stack = xpalloc (rs->stack, &rs->size, 1, -1, sizeof *rs->stack);
+#endif
   eassert (rs->sp < rs->size);
 }
 
@@ -3762,12 +3720,12 @@ read0 (source_t *source, bool locate_syms)
 	  obj = Qnil;
 	  break;
 	case RE_list:
-	  obj = read_stack_pop ()->u.list.head;
+	  obj = read_stack_pop ().u.list.head;
 	  break;
 	case RE_record:
 	  {
 	    locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	    Lisp_Object elems = Fnreverse (read_stack_pop ()->u.vector.elems);
+	    Lisp_Object elems = Fnreverse (read_stack_pop ().u.vector.elems);
 	    if (NILP (elems))
 	      invalid_syntax ("#s", source);
 
@@ -3779,7 +3737,7 @@ read0 (source_t *source, bool locate_syms)
 	  }
 	case RE_string_props:
 	  locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	  obj = string_props_from_rev_list (read_stack_pop () ->u.vector.elems,
+	  obj = string_props_from_rev_list (read_stack_pop ().u.vector.elems,
 					    source);
 	  break;
 	default:
@@ -3803,21 +3761,21 @@ read0 (source_t *source, bool locate_syms)
 	{
 	case RE_vector:
 	  locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	  obj = vector_from_rev_list (read_stack_pop ()->u.vector.elems);
+	  obj = vector_from_rev_list (read_stack_pop ().u.vector.elems);
 	  break;
 	case RE_byte_code:
 	  locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	  obj = bytecode_from_rev_list (read_stack_pop ()->u.vector.elems,
+	  obj = bytecode_from_rev_list (read_stack_pop ().u.vector.elems,
 					source);
 	  break;
 	case RE_char_table:
 	  locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	  obj = char_table_from_rev_list (read_stack_pop ()->u.vector.elems,
+	  obj = char_table_from_rev_list (read_stack_pop ().u.vector.elems,
 					  source);
 	  break;
 	case RE_sub_char_table:
 	  locate_syms = read_stack_top ()->u.vector.old_locate_syms;
-	  obj = sub_char_table_from_rev_list (read_stack_pop ()->u.vector.elems,
+	  obj = sub_char_table_from_rev_list (read_stack_pop ().u.vector.elems,
 					      source);
 	  break;
 	default:
@@ -4264,6 +4222,10 @@ read0 (source_t *source, bool locate_syms)
       struct read_stack_entry *e = read_stack_top ();
       switch (e->type)
 	{
+#ifdef HAVE_MPS
+	case RE_free:
+	  emacs_abort ();
+#endif
 	case RE_list_start:
 	  e->type = RE_list;
 	  e->u.list.head = e->u.list.tail = Fcons (obj, Qnil);
@@ -5025,7 +4987,11 @@ make_obarray (unsigned bits)
   o->count = 0;
   o->size_bits = bits;
   ptrdiff_t size = (ptrdiff_t)1 << bits;
+#ifdef HAVE_MPS
+  o->buckets = hash_table_alloc_kv (o, size);
+#else
   o->buckets = hash_table_alloc_bytes (size * sizeof *o->buckets);
+#endif
   for (ptrdiff_t i = 0; i < size; i++)
     o->buckets[i] = make_fixnum (0);
   return make_lisp_obarray (o);
@@ -5048,8 +5014,12 @@ grow_obarray (struct Lisp_Obarray *o)
   int new_bits = o->size_bits + 1;
   if (new_bits > obarray_max_bits)
     error ("Obarray too big");
-  ptrdiff_t new_size = (ptrdiff_t)1 << new_bits;
+  ptrdiff_t new_size = (ptrdiff_t) 1 << new_bits;
+#ifdef HAVE_MPS
+  o->buckets = hash_table_alloc_kv (o, new_size);
+#else
   o->buckets = hash_table_alloc_bytes (new_size * sizeof *o->buckets);
+#endif
   for (ptrdiff_t i = 0; i < new_size; i++)
     o->buckets[i] = make_fixnum (0);
   o->size_bits = new_bits;
@@ -5078,7 +5048,7 @@ grow_obarray (struct Lisp_Obarray *o)
 	}
     }
 
-  hash_table_free_bytes (old_buckets, old_size * sizeof *old_buckets);
+  hash_table_free_kv (o, old_buckets, old_size);
 }
 
 DEFUN ("obarray-make", Fobarray_make, Sobarray_make, 0, 1, 0,
@@ -5119,13 +5089,21 @@ DEFUN ("obarray-clear", Fobarray_clear, Sobarray_clear, 1, 1, 0,
      to uninterned.  It doesn't matter very much.  */
   int new_bits = obarray_default_bits;
   int new_size = (ptrdiff_t)1 << new_bits;
+#ifdef HAVE_MPS
+  Lisp_Object *new_buckets = hash_table_alloc_kv (o, new_size);
+#else
   Lisp_Object *new_buckets
     = hash_table_alloc_bytes (new_size * sizeof *new_buckets);
+#endif
   for (ptrdiff_t i = 0; i < new_size; i++)
     new_buckets[i] = make_fixnum (0);
 
+#ifdef HAVE_MPS
+  hash_table_free_kv (o, o->buckets, -1 /* ignored */);
+#else
   int old_size = obarray_size (o);
   hash_table_free_bytes (o->buckets, old_size * sizeof *o->buckets);
+#endif
   o->buckets = new_buckets;
   o->size_bits = new_bits;
   o->count = 0;
@@ -5195,7 +5173,10 @@ init_obarray_once (void)
   staticpro (&initial_obarray);
 
   for (int i = 0; i < ARRAYELTS (lispsym); i++)
-    define_symbol (builtin_lisp_symbol (i), defsym_name[i]);
+    {
+      gc_init_header (&lispsym[i].gc_header, IGC_OBJ_SYMBOL);
+      define_symbol (builtin_lisp_symbol (i), defsym_name[i]);
+    }
 
   DEFSYM (Qunbound, "unbound");
 
@@ -5220,6 +5201,7 @@ void
 defsubr (union Aligned_Lisp_Subr *aname)
 {
   struct Lisp_Subr *sname = &aname->s;
+  gc_init_header (&sname->header.gc_header, IGC_OBJ_VECTOR);
   Lisp_Object sym, tem;
   sym = intern_c_string (sname->symbol_name);
   XSETPVECTYPE (sname, PVEC_SUBR);
@@ -5235,8 +5217,9 @@ defsubr (union Aligned_Lisp_Subr *aname)
    C variable of type intmax_t.  Sample call (with "xx" to fool make-docfile):
    DEFxxVAR_INT ("emacs-priority", &emacs_priority, "Documentation");  */
 void
-defvar_int (struct Lisp_Intfwd const *i_fwd, char const *namestring)
+defvar_int (struct Lisp_Fwd const *i_fwd, char const *namestring)
 {
+  eassert (i_fwd->type == Lisp_Fwd_Int);
   Lisp_Object sym = intern_c_string (namestring);
   XBARE_SYMBOL (sym)->u.s.declared_special = true;
   XBARE_SYMBOL (sym)->u.s.redirect = SYMBOL_FORWARDED;
@@ -5245,8 +5228,9 @@ defvar_int (struct Lisp_Intfwd const *i_fwd, char const *namestring)
 
 /* Similar but define a variable whose value is t if 1, nil if 0.  */
 void
-defvar_bool (struct Lisp_Boolfwd const *b_fwd, char const *namestring)
+defvar_bool (struct Lisp_Fwd const *b_fwd, char const *namestring)
 {
+  eassert (b_fwd->type == Lisp_Fwd_Bool);
   Lisp_Object sym = intern_c_string (namestring);
   XBARE_SYMBOL (sym)->u.s.declared_special = true;
   XBARE_SYMBOL (sym)->u.s.redirect = SYMBOL_FORWARDED;
@@ -5255,32 +5239,25 @@ defvar_bool (struct Lisp_Boolfwd const *b_fwd, char const *namestring)
 }
 
 /* Similar but define a variable whose value is the Lisp Object stored
-   at address.  Two versions: with and without gc-marking of the C
-   variable.  The nopro version is used when that variable will be
-   gc-marked for some other reason, since marking the same slot twice
-   can cause trouble with strings.  */
+   at address.  */
 void
-defvar_lisp_nopro (struct Lisp_Objfwd const *o_fwd, char const *namestring)
+defvar_lisp (struct Lisp_Fwd const *o_fwd, char const *namestring)
 {
+  eassert (o_fwd->type == Lisp_Fwd_Obj);
   Lisp_Object sym = intern_c_string (namestring);
   XBARE_SYMBOL (sym)->u.s.declared_special = true;
   XBARE_SYMBOL (sym)->u.s.redirect = SYMBOL_FORWARDED;
   SET_SYMBOL_FWD (XBARE_SYMBOL (sym), o_fwd);
-}
-
-void
-defvar_lisp (struct Lisp_Objfwd const *o_fwd, char const *namestring)
-{
-  defvar_lisp_nopro (o_fwd, namestring);
-  staticpro (o_fwd->objvar);
+  staticpro (o_fwd->u.objvar);
 }
 
 /* Similar but define a variable whose value is the Lisp Object stored
    at a particular offset in the current kboard object.  */
 
 void
-defvar_kboard (struct Lisp_Kboard_Objfwd const *ko_fwd, char const *namestring)
+defvar_kboard (struct Lisp_Fwd const *ko_fwd, char const *namestring)
 {
+  eassert (ko_fwd->type == Lisp_Fwd_Kboard_Obj);
   Lisp_Object sym = intern_c_string (namestring);
   XBARE_SYMBOL (sym)->u.s.declared_special = true;
   XBARE_SYMBOL (sym)->u.s.redirect = SYMBOL_FORWARDED;

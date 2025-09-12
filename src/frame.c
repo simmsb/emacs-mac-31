@@ -27,6 +27,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <c-ctype.h>
 
 #include "lisp.h"
+#include "igc.h"
 
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
@@ -6934,11 +6935,19 @@ init_frame_once_for_pdumper (void)
 {
   PDUMPER_RESET_LV (Vframe_list, Qnil);
   PDUMPER_RESET_LV (selected_frame, Qnil);
+#ifdef HAVE_MPS
+  igc_root_create_exact_ptr (&last_nonminibuf_frame);
+#endif
 }
 
 void
 syms_of_frame (void)
 {
+#ifdef HAVE_MPS
+  old_selected_frame = Qnil;
+  staticpro (&old_selected_frame);
+#endif
+
   DEFSYM (Qframep, "framep");
   DEFSYM (Qframe_live_p, "frame-live-p");
   DEFSYM (Qframe_windows_min_size, "frame-windows-min-size");

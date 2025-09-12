@@ -3101,7 +3101,9 @@ save_restriction_restore_1 (Lisp_Object data)
       /* Detach the markers, and free the cons instead of waiting for GC.  */
       detach_marker (XCAR (data));
       detach_marker (XCDR (data));
+#ifndef HAVE_MPS
       free_cons (XCONS (data));
+#endif
     }
   else
     /* A buffer, which means that there was no old restriction.  */
@@ -4425,7 +4427,6 @@ transpose_markers (ptrdiff_t start1, ptrdiff_t end1,
 		   ptrdiff_t start2_byte, ptrdiff_t end2_byte)
 {
   register ptrdiff_t amt1, amt1_byte, amt2, amt2_byte, diff, diff_byte, mpos;
-  register struct Lisp_Marker *marker;
 
   /* Update point as if it were a marker.  */
   if (PT < start1)
@@ -4460,7 +4461,7 @@ transpose_markers (ptrdiff_t start1, ptrdiff_t end1,
   amt1_byte = (end2_byte - start2_byte) + (start2_byte - end1_byte);
   amt2_byte = (end1_byte - start1_byte) + (start2_byte - end1_byte);
 
-  for (marker = BUF_MARKERS (current_buffer); marker; marker = marker->next)
+  DO_MARKERS (current_buffer, marker)
     {
       mpos = marker->bytepos;
       if (mpos >= start1_byte && mpos < end2_byte)
@@ -4485,6 +4486,7 @@ transpose_markers (ptrdiff_t start1, ptrdiff_t end1,
 	}
       marker->charpos = mpos;
     }
+  END_DO_MARKERS;
 }
 
 DEFUN ("transpose-regions", Ftranspose_regions, Stranspose_regions, 4, 5,
@@ -4745,6 +4747,11 @@ syms_of_editfns (void)
   DEFSYM (Qwall, "wall");
   DEFSYM (Qpropertize, "propertize");
 
+#ifdef HAVE_MPS
+  cached_system_name = Qnil;
+  staticpro (&cached_system_name);
+  labeled_restrictions = Qnil;
+#endif
   staticpro (&labeled_restrictions);
 
   DEFVAR_LISP ("inhibit-field-text-motion", Vinhibit_field_text_motion,

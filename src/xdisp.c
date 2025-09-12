@@ -500,6 +500,10 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
+#ifdef HAVE_MPS
+#include "igc.h"
+#endif
+#include "pdumper.h"
 
 #ifndef FRAME_OUTPUT_DATA
 #define FRAME_OUTPUT_DATA(f) (NULL)
@@ -12985,12 +12989,16 @@ display_echo_area (struct window *w)
 {
   bool no_message_p, window_height_changed_p;
 
+#ifdef HAVE_MPS
+  specpdl_ref count = SPECPDL_INDEX ();
+#else
   /* Temporarily disable garbage collections while displaying the echo
      area.  This is done because a GC can print a message itself.
      That message would modify the echo area buffer's contents while a
      redisplay of the buffer is going on, and seriously confuse
      redisplay.  */
   specpdl_ref count = inhibit_garbage_collection ();
+#endif
 
   /* If there is no message, we must call display_echo_area_1
      nevertheless because it resizes the window.  But we will have to
@@ -29436,7 +29444,11 @@ decode_mode_spec (struct window *w, register int c, int field_width,
 
     case '@':
       {
+#ifdef HAVE_MPS
+	specpdl_ref count = SPECPDL_INDEX ();
+#else
 	specpdl_ref count = inhibit_garbage_collection ();
+#endif
 	Lisp_Object curdir = BVAR (current_buffer, directory);
 	Lisp_Object val = Qnil;
 
@@ -37789,6 +37801,15 @@ gui_union_rectangles (const Emacs_Rectangle *a, const Emacs_Rectangle *b,
 /***********************************************************************
 			    Initialization
  ***********************************************************************/
+#ifdef HAVE_MPS
+static void
+protect_global_values (void)
+{
+  igc_root_create_exact_ptr (&displayed_buffer);
+  igc_root_create_exact_ptr (&last_escape_glyph_frame);
+  igc_root_create_exact_ptr (&last_glyphless_glyph_frame);
+}
+#endif
 
 void
 syms_of_xdisp (void)
@@ -38013,6 +38034,32 @@ doesn't exist, it will be created and put into
   previous_help_echo_string = Qnil;
   staticpro (&previous_help_echo_string);
   help_echo_pos = -1;
+
+#ifdef HAVE_MPS
+  this_line_buffer = NULL;
+  igc_root_create_exact_ptr (&this_line_buffer);
+
+  for (size_t i = 0; i < ARRAYELTS (default_invis_vector); i++)
+    {
+      default_invis_vector[i] = Qnil;
+      staticpro (&default_invis_vector[i]);
+    }
+
+  echo_area_window = Qnil;
+  staticpro (&echo_area_window);
+
+  for (size_t i = 0; i < ARRAYELTS (scratch_glyphs); i++)
+    {
+      Lisp_Object *ptr = &scratch_glyphs[i].object;
+      *ptr = Qnil;
+      staticpro (ptr);
+    }
+
+  pdumper_do_now_and_after_load (protect_global_values);
+  displayed_buffer = NULL;
+  last_escape_glyph_frame = NULL;
+  last_glyphless_glyph_frame = NULL;
+#endif /* HAVE_MPS */
 
   DEFSYM (Qright_to_left, "right-to-left");
   DEFSYM (Qleft_to_right, "left-to-right");

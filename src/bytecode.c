@@ -23,6 +23,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "sysstdio.h"
 #include "buffer.h"
 #include "window.h"
+#include "igc.h"
 
 /* Define BYTE_CODE_SAFE true to enable some minor sanity checking,
    useful for debugging the byte compiler.  It defaults to false.  */
@@ -376,6 +377,14 @@ struct bc_frame {
   Lisp_Object next_stack[];	    /* data stack of next frame */
 };
 
+#ifdef HAVE_MPS
+void *
+bc_next_frame (struct bc_frame *bc)
+{
+  return bc->next_stack;
+}
+#endif
+
 void
 init_bc_thread (struct bc_thread_state *bc)
 {
@@ -392,6 +401,7 @@ free_bc_thread (struct bc_thread_state *bc)
   xfree (bc->stack);
 }
 
+#ifndef HAVE_MPS
 void
 mark_bytecode (struct bc_thread_state *bc)
 {
@@ -422,6 +432,7 @@ mark_bytecode (struct bc_thread_state *bc)
       fp = next_fp;
     }
 }
+#endif // not HAVE_MPS
 
 DEFUN ("internal-stack-stats", Finternal_stack_stats, Sinternal_stack_stats,
        0, 0, 0,
@@ -473,7 +484,11 @@ exec_byte_code (Lisp_Object fun, ptrdiff_t args_template,
 
  setup_frame: ;
   eassert (!STRING_MULTIBYTE (bytestr));
+#ifndef HAVE_MPS
+  // With MPS, references from the stack pin string data (also interior
+  // pointers).
   eassert (string_immovable_p (bytestr));
+#endif
   /* FIXME: in debug mode (!NDEBUG, BYTE_CODE_SAFE or enabled checking),
      save the specpdl index on function entry and check that it is the same
      when returning, to detect unwind imbalances.  This would require adding
@@ -805,10 +820,12 @@ exec_byte_code (Lisp_Object fun, ptrdiff_t args_template,
 	    else
 	      val = funcall_general (original_fun, call_nargs, call_args);
 
+	    maybe_quit ();	/* needed for profiler */
+
 	    lisp_eval_depth--;
 	    if (backtrace_debug_on_exit (specpdl_ptr - 1))
 	      val = call_debugger (list2 (Qexit, val));
-	    specpdl_ptr--;
+	    unbind_discard_to (SPECPDL_INDEX_PREV ());
 
 	    TOP = val;
 	    NEXT;
@@ -881,7 +898,7 @@ exec_byte_code (Lisp_Object fun, ptrdiff_t args_template,
 		lisp_eval_depth--;
 		if (backtrace_debug_on_exit (specpdl_ptr - 1))
 		  val = call_debugger (list2 (Qexit, val));
-		specpdl_ptr--;
+		unbind_discard_to (SPECPDL_INDEX_PREV ());
 
 		top = saved_top;
 		pc = bc->fp->saved_pc;

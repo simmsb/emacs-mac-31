@@ -47,6 +47,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "window.h"
 #include "keyboard.h"
 #include "menu.h"	/* for w32_menu_show */
+#include "igc.h"
 
 #ifdef WINDOWSNT
 #include "w32.h"	/* for filename_from_utf16, filename_from_ansi */
@@ -7725,6 +7726,11 @@ w32_initialize_display_info (Lisp_Object display_name)
 {
   struct w32_display_info *dpyinfo = &one_w32_display_info;
 
+#ifdef HAVE_MPS
+  igc_root_create_ambig (&one_w32_display_info, &one_w32_display_info + 1,
+			 "w32-display-info");
+#endif
+
   memset (dpyinfo, 0, sizeof (*dpyinfo));
 
   dpyinfo->name_list_element = Fcons (display_name, Qnil);
@@ -8167,6 +8173,9 @@ w32_initialize (void)
 void
 syms_of_w32term (void)
 {
+  one_w32_display_info.name_list_element = Qnil;
+  staticpro (&one_w32_display_info.name_list_element);
+
   DEFSYM (Qvendor_specific_keysyms, "vendor-specific-keysyms");
 
   DEFSYM (Qadded, "added");

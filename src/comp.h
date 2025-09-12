@@ -21,10 +21,15 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #define COMP_H
 
 #include <dynlib.h>
+# include "lisp.h"
+
+# ifdef HAVE_MPS
+struct igc_root_list;
+# endif
 
 struct Lisp_Native_Comp_Unit
 {
-  union vectorlike_header header;
+  struct vectorlike_header header;
   /* The original eln file loaded.  In the pdumper file this is stored
      as a cons cell of 2 alternative file names: the car is the
      filename relative to the directory of an installed binary, the
@@ -43,6 +48,17 @@ struct Lisp_Native_Comp_Unit
      last.  */
   Lisp_Object data_vec;
   /* STUFFS WE DO NOT DUMP!!  */
+# ifdef HAVE_MPS
+  size_t n_data_imp_relocs;
+  size_t n_data_relocs;
+  Lisp_Object *data_eph_relocs;
+  size_t n_data_eph_relocs;
+  Lisp_Object *comp_unit;
+  struct igc_root_list *data_relocs_root;
+  struct igc_root_list *data_imp_relocs_root;
+  struct igc_root_list *data_eph_relocs_root;
+  struct igc_root_list *comp_unit_root;
+# endif
   Lisp_Object *data_relocs;
   bool loaded_once;
   bool load_ongoing;

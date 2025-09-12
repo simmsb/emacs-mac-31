@@ -3386,6 +3386,28 @@ hunk text is not found in the source file."
     )
   str)
 
+(declare-function project-root "project")
+
+(defun diff-find-matching-buffer (current-project mirror-project)
+  "Change default directory to matching one under another project.
+CURRENT-PROJECT is the project instance for the current project.
+MIRROR-PROJECT is the project instance for the project to visit.
+A matching directory has the same name relative to the project root.
+If a matching directory does not exist in the other project, it is an
+error (this avoids invalidating the relative file names in Diff mode
+file headers).
+
+This function is intended to be used as the value of
+`project-find-matching-buffer-function' in Diff mode buffers."
+  (let* ((mirror-root (project-root mirror-project))
+         (relative-name (file-relative-name default-directory
+                                            (project-root current-project)))
+         (mirror-name (expand-file-name relative-name mirror-root)))
+    (if (file-directory-p mirror-name)
+        (message "Default directory changed to `%s'"
+                 (setq default-directory mirror-name))
+      (user-error "`%s' not found in `%s'" relative-name mirror-root))))
+
 ;;; Support for converting a diff to diff3 markers via `wiggle'.
 
 ;; Wiggle can be found at https://neil.brown.name/wiggle/ or in your nearest

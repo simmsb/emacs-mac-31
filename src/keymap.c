@@ -53,6 +53,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "intervals.h"
 #include "keymap.h"
 #include "window.h"
+#include "igc.h"
 
 /* Actually allocate storage for these variables.  */
 
@@ -1572,7 +1573,7 @@ current_minor_maps (Lisp_Object **modeptr, Lisp_Object **mapptr)
 
 	    if (i >= cmm_size)
 	      {
-		ptrdiff_t newsize, allocsize;
+		ptrdiff_t newsize;
 		Lisp_Object *newmodes, *newmaps;
 
 		/* Check for size calculation overflow.  Other code
@@ -1583,31 +1584,51 @@ current_minor_maps (Lisp_Object **modeptr, Lisp_Object **mapptr)
 		  break;
 
 		newsize = cmm_size == 0 ? 30 : cmm_size * 2;
-		allocsize = newsize * sizeof *newmodes;
+#ifndef HAVE_MPS
+		ptrdiff_t allocsize = newsize * sizeof *newmodes;
+#endif
 
 		/* Use malloc here.  See the comment above this function.
 		   Avoid realloc here; it causes spurious traps on GNU/Linux [KFS] */
 		block_input ();
+#ifdef HAVE_MPS
+		newmodes = igc_xalloc_lisp_objs_exact (newsize,
+						       "current-minor-modes");
+#else
 		newmodes = malloc (allocsize);
+#endif
 		if (newmodes)
 		  {
 		    if (cmm_modes)
 		      {
 			memcpy (newmodes, cmm_modes,
 				cmm_size * sizeof cmm_modes[0]);
+#ifdef HAVE_MPS
+			igc_xfree (cmm_modes);
+#else
 			free (cmm_modes);
+#endif
 		      }
 		    cmm_modes = newmodes;
 		  }
 
+#ifdef HAVE_MPS
+		newmaps = igc_xalloc_lisp_objs_exact (newsize,
+						      "current-minor-maps");
+#else
 		newmaps = malloc (allocsize);
+#endif
 		if (newmaps)
 		  {
 		    if (cmm_maps)
 		      {
 			memcpy (newmaps, cmm_maps,
 				cmm_size * sizeof cmm_maps[0]);
+#ifdef HAVE_MPS
+			igc_xfree (cmm_maps);
+#else
 			free (cmm_maps);
+#endif
 		      }
 		    cmm_maps = newmaps;
 		  }

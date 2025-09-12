@@ -3495,6 +3495,7 @@ syms_of_xselect_for_pdumper (void)
   property_change_reply = Fcons (Qnil, Qnil);
 }
 
+#ifndef HAVE_MPS
 void
 mark_xselect (void)
 {
@@ -3525,3 +3526,4 @@ mark_xselect (void)
 	mark_object (cs->string);
     }
 }
+#endif
