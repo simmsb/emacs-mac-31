@@ -1280,20 +1280,6 @@ If the value is t, the backend is deduced in all modes."
                  (const :tag "All" t))
   :version "30.1")
 
-(defun vc-deduce-backend ()
-  (cond ((derived-mode-p 'vc-dir-mode)   vc-dir-backend)
-	((derived-mode-p 'log-view-mode) log-view-vc-backend)
-	((derived-mode-p 'log-edit-mode) log-edit-vc-backend)
-	((derived-mode-p 'diff-mode)     diff-vc-backend)
-	((or (eq vc-deduce-backend-nonvc-modes t)
-	     (derived-mode-p vc-deduce-backend-nonvc-modes))
-	 (ignore-errors (vc-responsible-backend default-directory)))
-	(vc-mode (vc-backend buffer-file-name))))
-
-(declare-function vc-dir-current-file "vc-dir" ())
-(declare-function vc-dir-deduce-fileset "vc-dir" (&optional state-model-only-files))
-(declare-function dired-vc-deduce-fileset "dired-aux" (&optional state-model-only-files not-state-changing))
-
 (defvar-local vc-buffer-overriding-fileset nil
   "Specialized, static value for `vc-deduce-fileset' for this buffer.
 If non-nil, this should be a list of length 2 or 5.
@@ -1306,6 +1292,21 @@ STATE-MODEL-ONLY-FILES argument to `vc-deduce-fileset' is nil.")
 Lisp code which sets this should also set `vc-buffer-overriding-fileset'
 such that the buffer's local variables also specify a VC backend,
 rendering the value of this variable unambiguous.")
+
+(defun vc-deduce-backend ()
+  (cond ((car vc-buffer-overriding-fileset))
+        ((derived-mode-p 'vc-dir-mode)   vc-dir-backend)
+        ((derived-mode-p 'log-view-mode) log-view-vc-backend)
+        ((derived-mode-p 'log-edit-mode) log-edit-vc-backend)
+        ((derived-mode-p 'diff-mode)     diff-vc-backend)
+        ((or (eq vc-deduce-backend-nonvc-modes t)
+             (derived-mode-p vc-deduce-backend-nonvc-modes))
+         (ignore-errors (vc-responsible-backend default-directory)))
+        (vc-mode (vc-backend buffer-file-name))))
+
+(declare-function vc-dir-current-file "vc-dir" ())
+(declare-function vc-dir-deduce-fileset "vc-dir" (&optional state-model-only-files))
+(declare-function dired-vc-deduce-fileset "dired-aux" (&optional state-model-only-files not-state-changing))
 
 (defun vc-deduce-fileset (&optional not-state-changing
 				    allow-unregistered
@@ -1647,7 +1648,18 @@ from which to check out the file(s)."
           ;; In the case there actually are any unregistered files then
           ;; `vc-deduce-backend', via `vc-only-files-state-and-model',
           ;; has already prompted the user to approve registering them.
-	  (let ((register (cl-remove-if #'vc-backend fileset-only-files)))
+          ;;
+          ;; FIXME: We should be able to use `vc-backend' instead of
+          ;; `vc-registered' here given that `vc-deduce-backend' just
+          ;; determined a state for all of the files.  However, there
+          ;; are case(s) where the cached information is out-of-date.
+          ;; For example, if we used C-x v v on a directory in *vc-dir*
+          ;; and thereby newly registered files within that directory,
+          ;; only that directory's name will have been passed to
+          ;; `vc-register', and so `vc-backend' will still consider them
+          ;; unregistered, even though `vc-dir-deduce-fileset' will
+          ;; return `added' for their states.
+	  (let ((register (cl-remove-if #'vc-registered fileset-only-files)))
             (if (not verbose)
 	        (vc-checkin ready-for-commit backend nil nil nil nil register)
 	      (let* ((revision (read-string "New revision or backend: "))
@@ -2640,9 +2652,9 @@ global binding."
                       ;;          'repository)
                       ;;      (ignore-errors
                       ;;        (vc-call-backend backend 'working-revision
-                      ;;                         (car fileset)))
+                      ;;                         (caadr fileset)))
                       (vc-call-backend backend 'working-revision
-                                       (car fileset))
+                                       (caadr fileset))
                       (called-interactively-p 'interactive))))
 
 ;; For the following two commands, the default meaning for
@@ -3503,7 +3515,7 @@ number of revisions to show; the default is `vc-log-show-limit'.
 When called interactively with a prefix argument, prompt for LIMIT, but
 if the prefix argument is a number, use it as LIMIT.
 A special case is when the prefix argument is 1: in this case
-the command prompts for the ID of a revision, and shows that revision
+the command prompts for the id of a REVISION, and shows that revision
 with its diffs (if the underlying VCS backend supports that)."
   (interactive
    (cond
@@ -4245,19 +4257,22 @@ marked revisions, use those."
                               'prepare-patch rev))
                            revisions)))
       (if vc-prepare-patches-separately
-          (dolist (patch (reverse patches)
-                         (message "Prepared %d patch%s..." (length patches)
-                                  (if (length> patches 1) "es" "")))
-            (compose-mail addressee
-                          (plist-get patch :subject)
-                          nil nil nil nil
-                          `((kill-buffer ,(plist-get patch :buffer))))
-            (rfc822-goto-eoh) (forward-line)
-            (save-excursion             ;don't jump to the end
-              (insert-buffer-substring
-               (plist-get patch :buffer)
-               (plist-get patch :body-start)
-               (plist-get patch :body-end))))
+          (cl-loop with l = (length patches)
+                   for patch in (reverse patches) do
+                   (compose-mail addressee
+                                 (plist-get patch :subject)
+                                 nil nil nil nil
+                                 `((kill-buffer ,(plist-get patch :buffer))))
+                   (rfc822-goto-eoh) (forward-line)
+                   (save-excursion      ;don't jump to the end
+                     (insert-buffer-substring
+                      (plist-get patch :buffer)
+                      (plist-get patch :body-start)
+                      (plist-get patch :body-end)))
+                   finally (message (ngettext "Prepared %d patch..."
+                                              "Prepared %d patches..."
+                                              l)
+                                    l))
         (compose-mail addressee subject nil nil nil nil
                       (mapcar
                        (lambda (p)
