@@ -88,9 +88,9 @@ when `global-hl-line-sticky-flag' is non-nil.")
 	 (dolist (buffer (buffer-list))
 	   (with-current-buffer buffer
 	     (when (overlayp hl-line-overlay)
-	       (overlay-put hl-line-overlay 'face hl-line-face))))
-	 (when (overlayp global-hl-line-overlay)
-	   (overlay-put global-hl-line-overlay 'face hl-line-face))))
+	       (overlay-put hl-line-overlay 'face hl-line-face))
+	     (when (overlayp global-hl-line-overlay)
+	       (overlay-put global-hl-line-overlay 'face hl-line-face))))))
 
 (defcustom hl-line-sticky-flag t
   "Non-nil means the HL-Line mode highlight appears in all windows.
@@ -116,37 +116,29 @@ For that, use `global-hl-line-sticky-flag'."
 (defcustom global-hl-line-sticky-flag nil
   "Non-nil means the Global HL-Line mode highlight appears in all windows.
 Otherwise Global Hl-Line mode will highlight only in the selected
-window.  Setting this variable takes effect the next time you use
+window.
+
+The value t affects only the case when the current buffer is displayed
+in several windows - then the current line of the selected window
+is indicated in non-selected windows.
+
+If the value is `all', the Global HL-Line mode affects all windows.
+This means that even when point moves in a non-selected window
+that displays another buffer, the new position will be updated
+to highlight the current line of other buffers.
+
+Setting this variable takes effect the next time you use
 the command `global-hl-line-mode' to turn Global Hl-Line mode on."
-  :type 'boolean
+  :type '(choice (const :tag "Disable" nil)
+                 (const :tag "Enable for buffer in multiple windows" t)
+                 (const :tag "Enable and update in all windows" all))
   :version "24.1"
   :group 'hl-line)
 
-(defcustom global-hl-line-modes t
-  "Which major modes `hl-line-mode' is switched on in.
-This variable can be either t (all major modes), nil (no major modes),
-or a list of modes and (not modes) to switch use this minor mode or
-not.  For instance
-
-  (c-mode (not message-mode mail-mode) text-mode)
-
-means \"use this mode in all modes derived from `c-mode', don't use in
-modes derived from `message-mode' or `mail-mode', but do use in other
-modes derived from `text-mode'\".  An element with value t means \"use\"
-and nil means \"don't use\".  There's an implicit nil at the end of the
-list."
-  :type
-  '(choice (const :tag "Enable in all major modes" t)
-           (repeat :tag "Rules (earlier takes precedence)..."
-                   (choice
-                    (const :tag "Enable in all (other) modes" t)
-                    (symbol :value fundamental-mode :tag
-                            "Enable in major mode")
-                    (cons :tag "Don't enable in major modes"
-                          (const :tag "Don't enable in..." not)
-                          (repeat
-                           (symbol :value fundamental-mode :tag
-                                   "Major mode"))))))
+(defcustom global-hl-line-buffers '(not (derived-mode . completion-list-mode))
+  "Whether the Global HL-Line mode should be enabled in a buffer.
+The predicate is passed as argument to `buffer-match-p', which see."
+  :type '(buffer-predicate :tag "Predicate for `buffer-match-p'")
   :version "31.1")
 
 (defvar hl-line-range-function nil
@@ -256,16 +248,18 @@ on `post-command-hook'."
         ;; In case `kill-all-local-variables' is called.
         (add-hook 'change-major-mode-hook #'global-hl-line-unhighlight)
         (global-hl-line-highlight-all)
-	(add-hook 'post-command-hook #'global-hl-line-highlight))
+        (add-hook 'post-command-hook (if (eq global-hl-line-sticky-flag 'all)
+                                         #'global-hl-line-highlight-all
+                                       #'global-hl-line-highlight)))
     (global-hl-line-unhighlight-all)
     (remove-hook 'post-command-hook #'global-hl-line-highlight)
+    (remove-hook 'post-command-hook #'global-hl-line-highlight-all)
     (remove-hook 'change-major-mode-hook #'global-hl-line-unhighlight)))
 
 (defun global-hl-line-highlight ()
   "Highlight the current line in the current window."
-  (require 'easy-mmode)
   (when (and global-hl-line-mode ; Might be changed outside the mode function.
-             (easy-mmode--globalized-predicate-p global-hl-line-modes))
+             (buffer-match-p global-hl-line-buffers (current-buffer)))
     (unless (window-minibuffer-p)
       (unless (overlayp global-hl-line-overlay)
         (setq global-hl-line-overlay (hl-line-make-overlay))) ; To be moved.
@@ -294,10 +288,12 @@ on `post-command-hook'."
   "Maybe deactivate the Global-Hl-Line overlay on the current line.
 Specifically, when `global-hl-line-sticky-flag' is nil deactivate
 all such overlays in all buffers except the current one."
+  (setq global-hl-line-overlays
+        (seq-remove (lambda (ov) (not (overlay-buffer ov)))
+                    global-hl-line-overlays))
   (mapc (lambda (ov)
 	  (let ((ovb (overlay-buffer ov)))
             (when (and (not global-hl-line-sticky-flag)
-                       (bufferp ovb)
                        (not (eq ovb (current-buffer)))
                        (not (minibufferp)))
 	      (with-current-buffer ovb
