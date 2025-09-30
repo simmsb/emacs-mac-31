@@ -255,6 +255,13 @@ pkg_find_symbol (Lisp_Object name, Lisp_Object package, Lisp_Object *status)
   eassert (STRINGP (name));
   eassert (PACKAGEP (package));
 
+  const char *name_string = SSDATA (name);
+  const char *pkg_name = SSDATA (PACKAGE_NAMEX (package));
+  const size_t pkg_name_len = SBYTES (PACKAGE_NAMEX (package));
+  if (strncmp(name_string, pkg_name, pkg_name_len) == 0 && SREF (name, pkg_name_len) == ':') {
+    name = Fsubstring(name, make_fixnum (pkg_name_len + 1), Qnil);
+  }
+
   struct Lisp_Hash_Table *h = XHASH_TABLE (PACKAGE_SYMBOLS (package));
   ptrdiff_t i = hash_find (h, name);
   if (i >= 0)
