@@ -2128,6 +2128,16 @@ Predefined values include visiting the file in Emacs, jumping to the
 file in Dired, or opening the file with an external program.  You can
 also provide a custom function.
 
+---
+*** Rmail now detects email messages from suspicious sender addresses.
+If the "From" header of a message contains a suspicious email address,
+Rmail will now highlight it in a distinct face and provide a 'help-echo'
+tooltip explaining the reason.  (What exactly is considered as
+suspicious email addresses is determined by the function
+'textsec-suspicious-p', which see.)  This is controlled by the new user
+option 'rmail-detect-suspicious-headers', whose default value is
+non-nil; customize to nil to disable the check.
+
 ** Message
 
 +++
@@ -2138,6 +2148,17 @@ honored if it was already set.
 
 +++
 *** 'message-strip-subject-re' now matches case-insensitively.
+
+** Sendmail
+
+---
+*** Sending an email via 'sendmail' checks for suspicious addressees.
+The command 'mail-send', used to send email in Mail mode, now checks the
+addressees for suspicious email addresses.  If such addresses are found,
+the command will show them and the reason they are considered
+suspicious, and will request a confirmation before sending the message.
+This follows the behavior of Message mode, and affects users who
+customize 'mail-user-agent' to the value 'sendmail-user-agent'.
 
 ** SHR
 
@@ -3117,16 +3138,18 @@ activate it.  When t (the default), the click will both activate the
 frame and be interpreted as a command.
 
 ---
-*** New user option 'global-hl-line-modes'.
-This specifies in which major modes should the 'global-hl-line-mode' be
-switched on.  The default is t, which means enable it in all major
-modes.
+*** New user option 'global-hl-line-buffers'.
+This specifies in which buffers should the 'global-hl-line-mode' be
+switched on.  The default is all buffers except the minibuffer
+and the buffers like the completions buffer that enable
+'cursor-face-highlight-mode'.
 
 ---
-*** New value 'all' for the user option 'global-hl-line-sticky-flag'.
-It updates the line highlighting in all windows and buffers,
-unlike the value t that updates only windows that display
-the current buffer.
+*** New value 'window' for the user option 'global-hl-line-sticky-flag'.
+Unlike the value t that highlights the line with buffer's point,
+it highlights the line with window's point.  Also it uses the new face
+`hl-line-nonselected' for highlighting the line with window's point
+in non-selected windows.
 
 ---
 *** New user option 'display-fill-column-indicator-warning'.
