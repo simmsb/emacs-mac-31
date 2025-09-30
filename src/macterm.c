@@ -23,12 +23,14 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "lisp.h"
 #include "blockinput.h"
+#include "macgui.h"
 #include "sysstdio.h"
 
 #include "macterm.h"
 
 #include "systime.h"
 
+#include <CoreGraphics/CoreGraphics.h>
 #include <errno.h>
 #include <sys/stat.h>
 
@@ -365,19 +367,22 @@ mac_draw_horizontal_wave (struct frame *f, GC gc, int x, int y,
     gperiod = wave_length * 2;
     gx1 = floor ((CGRectGetMinX (wave_clip) - 1.0f) / gperiod) * gperiod + 0.5f;
     gxmax = CGRectGetMaxX (wave_clip);
-    gy1 = (CGFloat) y + 0.5f;
-    gy2 = (CGFloat) (y + height) - 0.5f;
+    gy1 = (CGFloat) y;
+    gy2 = (CGFloat) (y + height);
 
     CGContextClipToRect (context, wave_clip);
     CGContextSetStrokeColorWithColor (context, gc->cg_fore_color);
     if (FLOATP (Vmac_underwave_thickness))
       CGContextSetLineWidth(context, XFLOAT_DATA (Vmac_underwave_thickness));
-    CGContextMoveToPoint (context, gx1, gy1);
+
+    CGContextMoveToPoint (context, gx1, y + height / 2.0);
+
     while (gx1 <= gxmax)
       {
-	CGContextAddLineToPoint (context, gx1 + gperiod * 0.5f, gy2);
+	CGContextAddCurveToPoint (context, gx1 + wave_length, gy2,
+				  gx1 + wave_length, gy1,
+				  gx1 + gperiod, y + height / 2.0);
 	gx1 += gperiod;
-	CGContextAddLineToPoint (context, gx1, gy1);
       }
     CGContextStrokePath (context);
   }
@@ -1803,6 +1808,139 @@ mac_draw_box_rect (struct glyph_string *s,
   mac_reset_clip_rectangles (s->f, s->gc);
 }
 
+static void
+mac_draw_rounded_rect (struct glyph_string *s,
+		   int left_x, int top_y, int right_x, int bottom_y, int hwidth, int vwidth,
+		   bool left_p, bool right_p,
+		   NativeRectangle *clip_rect)
+{
+  int width = right_x - left_x + 1;
+  int height = bottom_y - top_y + 1;
+
+  CGFloat radius = 3.0;
+
+  GC gc = s->gc;
+
+
+  CGRect rect = CGRectMake (left_x, top_y, width, height);
+  struct frame *f = s->f;
+
+  XGCValues xgcv;
+
+  mac_get_gc_values (gc, GCForeground, &xgcv);
+  mac_set_foreground (gc, s->face->box_color);
+
+  unsigned int background = FRAME_BACKGROUND_PIXEL(s->f);
+  unsigned int fill_colour = s->face->background;
+
+  MAC_BEGIN_DRAW_TO_FRAME (f, gc, rect, context);
+
+
+  CGRect mrect = CGRectMake (0, 0, width, height);
+  CGFloat minx = CGRectGetMinX(mrect), midx = CGRectGetMidX(mrect), maxx = CGRectGetMaxX(mrect);
+  CGFloat miny = CGRectGetMinY(mrect), midy = CGRectGetMidY(mrect), maxy = CGRectGetMaxY(mrect);
+
+  // construct a mask of a filled rounded rectangle, we'll use this to stamp the corners
+  CGContextRef tc = CGBitmapContextCreate(NULL, width, height, 8, 0, NULL, kCGImageAlphaOnly);
+  CGColorRef alpha = CGColorCreateGenericGray(1.0, 1.0);
+  CGContextSetFillColorWithColor(tc, alpha);
+  CGContextMoveToPoint(tc, minx, midy);
+  CGContextAddArcToPoint(tc, minx, miny, midx, miny, left_p ? radius : 0);
+  CGContextAddArcToPoint(tc, maxx, miny, maxx, midy, right_p ? radius : 0);
+  CGContextAddArcToPoint(tc, maxx, maxy, midx, maxy, right_p ? radius : 0);
+  CGContextAddArcToPoint(tc, minx, maxy, minx, midy, left_p ? radius : 0);
+  CGContextClosePath(tc);
+  CGContextDrawPath(tc, kCGPathFill);
+
+  CGColorRelease(alpha);
+
+  CGImageRef maskImg = CGBitmapContextCreateImage(tc);
+  CGContextRelease(tc);
+
+  CGImageRef finalMaskImage = CGImageMaskCreate(CGImageGetWidth(maskImg),
+						CGImageGetHeight(maskImg),
+						CGImageGetBitsPerComponent(maskImg),
+						CGImageGetBitsPerPixel(maskImg),
+						CGImageGetBytesPerRow(maskImg),
+						CGImageGetDataProvider(maskImg), NULL, false);
+  CGImageRelease(maskImg);
+
+  CGContextSaveGState(context);
+  CGColorRef fill = mac_cg_color_create(fill_colour, 0);
+  CGContextSetFillColorWithColor(context, fill);
+  CGColorRelease(fill);
+
+  // top
+  {
+    CGRect rect = CGRectMake (left_x, top_y, right_x - left_x + 1, hwidth);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Left.  */
+  if (left_p) {
+    CGRect rect = CGRectMake (left_x, top_y, vwidth, bottom_y - top_y + 1);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Bottom.  */
+  {
+    CGRect rect = CGRectMake (left_x, bottom_y - hwidth + 1, right_x - left_x + 1, hwidth);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  /* Right.  */
+  if (right_p) {
+    CGRect rect = CGRectMake (right_x - vwidth + 1, top_y, vwidth, bottom_y - top_y + 1);
+    CGContextFillRects(context, &rect, 1);
+  }
+
+  CGContextRestoreGState(context);
+
+  // Stamp the background using the mask
+  CGContextSaveGState(context);
+  CGContextClipToMask(context, rect, finalMaskImage);
+  CGColorRef color = mac_cg_color_create(background, 0);
+  CGContextSetFillColorWithColor(context, color);
+  CGColorRelease(color);
+  CGContextFillRects(context, &rect, 1);
+  CGImageRelease(finalMaskImage);
+  CGContextRestoreGState(context);
+
+  minx = CGRectGetMinX(rect), midx = CGRectGetMidX(rect), maxx = CGRectGetMaxX(rect);
+  miny = CGRectGetMinY(rect), midy = CGRectGetMidY(rect), maxy = CGRectGetMaxY(rect);
+
+  CGContextSetStrokeColorWithColor(context, gc->cg_fore_color);
+
+  CGFloat radius = 2.5;
+
+  CGContextMoveToPoint(context, midx, maxy);
+  if (left_p) {
+    CGContextAddArcToPoint(context, minx, maxy, minx, midy, radius);
+    CGContextAddArcToPoint(context, minx, miny, midx, miny, radius);
+  } else {
+    CGContextAddLineToPoint(context, minx, maxy);
+    CGContextMoveToPoint(context, minx, miny);
+    /* CGContextAddLineToPoint(context, minx, miny); */
+    CGContextAddLineToPoint(context, midx, miny);
+  }
+
+  if (right_p) {
+    CGContextAddArcToPoint(context, maxx, miny, maxx, midy, radius);
+    CGContextAddArcToPoint(context, maxx, maxy, midx, maxy, radius);
+  } else {
+    CGContextAddLineToPoint(context, maxx, miny);
+    CGContextMoveToPoint(context, maxx, maxy);
+    /* CGContextAddLineToPoint(context, maxx, maxy); */
+  }
+  CGContextAddLineToPoint(context, midx, maxy);
+  CGContextDrawPath(context, kCGPathStroke);
+
+  MAC_END_DRAW_TO_FRAME (f);
+
+  mac_set_foreground (s->gc, xgcv.foreground);
+
+}
+
 
 /* Draw a box around glyph string S.  */
 
@@ -1861,8 +1999,10 @@ mac_draw_glyph_string_box (struct glyph_string *s)
   get_glyph_string_clip_rect (s, &clip_rect);
 
   if (s->face->box == FACE_SIMPLE_BOX)
-    mac_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
+    mac_draw_rounded_rect (s, left_x, top_y, right_x, bottom_y, hwidth,
 		       vwidth, left_p, right_p, &clip_rect);
+    /* mac_draw_box_rect (s, left_x, top_y, right_x, bottom_y, hwidth, */
+    /* 		       vwidth, left_p, right_p, &clip_rect); */
   else
     {
       mac_setup_relief_colors (s);
@@ -2235,7 +2375,7 @@ mac_draw_stretch_glyph_string (struct glyph_string *s)
 static void
 mac_draw_underwave (struct glyph_string *s, int decoration_width)
 {
-  int wave_height = 3, wave_length = 2;
+  int wave_height = 3, wave_length = 4;
 
   mac_draw_horizontal_wave (s->f, s->gc, s->x, s->ybase - wave_height + 3,
 			    decoration_width, wave_height, wave_length);
@@ -3565,6 +3705,26 @@ mac_clip_to_row (struct window *w, struct glyph_row *row,
   mac_set_clip_rectangles (f, gc, &clip_rect, 1);
 }
 
+static void set_saved_cursor_position(struct window *w, int x, int y, int c_w, int c_h, unsigned colour) {
+  /* printf("Setting cursor pos: %d %d %d %d\n", x, y, c_w, c_h); */
+  struct frame *f = XFRAME (WINDOW_FRAME (w));
+  f->cursor_x = x;
+  f->cursor_y = y;
+  f->cursor_w = c_w;
+  f->cursor_h = c_h;
+  f->cursor_r = RED_FROM_ULONG(colour);
+  f->cursor_g = GREEN_FROM_ULONG(colour);
+  f->cursor_b = BLUE_FROM_ULONG(colour);
+}
+
+static void set_no_saved_cursor_position(struct window *w) {
+  /* printf("Clearing cursor pos\n"); */
+  struct frame *f = XFRAME (WINDOW_FRAME (w));
+  f->cursor_x = 0;
+  f->cursor_y = 0;
+  f->cursor_w = 0;
+  f->cursor_h = 0;
+}
 
 /* Draw a hollow box cursor on window W in glyph row ROW.  */
 
@@ -3596,6 +3756,9 @@ mac_draw_hollow_cursor (struct window *w, struct glyph_row *row)
   else
     dpyinfo->scratch_cursor_gc = mac_create_gc (GCForeground, &xgcv);
   gc = dpyinfo->scratch_cursor_gc;
+
+  set_saved_cursor_position(w, x, y, wd, h, xgcv.foreground);
+
 
   /* When on R2L character, show cursor at the right edge of the
      glyph, unless the cursor box is as wide as the glyph or wider
@@ -3689,9 +3852,10 @@ mac_draw_bar_cursor (struct window *w, struct glyph_row *row, int width, enum te
 	  if ((cursor_glyph->resolved_level & 1) != 0)
 	    x += cursor_glyph->pixel_width - width;
 
-	  mac_fill_rectangle (f, gc, x,
-			      WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y),
+	  int y = WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y);
+	  mac_fill_rectangle (f, gc, x, y,
 			      width, row->height);
+	  set_saved_cursor_position(w, x, y, width, row->height, xgcv.foreground);
 	}
       else /* HBAR_CURSOR */
 	{
@@ -3709,10 +3873,12 @@ mac_draw_bar_cursor (struct window *w, struct glyph_row *row, int width, enum te
 	  if ((cursor_glyph->resolved_level & 1) != 0
 	      && cursor_glyph->pixel_width > w->phys_cursor_width)
 	    x += cursor_glyph->pixel_width - w->phys_cursor_width;
-	  mac_fill_rectangle (f, gc, x,
-			      WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y +
-						       row->height - width),
+	  int y = WINDOW_TO_FRAME_PIXEL_Y (w, w->phys_cursor.y +
+						       row->height - width);
+	  mac_fill_rectangle (f, gc, x, y,
 			      w->phys_cursor_width, width);
+	  set_saved_cursor_position(w, x, y, w->phys_cursor_width, width, xgcv.foreground);
+
 	}
 
       mac_reset_clip_rectangles (f, gc);
@@ -3749,8 +3915,14 @@ mac_draw_window_cursor (struct window *w, struct glyph_row *glyph_row, int x,
 		      int y, enum text_cursor_kinds cursor_type,
 		      int cursor_width, bool on_p, bool active_p)
 {
+  /* printf("draw_window_cursor: x %d y %d, type %d, on %d active %d \n", x, y, cursor_type, on_p, active_p); */
+
   if (on_p)
     {
+      if (active_p) {
+	set_no_saved_cursor_position(w);
+      }
+
       w->phys_cursor_type = cursor_type;
       w->phys_cursor_on_p = true;
 
@@ -3770,9 +3942,22 @@ mac_draw_window_cursor (struct window *w, struct glyph_row *glyph_row, int x,
 	      mac_draw_hollow_cursor (w, glyph_row);
 	      break;
 
-	    case FILLED_BOX_CURSOR:
+	    case FILLED_BOX_CURSOR: {
 	      draw_phys_cursor_glyph (w, glyph_row, DRAW_CURSOR);
+	      int x, y, wd, h;
+	      struct glyph *cursor_glyph;
+	      cursor_glyph = get_phys_cursor_glyph (w);
+	      if (cursor_glyph == NULL)
+		break;
+
+	      struct frame *f = XFRAME (WINDOW_FRAME (w));
+
+	      /* Compute frame-relative coordinates for phys cursor.  */
+	      get_phys_cursor_geometry (w, glyph_row, cursor_glyph, &x, &y, &h);
+	      wd = w->phys_cursor_width - 1;
+	      set_saved_cursor_position(w, x, y, wd, h, f->output_data.mac->cursor_pixel);
 	      break;
+	    }
 
 	    case BAR_CURSOR:
 	      mac_draw_bar_cursor (w, glyph_row, cursor_width, BAR_CURSOR);

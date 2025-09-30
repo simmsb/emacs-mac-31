@@ -25,6 +25,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #import <OSAKit/OSAKit.h>
 #if HAVE_MAC_METAL
 #import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
 #endif
 #if HAVE_UNIFORM_TYPE_IDENTIFIERS
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -800,6 +801,9 @@ typedef NSInteger NSGlyphProperty;
      should be non-nil otherwise.  */
   id <MTLTexture> backTexture, frontTexture;
 
+  /* Used when blitting in the same buffer where we might overlap */
+  id <MTLTexture> tmpTexture;
+
   /* Command queue of the optimal GPU device for the display in which
      the view appears, or nil if the GPU does not support Metal.  */
   id <MTLCommandQueue> mtlCommandQueue;
@@ -832,20 +836,34 @@ typedef NSInteger NSGlyphProperty;
 - (NSData *)imageBuffersDataForRectanglesData:(NSData *)rectanglesData;
 - (void)restoreImageBuffersData:(NSData *)imageBuffersData
 	      forRectanglesData:(NSData *)rectanglesData;
+- (id<MTLTexture>)frontTexture;
 @end
 
 /* Class for Emacs view that handles drawing events only.  It is used
    directly by tooltip frames, and indirectly by ordinary frames via
    inheritance.  */
 
-@interface EmacsView : NSView
+#if HAVE_MAC_METAL
+@interface EmacsView : MTKView <NSTextContent>
+#else
+@interface EmacsView : NSView <NSTextContent>
+#endif
 {
   /* Backing resources for applicaion-side double buffering.  */
   EmacsBacking *backing;
 
   /* Whether the backing size is out of sync with the view size.  */
   BOOL backingSizeOutOfSync;
+#if HAVE_MAC_METAL
+  id<MTLRenderPipelineState> _pipelineState;
+  id<MTLCommandQueue> _commandQueue;
+  vector_float4 _previousCursorPosition;
+  vector_float4 _currentCursorPosition;
+  vector_float4 _currentCursorColor;
+  double _lastCursorMoveTime;
+#endif
 }
+@property (nonatomic, copy) NSTextContentType textContentType;
 - (struct frame *)emacsFrame;
 + (void)globallyDisableUpdateLayer:(BOOL)flag;
 - (void)lockFocusOnBacking;
@@ -856,6 +874,9 @@ typedef NSInteger NSGlyphProperty;
 		 forCGContext:(CGContextRef)context;
 #if HAVE_MAC_METAL
 - (void)updateMTLObjects;
+- (void)stopRenderLoop;
+- (void)render;
+- (void)resizeDrawable:(CGFloat)scaleFactor;
 #endif
 @end
 

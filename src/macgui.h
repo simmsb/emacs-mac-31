@@ -61,13 +61,10 @@ typedef Lisp_Object XrmDatabase;
 
 #include <Accelerate/Accelerate.h>
 
-#ifndef CF_NOESCAPE
-#if __has_attribute (noescape)
-#define CF_NOESCAPE __attribute__ ((noescape))
-#else
+#ifdef CF_NOESCAPE
+#undef CF_NOESCAPE
+#endif
 #define CF_NOESCAPE
-#endif
-#endif
 
 typedef void *Window;
 typedef void *Selection;

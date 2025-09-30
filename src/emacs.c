@@ -3369,13 +3369,13 @@ decode_env_path (const char *evarname, const char *defalt, bool empty)
     path = 0;
   if (!path)
     {
-
-#ifdef MAC_SELF_CONTAINED
-      path = mac_relocate (defalt);
-#elif defined NS_SELF_COqqNTAINED
-      path = ns_relocate (defalt);
-#else
       path = defalt;
+#ifdef NS_SELF_CONTAINED
+      if (path)
+	path = ns_relocate (path);
+#elif MAC_SELF_CONTAINED
+      if (path)
+        path = mac_relocate (path);
 #endif
 #ifdef WINDOWSNT
       defaulted = 1;

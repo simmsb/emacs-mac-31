@@ -689,6 +689,10 @@ struct frame
   /* Width of bar cursor (if we are using that).  */
   int cursor_width;
 
+  /* Cursor position and size */
+  int cursor_x, cursor_y, cursor_w, cursor_h;
+  uint8_t cursor_r, cursor_g, cursor_b;
+
   /* What kind of text cursor should we draw when the cursor blinks off?
      This can be filled_box_cursor or bar_cursor or no_cursor.  */
   enum text_cursor_kinds blink_off_cursor;

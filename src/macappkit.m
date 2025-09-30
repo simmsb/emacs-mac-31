@@ -22,6 +22,8 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "macterm.h"
 
+#include <Foundation/Foundation.h>
+#include <Metal/Metal.h>
 #include <sys/socket.h>
 
 #include "character.h"
@@ -52,6 +54,10 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #define MRC_RELEASE(receiver)		[(receiver) release]
 #define MRC_AUTORELEASE(receiver)	[(receiver) autorelease]
 #define CF_ESCAPING_BRIDGE(X)		((CFTypeRef) (X))
+#endif
+
+#if HAVE_MAC_METAL
+#include <simd/simd.h>
 #endif
 
 /************************************************************************
@@ -2062,8 +2068,8 @@ static void unset_global_focus_view_frame (void);
 static void mac_move_frame_window_structure_1 (struct frame *, int, int);
 
 #define DEFAULT_NUM_COLS (80)
-#define RESIZE_CONTROL_WIDTH (15)
-#define RESIZE_CONTROL_HEIGHT (15)
+#define RESIZE_CONTROL_WIDTH (1)
+#define RESIZE_CONTROL_HEIGHT (1)
 
 @implementation EmacsWindow
 
@@ -5309,7 +5315,8 @@ mac_set_frame_window_background (struct frame *f, unsigned long color)
 	  + BLUE_FROM_ULONG (color)) >= (int) (0xff * 3 * .6)
 	 ? NSAppearanceNameVibrantLight : NSAppearanceNameVibrantDark);
 
-      window.appearanceCustomization.appearance =
+      window.titlebarAppearsTransparent = true;
+      window.appearance =
 	[NSAppearance appearanceNamed:name];
     });
 }
@@ -5800,6 +5807,10 @@ mac_iosurface_create (size_t width, size_t height)
   return IOSurfaceCreate ((__bridge CFDictionaryRef) properties);
 }
 
+- (id<MTLTexture>)frontTexture {
+	return frontTexture;
+}
+
 - (instancetype)initWithView:(NSView *)view
 {
   self = [super init];
@@ -5889,6 +5900,10 @@ mac_iosurface_create (size_t width, size_t height)
       if (backTexture)
 	{
 	  id <MTLCommandBuffer> commandBuffer = [mtlCommandQueue commandBuffer];
+
+	  // if (renderPipelineState) {
+	  // }
+
 	  id <MTLBlitCommandEncoder> blitCommandEncoder =
 	    [commandBuffer blitCommandEncoder];
 
@@ -5910,6 +5925,7 @@ mac_iosurface_create (size_t width, size_t height)
 	  [blitCommandEncoder endEncoding];
 	  [commandBuffer commit];
 	  [commandBuffer waitUntilCompleted];
+
 	  IOSurfaceLock (backSurface, 0, NULL);
 	}
       else
@@ -5980,6 +5996,7 @@ mac_iosurface_create (size_t width, size_t height)
 #if HAVE_MAC_METAL
   [backTexture release];
   [frontTexture release];
+  [tmpTexture release];
   [mtlCommandQueue release];
 #endif
   [super dealloc];
@@ -6074,6 +6091,13 @@ mac_iosurface_create (size_t width, size_t height)
 }
 
 #if HAVE_MAC_METAL
+
+static const char shader_cstr[] = {
+// update this with `cat shader.glsl | xxd -i > shader.xxd`
+#include "shader.xxd"
+  , 0
+};
+
 static id <MTLTexture>
 mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 {
@@ -6091,6 +6115,22 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 				iosurface:surface plane:0];
 }
 
+static id <MTLTexture>
+mac_texture_create_blank (id <MTLDevice> device, size_t width, size_t height)
+{
+  if (!device)
+    return nil;
+
+  MTLTextureDescriptor *textureDescriptor =
+    [MTLTextureDescriptor
+      texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+				   width:width
+				  height:height
+			       mipmapped:NO];
+
+  return [device newTextureWithDescriptor:textureDescriptor];
+}
+
 - (void)updateMTLObjectsForView:(NSView *)view
 {
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 101100
@@ -6104,6 +6144,8 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 
   if (newDevice != mtlCommandQueue.device)
     {
+      MRC_RELEASE (tmpTexture);
+      tmpTexture = mac_texture_create_blank(newDevice, IOSurfaceGetWidth (backSurface), IOSurfaceGetHeight (backSurface));
       MRC_RELEASE (backTexture);
       backTexture = mac_texture_create_with_surface (newDevice, backSurface);
       MRC_RELEASE (frontTexture);
@@ -6121,6 +6163,7 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 	}
       MRC_RELEASE (mtlCommandQueue);
       mtlCommandQueue = newDevice.newCommandQueue;
+
     }
   MRC_RELEASE (newDevice);
 }
@@ -6181,6 +6224,45 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
   srcX = NSMinX (rect), srcY = NSMinY (rect);
   width = NSWidth (rect), height = NSHeight (rect);
 
+#if HAVE_MAC_METAL
+  if (backTexture && tmpTexture) {
+    id <MTLCommandBuffer> commandBuffer = [mtlCommandQueue commandBuffer];
+
+    id<MTLBlitCommandEncoder> blitCommandEncoder =
+      [commandBuffer blitCommandEncoder];
+
+    MTLOrigin origin
+      = MTLOriginMake (NSMinX (rect), NSMinY (rect), 0);
+    MTLSize size = MTLSizeMake (NSWidth (rect), NSHeight (rect), 1);
+    NSRect dest = NSOffsetRect (rect, delta.width, delta.height);
+    MTLOrigin dstOrigin
+      = MTLOriginMake (NSMinX (dest), NSMinY (dest), 0);
+
+    [blitCommandEncoder copyFromTexture:backTexture
+			    sourceSlice:0
+			    sourceLevel:0
+			   sourceOrigin:origin
+			     sourceSize:size
+			      toTexture:tmpTexture
+		       destinationSlice:0
+		       destinationLevel:0
+		      destinationOrigin:origin];
+
+    [blitCommandEncoder copyFromTexture:tmpTexture
+			    sourceSlice:0
+			    sourceLevel:0
+			   sourceOrigin:origin
+			     sourceSize:size
+			      toTexture:backTexture
+		       destinationSlice:0
+		       destinationLevel:0
+		      destinationOrigin:dstOrigin];
+    [blitCommandEncoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+  } else
+#endif
+    {
   eassert (CGBitmapContextGetBitsPerPixel (backBitmap)
 	   == 8 * sizeof (Pixel_8888));
   NSInteger bytesPerRow = CGBitmapContextGetBytesPerRow (backBitmap);
@@ -6228,6 +6310,7 @@ mac_texture_create_with_surface (id <MTLDevice> device, IOSurfaceRef surface)
 	  mac_vimage_copy_8888 (&buf, &dest, kvImageNoFlags);
 	  free (buf.data);
 	}
+    }
     }
 }
 
@@ -6315,6 +6398,12 @@ static BOOL emacsViewUpdateLayerDisabled;
 	   name:@"NSViewFrameDidChangeNotification"
 	 object:self];
 
+  [self setTextContentType:nil];
+
+	[self updateMTLObjects];
+	[self setPaused:false];
+	[self setEnableSetNeedsDisplay:false];
+
   return self;
 }
 
@@ -6342,20 +6431,47 @@ static BOOL emacsViewUpdateLayerDisabled;
 
 - (void)drawRect:(NSRect)aRect
 {
-  struct frame *f = self.emacsFrame;
-  int x = NSMinX (aRect), y = NSMinY (aRect);
-  int width = NSWidth (aRect), height = NSHeight (aRect);
 
-  set_global_focus_view_frame (f);
-  mac_clear_area (f, x, y, width, height);
-  mac_begin_scale_mismatch_detection (f);
-  expose_frame (f, x, y, width, height);
-  mac_clear_under_internal_border (f);
-  if (mac_end_scale_mismatch_detection (f))
-    SET_FRAME_GARBAGED (f);
-  if (!backing)
-    mac_invert_flash_rectangles (f);
-  unset_global_focus_view_frame ();
+  struct frame *f = self.emacsFrame;
+  if ([self wantsUpdateLayer]) {
+    NSData *rectanglesData = ((__bridge NSData *)
+        (FRAME_FLASH_RECTANGLES_DATA (f)));
+    NSData *savedImageBuffersData;
+    if (rectanglesData)
+    {
+      savedImageBuffersData =
+        [backing imageBuffersDataForRectanglesData:rectanglesData];
+      [self lockFocusOnBacking];
+      set_global_focus_view_frame (f);
+      mac_invert_flash_rectangles (f);
+      unset_global_focus_view_frame ();
+      [self unlockFocusOnBacking];
+      self.needsDisplay = NO;
+    }
+
+    [backing waitCopyFromFrontToBack];
+    [backing swapResourcesAndStartCopy];
+
+    if (rectanglesData)
+      [backing restoreImageBuffersData:savedImageBuffersData
+                     forRectanglesData:rectanglesData];
+  } else {
+    int x = NSMinX (aRect), y = NSMinY (aRect);
+    int width = NSWidth (aRect), height = NSHeight (aRect);
+
+    set_global_focus_view_frame (f);
+    mac_clear_area (f, x, y, width, height);
+    mac_begin_scale_mismatch_detection (f);
+    expose_frame (f, x, y, width, height);
+    mac_clear_under_internal_border (f);
+    if (mac_end_scale_mismatch_detection (f))
+      SET_FRAME_GARBAGED (f);
+    if (!backing)
+      mac_invert_flash_rectangles (f);
+    unset_global_focus_view_frame ();
+  }
+
+  [self render];
 }
 
 - (BOOL)isFlipped
@@ -6371,12 +6487,208 @@ static BOOL emacsViewUpdateLayerDisabled;
 #if HAVE_MAC_METAL
 - (void)updateMTLObjects
 {
-#if MAC_OS_X_VERSION_MIN_REQUIRED < 101400
-  if (!self.wantsUpdateLayer)
-    return;
-#endif
-  [backing updateMTLObjectsForView:self];
+# if MAC_OS_X_VERSION_MIN_REQUIRED < 101400
+	if (!self.wantsUpdateLayer)
+		return;
+# endif
+	[backing updateMTLObjectsForView:self];
+	CGDirectDisplayID displayID
+		= (CGDirectDisplayID)[self.window.screen.deviceDescription
+					[@"NSScreenNumber"] unsignedIntValue];
+	id<MTLDevice> newDevice
+		= CGDirectDisplayCopyCurrentMetalDevice (displayID);
+
+  if (_commandQueue && newDevice == _commandQueue.device)
+    {
+      return;
+    }
+
+  self.device = newDevice;
+
+  NSError *error;
+  do
+    {
+      NSLog (@"Setting up metal");
+      id<MTLLibrary> defaultLibrary =
+	[newDevice newLibraryWithSource:[NSString stringWithUTF8String:shader_cstr]
+				options:nil
+				  error:&error];
+      if (!defaultLibrary)
+	{
+	  NSLog (@"Failed to load library: %@", error);
+	  break;
+	}
+
+      id<MTLFunction> vertexFunction =
+	[defaultLibrary newFunctionWithName:@"simple_vertex"];
+      id<MTLFunction> fragmentFunction = [defaultLibrary
+	newFunctionWithName:@"invert_colors_fragment"];
+
+      if (!vertexFunction || !fragmentFunction)
+	{
+	  NSLog (@"Failed to load functions: %@", error);
+	  break;
+	}
+
+      MTLRenderPipelineDescriptor *pipelineDescriptor =
+	[[MTLRenderPipelineDescriptor alloc] init];
+      pipelineDescriptor.vertexFunction = vertexFunction;
+      pipelineDescriptor.fragmentFunction = fragmentFunction;
+      pipelineDescriptor.colorAttachments[0].pixelFormat
+	= MTLPixelFormatBGRA8Unorm;
+      //     pipelineDescriptor.vertexBuffers[0].mutability
+      // = MTLMutabilityImmutable;
+
+      if (_pipelineState)
+	MRC_RELEASE (_pipelineState);
+
+      _pipelineState = [newDevice
+	newRenderPipelineStateWithDescriptor:pipelineDescriptor
+				       error:&error];
+      if (!_pipelineState)
+	{
+	  NSLog (@"Failed to create pipeline: %@", error);
+	  break;
+	}
+
+      _commandQueue = [newDevice newCommandQueue];
+
+      NSLog (@"Setup Metal, ps: %@", _pipelineState);
+    }
+  while (0);
 }
+
+- (void)render
+{
+  MTLRenderPassDescriptor *renderPassDescriptor = self.currentRenderPassDescriptor;
+
+  if (!renderPassDescriptor) {
+    NSLog(@"no descriptor. Device: %@", self.device);
+    return;
+  }
+
+  [self lockFocusOnBacking];
+  id<MTLTexture> frontTexture = [backing frontTexture];
+
+  if (!frontTexture) {
+    return;
+  }
+
+  // static int n = 0;
+  //    n++;
+  //    bool doCapture = n > 20 && !simd_equal(_previousCursorPosition, (simd_float4){0.0, 0.0, 0.0, 0.0});
+  //    MTLCaptureManager *captureManager;
+  //    NSError *error;
+  //    if (doCapture) {
+  //    captureManager = [MTLCaptureManager sharedCaptureManager];
+  //    MTLCaptureDescriptor *captureDescriptor = [[MTLCaptureDescriptor alloc] init];
+  //    [captureDescriptor setCaptureObject:_commandQueue.device];
+  //    [captureDescriptor setDestination:MTLCaptureDestinationGPUTraceDocument];
+  //    [captureDescriptor setOutputURL:[NSURL fileURLWithPath:@"emacs.gputrace"]];
+  //    [captureManager startCaptureWithDescriptor:captureDescriptor error:&error];
+  //    }
+
+  id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
+
+  id<MTLRenderCommandEncoder> renderEncoder =
+    [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+  [renderEncoder setLabel:@"Shader Application Encoder"];
+
+  const float tex_w = (float)[frontTexture width];
+  const float tex_h = (float)[frontTexture height];
+  const float tex_x = tex_w / 2.0;
+  const float tex_y = tex_h / 2.0;
+
+  [renderEncoder setViewport:(MTLViewport){0.0, 0.0, tex_w, tex_h, -1.0, 1.0}];
+
+  const struct { vector_float2 position; vector_float2 texcoord; } quadVertices[] =
+    {
+      // Positions     , Texture coordinates
+      { {  tex_x,  -tex_y },  { 1.0, 1.0 } },
+      { { -tex_x,  -tex_y },  { 0.0, 1.0 } },
+      { { -tex_x,   tex_y },  { 0.0, 0.0 } },
+
+      { {  tex_x,  -tex_y },  { 1.0, 1.0 } },
+      { { -tex_x,   tex_y },  { 0.0, 0.0 } },
+      { {  tex_x,   tex_y },  { 1.0, 0.0 } },
+    };
+
+  const vector_uint2 viewportSize = { tex_w, tex_h };
+
+  const struct frame *frame = [self emacsFrame];
+
+  vector_float4 currentCursor = {
+    (float)frame->cursor_x * 2.0 / tex_w,
+    (float)frame->cursor_y * 2.0 / tex_h,
+    (float)frame->cursor_w * 2.0 / tex_w,
+    (float)frame->cursor_h * 2.0 / tex_h
+  };
+
+  // expects top left or something
+  currentCursor[1] += currentCursor[3];
+
+  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+  if (!simd_equal(currentCursor, _currentCursorPosition)) {
+    _lastCursorMoveTime = now;
+    _previousCursorPosition = _currentCursorPosition;
+    _currentCursorPosition = currentCursor;
+    _currentCursorColor = (vector_float4){
+      (float)frame->cursor_r / 255.0,
+      (float)frame->cursor_g / 255.0,
+      (float)frame->cursor_b / 255.0,
+      1.0
+    };
+  }
+
+  // NSLog(@"timeDelta: %f", now - _lastCursorMoveTime);
+  // NSLog(@"prevcursor: %f %f %f %f", _previousCursorPosition[0], _previousCursorPosition[1], _previousCursorPosition[2], _previousCursorPosition[3]);
+  // NSLog(@"cursor: %f %f %f %f", _currentCursorPosition[0], _currentCursorPosition[1], _currentCursorPosition[2], _currentCursorPosition[3]);
+  // NSLog(@"cursorColour: %f %f %f %f", _currentCursorColor[0], _currentCursorColor[1], _currentCursorColor[2], _currentCursorColor[3]);
+
+  const struct {
+    vector_float4 previousCursor;
+    vector_float4 currentCursor;
+    vector_float4 currentCursorColor;
+    float timeDelta;
+  } fragment_meta = {
+    _previousCursorPosition,
+    _currentCursorPosition,
+    _currentCursorColor,
+    now - _lastCursorMoveTime
+  };
+
+  [renderEncoder setRenderPipelineState:_pipelineState];
+  [renderEncoder setVertexBytes:&quadVertices length:sizeof(quadVertices) atIndex:0];
+  [renderEncoder setVertexBytes:&viewportSize length:sizeof(viewportSize) atIndex:1];
+  [renderEncoder setFragmentTexture:frontTexture atIndex:0];
+  [renderEncoder setFragmentBytes:&fragment_meta length:sizeof(fragment_meta) atIndex:0];
+
+  [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+  [renderEncoder endEncoding];
+  [commandBuffer presentDrawable:self.currentDrawable];
+  [commandBuffer commit];
+	[commandBuffer waitUntilCompleted];
+
+  [self unlockFocusOnBacking];
+
+  // if (doCapture) {
+  // [captureManager stopCapture];
+  // }
+
+  // if (error) {
+  //      NSLog(@"Trace error: %@", error);
+  // }
+
+}
+
+- (void)resizeDrawable:(CGFloat)scaleFactor {
+
+}
+
+- (void)stopRenderLoop {
+
+}
+
 #endif
 
 - (BOOL)wantsUpdateLayer
@@ -6516,6 +6828,8 @@ static BOOL emacsViewUpdateLayerDisabled;
   backingSizeOutOfSync = YES;
 }
 
+@synthesize contentType;
+
 @end				// EmacsView
 
 @implementation EmacsMainView
@@ -6530,6 +6844,11 @@ static BOOL emacsViewUpdateLayerDisabled;
 	[defaults registerDefaults:@{@"NSAutoFillHeuristicControllerEnabled" : @false}];
       if ([defaults objectForKey:@"ApplePressAndHoldEnabled"] == nil)
 	[defaults registerDefaults:@{@"ApplePressAndHoldEnabled" : @"NO"}];
+
+      [defaults setBool:false forKey:@"NSAutomaticTextReplacementEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticSpellingCorrectionEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticDashSubstitutionEnabled"];
+      [defaults setBool:false forKey:@"NSAutomaticPeriodSubstitutionEnabled"];
     }
 }
 
@@ -6556,6 +6875,8 @@ static BOOL emacsViewUpdateLayerDisabled;
 				   owner:self userInfo:nil];
   [self addTrackingArea:trackingAreaForCursor];
   MRC_RELEASE (trackingAreaForCursor);
+
+  [self setTextContentType:nil];
 
   return self;
 }
@@ -15535,7 +15856,7 @@ ax_get_selected_text_ranges (EmacsMainView *emacsView)
   if (index != NSNotFound)
     return (*ax_attribute_table[index].handler) (self);
   else if ([attribute isEqualToString:NSAccessibilityRoleAttribute])
-    return NSAccessibilityTextAreaRole;
+    return NSAccessibilityWindowRole;
   else
     return [super accessibilityAttributeValue:attribute];
 }
