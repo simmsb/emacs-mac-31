@@ -124,6 +124,16 @@
 ;;
 ;;   Takes no arguments.  Backends that return non-nil can (and do)
 ;;   perform async checkins when `vc-async-checkin' is non-nil.
+;;
+;; - working-revision-symbol
+;;
+;;   Symbolic name for the/a working revision, a constant string.  If
+;;   defined, backend API functions that take revision numbers, revision
+;;   hashes or branch names can also take this string in place of those.
+;;   Emacs passes this name without first having to look up the working
+;;   revision, which is a small performance improvement.
+;;   In addition, using a name instead of a number or hash makes it
+;;   easier to edit backend commands with `vc-edit-next-command'.
 
 ;; STATE-QUERYING FUNCTIONS
 ;;
@@ -378,6 +388,7 @@
 ;;
 ;;   Remove the working tree, assumed to be one that uses the same
 ;;   backing repository as this working tree, at DIRECTORY.
+;;   Callers must ensure that DIRECTORY is not the current working tree.
 ;;   This removal should be unconditional with respect to the state of
 ;;   the working tree: the caller is responsible for checking for
 ;;   uncommitted work in DIRECTORY.
@@ -386,6 +397,7 @@
 ;;
 ;;   Relocate the working tree, assumed to be one that uses the same
 ;;   backing repository as this working tree, at FROM to TO.
+;;   Callers must ensure that FROM is not the current working tree.
 
 ;; HISTORY FUNCTIONS
 ;;
@@ -595,8 +607,14 @@
 ;;
 ;; - previous-revision (file rev)
 ;;
-;;   Return the revision number that precedes REV for FILE, or nil if no such
-;;   revision exists.
+;;   Return the revision number/hash that precedes REV for FILE, or nil
+;;   if no such revision exists.  If the working-revision-symbol
+;;   function is defined for this backend and that symbol, or a symbolic
+;;   name involving that symbol, is passed to this function as REV, this
+;;   function may return a symbolic name.
+;;
+;;   Possible future extension: make REV an optional argument, and if
+;;   nil, default it to FILE's working revision.
 ;;
 ;; - file-name-changes (rev)
 ;;
@@ -1311,7 +1329,8 @@ STATE-MODEL-ONLY-FILES argument to `vc-deduce-fileset' is nil.")
   "VCS revision to which this buffer's contents corresponds.
 Lisp code which sets this should also set `vc-buffer-overriding-fileset'
 such that the buffer's local variables also specify a VC backend,
-rendering the value of this variable unambiguous.")
+rendering the value of this variable unambiguous.
+Should never be a symbolic name but always a revision number/hash.")
 
 (defun vc-deduce-backend ()
   (cond ((car vc-buffer-overriding-fileset))
@@ -2004,9 +2023,15 @@ Type \\[vc-next-action] to check in changes.")
     (files backend &optional comment initial-contents rev patch-string register)
   "Check in FILES.
 
-COMMENT is a comment string; if omitted, a buffer is popped up to accept
-a comment.  If INITIAL-CONTENTS is non-nil, then COMMENT is used as the
-initial contents of the log entry buffer.
+There are three calling conventions for the COMMENT and INITIAL-CONTENTS
+optional arguments:
+- COMMENT a string, INITIAL-CONTENTS nil means use that comment string
+  without prompting the user to edit it.
+- COMMENT a string, INITIAL-CONTENTS non-nil means use that comment
+  string as the initial contents of the log entry buffer but stop for
+  editing.
+- COMMENT t means check in immediately with an empty comment, and ignore
+  INITIAL-CONTENTS.
 
 The optional argument REV may be a string specifying the new revision
 level (only supported for some older VCSes, like RCS and CVS).
@@ -2102,6 +2127,120 @@ have changed; continue with old fileset?" (current-buffer))))
     'vc-checkin-hook
     backend
     patch-string)))
+
+(declare-function diff-buffer-file-names "diff-mode")
+(declare-function diff-reverse-direction "diff-mode")
+
+(defun vc--pick-or-revert (rev reverse comment initial-contents backend)
+  "Copy a single revision REV to branch checked out in this working tree.
+REVERSE means to undo the effects of REV, instead.
+COMMENT is a comment string; if omitted, a buffer is popped up to accept
+a comment.  If INITIAL-CONTENTS is non-nil, then COMMENT is used as the
+initial contents of the log entry buffer.  If COMMENT is t then use
+BACKEND's default cherry-pick comment for REV without prompting.
+BACKEND is the VC backend to use."
+  (let* ((backend (or backend (vc-responsible-backend default-directory)))
+         ;; `vc-*-prepare-patch' will always give us a patch with file
+         ;; names relative to the VC root, so switch to there now.
+         ;; In particular this is needed for `diff-buffer-file-names' to
+         ;; work properly.
+         (default-directory (vc-call-backend backend 'root default-directory))
+         (patch (vc-call-backend backend 'prepare-patch rev))
+         files whole-patch-string diff-patch-string)
+    (with-current-buffer (plist-get patch :buffer)
+      (diff-mode)
+      (with-restriction
+          (or (plist-get patch :patch-start) (point-min))
+          (or (plist-get patch :patch-end) (point-max))
+        (when reverse
+          (diff-reverse-direction (point-min) (point-max)))
+        (setq files (diff-buffer-file-names nil t)
+              diff-patch-string (buffer-string)))
+      ;; In the case of reverting we mustn't copy the original
+      ;; authorship information.  The author of the revert is the
+      ;; current user, and its timestamp is now.
+      (setq whole-patch-string
+            (if reverse diff-patch-string (buffer-string))))
+    (unless (stringp comment)
+      (cl-psetq comment (vc-call-backend backend 'cherry-pick-comment
+                                         files rev reverse)
+                initial-contents (not (eq comment t))))
+    (vc-start-logentry files comment initial-contents
+                       (format "Edit log message for %s revision."
+                               (if reverse
+                                   "new"
+                                 ;; ^ "reverted revision" would mean
+                                 ;;   REV, not the revision we are about
+                                 ;;   to create.  We could use
+                                 ;;   "reverting revision" but it reads
+                                 ;;   oddly.
+                                 "copied"))
+                       "*vc-cherry-pick*"
+                       (lambda ()
+                         (vc-call-backend backend 'log-edit-mode))
+                       (lambda (_files comment)
+                         (vc-call-backend backend 'checkin-patch
+                                          whole-patch-string comment))
+                       nil
+                       backend
+                       diff-patch-string)))
+
+;; No bindings in `vc-prefix-map' for the following two commands because
+;; we expect users will usually use `log-view-revision-cherry-pick' and
+;; `log-view-revision-revert', which do have bindings.
+
+;;;###autoload
+(defun vc-revision-cherry-pick (rev &optional comment initial-contents backend)
+  "Copy the changes from a single revision REV to the current branch.
+When called interactively, prompts for REV.
+Typically REV is a revision from another branch, where that branch is
+one that will not be merged into the branch checked out in this working
+tree.
+
+Normally a log message for the new commit is generated by the backend
+and includes a reference to REV so that the copy can be traced.
+When called interactively with a prefix argument, use REV's log message
+unmodified, and also skip editing it.
+
+When called from Lisp, there are three calling conventions for the
+COMMENT and INITIAL-CONTENTS optional arguments:
+- COMMENT a string, INITIAL-CONTENTS nil means use that comment string
+  without prompting the user to edit it.
+- COMMENT a string, INITIAL-CONTENTS non-nil means use that comment
+  string as the initial contents of the log entry buffer but stop for
+  editing.
+- COMMENT t means use BACKEND's default cherry-pick comment for REV
+  without prompting for editing, and ignore INITIAL-CONTENTS.
+
+Optional argument BACKEND is the VC backend to use."
+  (interactive (let ((rev (vc-read-revision "Revision to copy: "))
+                     (backend (vc-responsible-backend default-directory)))
+                 (list rev
+                       (and current-prefix-arg
+                            (vc-call-backend backend 'get-change-comment
+                                             nil rev))
+                       nil
+                       backend)))
+  (vc--pick-or-revert rev nil comment initial-contents backend))
+
+;;;###autoload
+(defun vc-revision-revert (rev &optional comment initial-contents backend)
+  "Undo the effects of revision REV.
+When called interactively, prompts for REV.
+
+When called from Lisp, there are three calling conventions for the
+COMMENT and INITIAL-CONTENTS optional arguments:
+- COMMENT a string, INITIAL-CONTENTS nil means use that comment string
+  without prompting the user to edit it.
+- COMMENT a string, INITIAL-CONTENTS non-nil means use that comment
+  string as the initial contents of the log entry buffer but stop for
+  editing.
+- COMMENT t means use BACKEND's default revert comment for REV without
+  prompting for editing, and ignore INITIAL-CONTENTS.
+
+Optional argument BACKEND is the VC backend to use."
+  (interactive (list (vc-read-revision "Revision to revert: ")))
+  (vc--pick-or-revert rev t comment initial-contents backend))
 
 (declare-function diff-bounds-of-hunk "diff-mode")
 
@@ -2462,7 +2601,7 @@ INITIAL-INPUT are passed on to `vc-read-revision' directly."
      (t
       (push (ignore-errors         ;If `previous-revision' doesn't work.
               (vc-call-backend backend 'previous-revision first
-                               (vc-working-revision first backend)))
+                               (vc-symbolic-working-revision first backend)))
             rev1-default)
       (when (member (car rev1-default) '("" nil)) (setq rev1-default nil))))
     ;; construct argument list
@@ -2684,10 +2823,8 @@ global binding."
                       ;;                           'revision-granularity)
                       ;;          'repository)
                       ;;      (ignore-errors
-                      ;;        (vc-call-backend backend 'working-revision
-                      ;;                         (caadr fileset)))
-                      (vc-call-backend backend 'working-revision
-                                       (caadr fileset))
+                      ;;        (vc-symbolic-working-revision (caadr fileset)))
+                      (vc-symbolic-working-revision (caadr fileset))
                       (called-interactively-p 'interactive))))
 
 ;; For the following two commands, the default meaning for
@@ -2858,8 +2995,8 @@ If `F.~REV~' already exists, use it instead of checking it out again."
   (set-buffer (or (buffer-base-buffer) (current-buffer)))
   (vc-ensure-vc-buffer)
   (let* ((file buffer-file-name)
-	 (revision (if (string-equal rev "")
-		       (vc-working-revision file)
+	 (revision (if (string-empty-p rev)
+		       (vc-symbolic-working-revision file)
 		     rev)))
     (switch-to-buffer-other-window (vc-find-revision file revision))))
 
@@ -3565,10 +3702,9 @@ with its diffs (if the underlying VCS backend supports that)."
 		  "Limit display (unlimited: 0): "
 		  (format "%s" vc-log-show-limit)
 		  nil nil nil))))
-       (when (<= lim 0) (setq lim nil))
-       (list lim)))
+       (list (and (plusp lim) lim))))
     (t
-     (list (when (> vc-log-show-limit 0) vc-log-show-limit)))))
+     (list (and (plusp vc-log-show-limit) vc-log-show-limit)))))
   (vc--with-backend-in-rootdir "VC revision log"
     (let* ((with-diff (and (eq limit 1) revision))
            (vc-log-short-style (and (not with-diff) vc-log-short-style)))
@@ -4401,7 +4537,7 @@ to provide the `find-revision' operation instead."
 
 (defun vc-default-revert (backend file contents-done)
   (unless contents-done
-    (let ((rev (vc-working-revision file))
+    (let ((rev (vc-symbolic-working-revision file))
           (file-buffer (or (get-file-buffer file) (current-buffer))))
       (message "Checking out %s..." file)
       (let ((failed t)
@@ -4572,26 +4708,49 @@ When called from Lisp, BACKEND is the VC backend."
   (when-let* ((p (project-current nil directory)))
     (project-remember-project p))
 
-  (vc-dir directory backend))
+  (dired directory))
 
 (defvar project-prompter)
 
-(defun vc--prompt-other-working-tree (backend prompt)
+(defun vc--prompt-other-working-tree (backend prompt &optional allow-empty)
   "Invoke `project-prompter' to choose another working tree.
 BACKEND is the VC backend.
-PROMPT is the prompt string for `project-prompter'."
-  (if-let* ((trees (vc-call-backend backend 'known-other-working-trees)))
-      (progn (require 'project)
-             (dolist (tree trees)
-               (when-let* ((p (project-current nil tree)))
-                 (project-remember-project p nil t)))
-             (funcall project-prompter prompt
-                      (lambda (k &optional _v)
-                        (member (or (car-safe k) k) trees))
-                      t))
-    (user-error
-     (substitute-command-keys
-      "No other working trees.  Use \\[vc-add-working-tree] to add one"))))
+PROMPT is the prompt string for `project-prompter'.
+If ALLOW-EMPTY is non-nil, empty input means the current working tree.
+In typical usage ALLOW-EMPTY non-nil means that it makes sense to apply
+the caller's operation to the current working tree."
+  ;; If there are no other working trees and ALLOW-EMPTY is non-nil, we
+  ;; still invoke the `project-prompter' and require the user to type
+  ;; \\`RET', even though it's redundant.  Doing it this way means that
+  ;; invoking the command on the current working tree works the same
+  ;; whether or not there exist any other working trees.  In particular,
+  ;; the number of keys you have to type is always the same.  It's more
+  ;; ergonomic not to require the user to think about whether there are
+  ;; other working trees when what they care about is doing something
+  ;; with the current working tree: they can just type \\`RET' without
+  ;; stopping to look at the echo area.
+  (let ((trees (vc-call-backend backend 'known-other-working-trees))
+        res)
+    (unless (or trees allow-empty)
+      (user-error
+       (substitute-command-keys
+        "No other working trees.  Use \\[vc-add-working-tree] to add one")))
+    (require 'project)
+    (dolist (tree trees)
+      (when-let* ((p (project-current nil tree)))
+        (project-remember-project p nil t)))
+    (setq res
+          (funcall project-prompter
+                   (if allow-empty
+                       (format "%s (empty for this working tree)"
+                               prompt)
+                     prompt)
+                   (if trees
+                       (lambda (k &optional _v)
+                         (member (or (car-safe k) k) trees))
+                     #'ignore)
+                   t allow-empty))
+    (if (string-empty-p res) (vc-root-dir) res)))
 
 (defvar project-current-directory-override)
 
@@ -4633,20 +4792,40 @@ BACKEND is the VC backend."
   (interactive
    (let ((backend (vc-responsible-backend default-directory)))
      (list backend
-           (vc--prompt-other-working-tree backend "Delete working tree"))))
-  ;; We could consider not prompting here, thus always failing when
-  ;; there is uncommitted work, and requiring the user to review and
-  ;; revert the uncommitted changes before invoking this command again.
-  ;; But other working trees are often created as throwaways to quickly
-  ;; test some changes, so it is more useful to offer to recursively
-  ;; delete them on the user's behalf.
-  (when (and (vc-dir-status-files directory nil backend)
-             (not (yes-or-no-p (format "\
-%s contains uncommitted work.  Continue to recursively delete it?" directory))))
-    (user-error "Aborted due to uncommitted work in %s" directory))
+           (vc--prompt-other-working-tree backend "Delete working tree"
+                                          'allow-empty))))
+  (let* ((delete-this (file-in-directory-p default-directory directory))
+         (directory (expand-file-name directory))
+         (default-directory
+          (if delete-this
+              (or (car (vc-call-backend backend
+                                        'known-other-working-trees))
+                  (user-error "No other working trees"))
+            default-directory))
+         (status (vc-dir-status-files directory nil backend)))
 
-  (project-forget-project directory)
-  (vc-call-backend backend 'delete-working-tree directory))
+    ;; We could consider not prompting here, thus always failing when
+    ;; there is uncommitted work, and requiring the user to review and
+    ;; revert the uncommitted changes before invoking this command again.
+    ;; But other working trees are often created as throwaways to quickly
+    ;; test some changes, so it is more useful to offer to recursively
+    ;; delete them on the user's behalf.
+    (when (and status
+               (not (yes-or-no-p (format "\
+%s contains uncommitted work.  Continue to recursively delete it?" directory))))
+      (user-error "Aborted due to uncommitted work in %s" directory))
+    ;; Extra prompt to avoid a surprise after accidentally typing 'RET'.
+    (when (and (not status) delete-this
+               (not (yes-or-no-p (format "Really delete working tree %s?"
+                                         directory))))
+      (user-error "Aborted"))
+
+    (project-forget-project directory)
+    (vc-call-backend backend 'delete-working-tree directory)
+    (when delete-this
+      (bury-buffer)
+      (while (string-prefix-p directory default-directory)
+        (bury-buffer)))))
 
 (autoload 'dired-rename-subdir "dired-aux")
 ;;;###autoload
@@ -4659,12 +4838,20 @@ BACKEND is the VC backend."
   (interactive
    (let ((backend (vc-responsible-backend default-directory)))
      (list backend
-           (vc--prompt-other-working-tree backend "Relocate working tree")
+           (vc--prompt-other-working-tree backend "Relocate working tree"
+                                          'allow-empty)
            (read-directory-name "New location for working tree: "
                                 (file-name-parent-directory (vc-root-dir))))))
-  (let ((inhibit-message t))
-    (project-forget-project from))
-  (vc-call-backend backend 'move-working-tree from to)
+  (let* ((move-this (file-in-directory-p default-directory from))
+         (default-directory
+          (if move-this
+              (or (car (vc-call-backend backend
+                                        'known-other-working-trees))
+                  (user-error "No other working trees"))
+            default-directory)))
+    (let ((inhibit-message t))
+      (project-forget-project from))
+    (vc-call-backend backend 'move-working-tree from to))
 
   ;; Update visited file names for buffers visiting files under FROM.
   (let ((from (expand-file-name from)))
@@ -4847,6 +5034,24 @@ MOVE non-nil means to move instead of copy."
       (diff-apply-buffer nil nil 'reverse))
     (message "Changes %s to `%s'"
              (if move "moved" "applied") directory)))
+
+;;;###autoload
+(defun vc-kill-other-working-tree-buffers (backend)
+  "Kill buffers visiting versions of this file in other working trees.
+BACKEND is the VC backend.
+
+This command kills the buffers that \\[vc-switch-working-tree] switches to,
+except that this command works only in file-visiting buffers."
+  (interactive (list (vc-responsible-backend default-directory)))
+  (when (cdr uniquify-managed)
+    (cl-loop with trees = (vc-call-backend backend
+                                           'known-other-working-trees)
+             for item in uniquify-managed
+             for buf = (uniquify-item-buffer item)
+             when (and (not (eq buf (current-buffer)))
+                       (cl-find (uniquify-item-dirname item) trees
+                                :test #'file-in-directory-p))
+             do (kill-buffer buf))))
 
 (defun vc-default-cherry-pick-comment (files rev reverse)
   (if reverse (format "Summary: Reverse-apply changes from revision %s\n\n"

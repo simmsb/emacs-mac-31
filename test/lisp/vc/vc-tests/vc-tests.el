@@ -724,18 +724,14 @@ This checks also `vc-backend' and `vc-responsible-backend'."
                     (log-edit-done))
 
                   ;; Set up the second working tree.
-                  ;; Stub out `vc-dir' so that it doesn't start a
-                  ;; background update process which won't like it when we
-                  ;; start moving directories around.
                   ;; For the backends which do additional prompting (as
                   ;; specified in the API for this backend function) we
                   ;; need to stub that out.
-                  (cl-letf (((symbol-function 'vc-dir) #'ignore))
-                    (cl-ecase backend
-                      (Git (cl-letf (((symbol-function 'completing-read)
-                                      (lambda (&rest _ignore) "")))
-                             (vc-add-working-tree backend second)))
-                      (Hg (vc-add-working-tree backend second)))))
+                  (cl-ecase backend
+                    (Git (cl-letf (((symbol-function 'completing-read)
+                                    (lambda (&rest _ignore) "")))
+                           (vc-add-working-tree backend second)))
+                    (Hg (vc-add-working-tree backend second))))
 
                 ;; Test `known-other-working-trees'.
                 (with-current-buffer (find-file-noselect tmp-name)
@@ -786,6 +782,20 @@ This checks also `vc-backend' and `vc-responsible-backend'."
 (declare-function vc-hg-command "vc-hg")
 (declare-function vc-git--out-str "vc-git")
 
+(defmacro vc-test--with-temp-change (buf &rest body)
+  (declare (indent 1) (debug (symbolp body)))
+  (cl-with-gensyms (handle)
+    `(let ((,handle (prepare-change-group ,buf)))
+       (unwind-protect
+           (with-current-buffer ,buf
+             (activate-change-group ,handle)
+             (insert "bar\n")
+             (basic-save-buffer)
+             ,@body)
+         (cancel-change-group ,handle)
+         (with-current-buffer ,buf
+           (basic-save-buffer))))))
+
 (defun vc-test--checkin-patch (backend)
   "Test preparing and checking in patches."
   (ert-with-temp-directory _tempdir
@@ -805,7 +815,7 @@ This checks also `vc-backend' and `vc-responsible-backend'."
             (cl-flet
                 ((get-patch-string ()
                    "Get patch corresponding to most recent commit to FILE."
-                   (let* ((rev (vc-call-backend backend 'working-revision file))
+                   (let* ((rev (vc-symbolic-working-revision file backend))
                           (patch (vc-call-backend backend 'prepare-patch rev)))
                      (with-current-buffer (plist-get patch :buffer)
                        (buffer-substring-no-properties (point-min)
@@ -813,11 +823,6 @@ This checks also `vc-backend' and `vc-responsible-backend'."
                  (revert (msg)
                    "Make a commit reverting the most recent change to FILE."
                    (with-current-buffer buf
-                     (undo-boundary)
-                     (revert-buffer-quick)
-                     (undo-boundary)
-                     (undo)
-                     (basic-save-buffer)
                      (vc-checkin (list file) backend)
                      (insert msg)
                      (let (vc-async-checkin)
@@ -856,9 +861,7 @@ This checks also `vc-backend' and `vc-responsible-backend'."
                   (log-edit-done)))
 
               ;; (3) Prepare a commit with a known Author & Date.
-              (with-current-buffer buf
-                (insert "bar\n")
-                (basic-save-buffer)
+              (vc-test--with-temp-change buf
                 (vc-root-diff nil)
                 (vc-next-action nil)
                 (insert desc1)
@@ -873,7 +876,8 @@ This checks also `vc-backend' and `vc-responsible-backend'."
               ;; author, date and comment from PATCH-STRING.
               (let ((patch-string (get-patch-string)))
                 (revert "Revert modification, first time")
-                (vc-call-backend backend 'checkin-patch patch-string nil))
+                (vc-test--with-temp-change buf
+                  (vc-call-backend backend 'checkin-patch patch-string nil)))
               (check author date desc1)
 
               ;; (5) Revert it again and try applying it with
@@ -881,16 +885,9 @@ This checks also `vc-backend' and `vc-responsible-backend'."
               ;; Should take the author, date but not the comment from
               ;; PATCH-STRING.
               (let ((patch-string (get-patch-string)))
-                ;; FIXME: Why doesn't `revert' work properly here?
-                (if (and (eq backend 'Git)
-                         (eq system-type 'windows-nt))
-                    (with-current-buffer buf
-                      (vc-checkin (list file) backend)
-                      (insert "Revert modification, second time")
-                      (let (vc-async-checkin)
-                        (log-edit-done)))
-                  (revert "Revert modification, second time"))
-                (vc-call-backend backend 'checkin-patch patch-string desc2))
+                (revert "Revert modification, second time")
+                (vc-test--with-temp-change buf
+                  (vc-call-backend backend 'checkin-patch patch-string desc2)))
               (check author date desc2))
 
           ;; Save exit.
