@@ -62,6 +62,8 @@ enum igc_obj_type
 
 void igc_break (void);
 void init_igc (void);
+void init_igc_lisp (void);
+void init_igc_mac (void);
 void syms_of_igc (void);
 void *igc_thread_add (struct thread_state *ts);
 void igc_thread_remove (void **info);

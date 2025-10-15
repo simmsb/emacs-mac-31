@@ -17605,6 +17605,10 @@ main (int argc, char **argv)
 
       err = pthread_attr_setstacksize (&attr, rlim.rlim_cur);
     }
+
+  init_igc ();
+  init_igc_mac ();
+
   if (!err)
     err = pthread_create (&mac_lisp_main_thread_id, &attr, mac_start_lisp_main,
 			  argv);

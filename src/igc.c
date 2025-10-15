@@ -23,6 +23,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>. */
 #include <config.h>
 #include <limits.h>
 #include <signal.h>
+#include <pthread.h>
 #ifdef __clang__
 /* You want to use this without -Wignored-attributes because it warns
    that it cannot add the attribute to functions returning void.  */
@@ -5467,6 +5468,23 @@ init_igc (void)
   /* Returns previous handler.  */
   (void) mps_lib_assert_fail_install (igc_assert_fail);
   global_igc = make_igc ();
+}
+
+void
+init_igc_mac (void)
+{
+  mps_thr_t thr;
+  mps_res_t res = mps_thread_reg (&thr, global_igc->arena);
+
+  static mps_root_t igc_mac_root;
+
+  pthread_t self = pthread_self();
+  void *stack_address = pthread_get_stackaddr_np (self);
+}
+
+void
+init_igc_lisp (void)
+{
   add_main_thread ();
   set_state (IGC_STATE_USABLE_PARKED);
 }

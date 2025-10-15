@@ -1454,7 +1454,7 @@ android_emacs_init (int argc, char **argv, char *dump_file)
   init_signals ();
 
 #ifdef HAVE_MPS
-  init_igc ();
+  init_igc_lisp ();
 #endif
 
   /* This is needed early because load_pdump can call 'float-time' (via
