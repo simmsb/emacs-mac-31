@@ -338,7 +338,7 @@ size."
            :face hs-indicator-hide
            :height (0.6 . em)
            :ascent center)
-    (symbol "🞃" "▼" :face hs-indicator-hide)
+    (symbol "▾" "▼" :face hs-indicator-hide)
     (text "-" :face hs-indicator-hide))
   "Icon used for hide block at point.
 This is only used if `hs-indicator-type' is set to `margin' or nil."
@@ -413,10 +413,12 @@ whitespace.  Case does not matter.")
 (defvar hs-hide-all-non-comment-function nil
   "Function called if non-nil when doing `hs-hide-all' for non-comments.")
 
-(defvar hs-allow-nesting nil
+(defcustom hs-allow-nesting nil
   "If non-nil, hiding remembers internal blocks.
 This means that when the outer block is shown again,
-any previously hidden internal blocks remain hidden.")
+any previously hidden internal blocks remain hidden."
+  :type 'boolean
+  :version "31.1")
 
 (defvar hs-hide-hook nil
   "Hook called (with `run-hooks') at the end of commands to hide text.
@@ -732,10 +734,12 @@ point."
              'keymap hs-indicators-map))
            ;; EOL string
            ('nil
-            (propertize
-             (icon-string face-or-icon)
-             'mouse-face 'highlight
-             'keymap hs-indicators-map))))))))
+            (concat
+             (propertize " " 'cursor t)
+             (propertize
+              (icon-string face-or-icon)
+              'mouse-face 'highlight
+              'keymap hs-indicators-map)))))))))
 
 (defun hs--add-indicators (&optional beg end)
   "Add hideable indicators from BEG to END."

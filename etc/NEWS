@@ -327,13 +327,13 @@ deleted implicitly by functions like 'kill-buffer', 'bury-buffer' and
 +++
 *** Buffer-local window change functions run in their buffers now.
 Running the buffer-local version of each of the abnormal hooks
-'window-buffer-change-functions', 'window-size-change-functions'
+'window-buffer-change-functions', 'window-size-change-functions',
 'window-selection-change-functions' and 'window-state-change-functions'
 will make the respective buffer temporarily current for running the
-hook.'
+hook.
 
 +++
-*** 'window-buffer-change-functions' is run for removed buffer too.
+*** 'window-buffer-change-functions' is run for removed buffers too.
 The buffer-local version of 'window-buffer-change-functions' may be run
 twice now: Once for the buffer removed from the respective window and
 once for the buffer now shown in that window.
@@ -1673,6 +1673,15 @@ at run-time for the use of the associated deprecated features.
 '(setq eieio-backward-compatibility t)' can be used to recover
 the previous silence.
 
+** Emacs Lisp mode
+
++++
+*** Semantic highlighting support for Emacs Lisp.
+'emacs-lisp-mode' can now use code analysis to highlight more symbols
+more accurately.  Customize the new user option
+'elisp-fontify-semantically' to non-nil to enable this feature, and see
+the Info node "(emacs) Semantic Font Lock" for more information.
+
 ** Text mode
 
 ---
@@ -2377,6 +2386,11 @@ default, "sudo".
 
 +++
 *** 'tramp-file-name-with-method' can now be set as connection-local variable.
+
++++
+*** New optional connection methods "surs" and "sudors".
+These connection methods are similar to "su" and "sudo", but they use
+the modern 'su-rs' and 'sudo-rs' commands.
 
 +++
 *** Connection method "kubernetes" supports now optional namespace.
@@ -3816,10 +3830,10 @@ The column number is no longer available; the line number will be
 removed in next Emacs release.
 
 +++
-** defvar-keymap can now take a ':prefix t' option.
+** 'defvar-keymap' can now take a ':prefix t' option.
 This is an abbreviation for using the name of the keymap as the prefix
-command name.  E.g. (defvar-keymap foo-map :prefix t) is equivalent to
-(defvar-keymap foo-map :prefix 'foo-map).
+command name.  E.g., '(defvar-keymap foo-map :prefix t)' is equivalent
+to '(defvar-keymap foo-map :prefix 'foo-map)'.
 
 
 * Changes in Emacs 31.1 on Non-Free Operating Systems
