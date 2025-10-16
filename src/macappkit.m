@@ -6799,6 +6799,7 @@ static BOOL emacsViewUpdateLayerDisabled;
       [defaults setBool:false forKey:@"NSAutomaticSpellingCorrectionEnabled"];
       [defaults setBool:false forKey:@"NSAutomaticDashSubstitutionEnabled"];
       [defaults setBool:false forKey:@"NSAutomaticPeriodSubstitutionEnabled"];
+      [defaults setBool:NO forKey:@"NSAutomaticPeriodSubstitutionEnabled"];
     }
 }
 
