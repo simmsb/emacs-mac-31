@@ -1134,6 +1134,62 @@ side-effects, and the argument LIST is not modified."
   (if (memq elt list)
       (delq elt (copy-sequence list))
     list))
+
+(defun internal--effect-free-fun-arg-p (x)
+  (or (symbolp x) (closurep x) (memq (car-safe x) '(function quote))))
+
+(defun take-while (pred list)
+  "Return the longest prefix of LIST whose elements satisfy PRED."
+  (declare (compiler-macro
+            (lambda (_form)
+              (let* ((tail (make-symbol "tail"))
+                     (pred (macroexpand-all pred macroexpand-all-environment))
+                     (f (and (not (internal--effect-free-fun-arg-p pred))
+                             (make-symbol "f")))
+                     (r (make-symbol "r")))
+                `(let (,@(and f `((,f ,pred)))
+                       (,tail ,list)
+                       (,r nil))
+                   (while (and ,tail (funcall ,(or f pred) (car ,tail)))
+                     (push (car ,tail) ,r)
+                     (setq ,tail (cdr ,tail)))
+                   (nreverse ,r))))))
+  (let ((r nil))
+    (while (and list (funcall pred (car list)))
+      (push (car list) r)
+      (setq list (cdr list)))
+    (nreverse r)))
+
+(defun drop-while (pred list)
+  "Skip initial elements of LIST satisfying PRED and return the rest."
+  (declare (compiler-macro
+            (lambda (_form)
+              (let* ((tail (make-symbol "tail"))
+                     (pred (macroexpand-all pred macroexpand-all-environment))
+                     (f (and (not (internal--effect-free-fun-arg-p pred))
+                             (make-symbol "f"))))
+                `(let (,@(and f `((,f ,pred)))
+                       (,tail ,list))
+                   (while (and ,tail (funcall ,(or f pred) (car ,tail)))
+                     (setq ,tail (cdr ,tail)))
+                   ,tail)))))
+  (while (and list (funcall pred (car list)))
+    (setq list (cdr list)))
+  list)
+
+(defun all (pred list)
+  "Non-nil if PRED is true for all elements in LIST."
+  (declare (compiler-macro (lambda (_) `(not (drop-while ,pred ,list)))))
+  (not (drop-while pred list)))
+
+(defun any (pred list)
+  "Non-nil if PRED is true for at least one element in LIST.
+Returns the LIST suffix starting at the first element that satisfies PRED,
+or nil if none does."
+  (declare (compiler-macro
+            (lambda (_)
+              `(drop-while (lambda (x) (not (funcall ,pred x))) ,list))))
+  (drop-while (lambda (x) (not (funcall pred x))) list))
 
 ;;;; Keymap support.
 
@@ -3063,6 +3119,10 @@ though trying to avoid AVOIDED-MODES."
 					 overwrite-mode view-mode
                                          hs-minor-mode)
   "List of all minor mode functions.")
+
+(defvar global-minor-modes nil
+  "A list of the currently enabled global minor modes.
+This is a list of symbols.")
 
 (defun add-minor-mode (toggle name &optional keymap after toggle-fun)
   "Register a new minor mode.
@@ -7208,15 +7268,15 @@ See documentation for `version-separator' and `version-regexp-alist'."
 	      (setq al (cdr al)))
 	    (cond (al
 		   (push (cdar al) lst))
-        ;; Convert 22.3a to 22.3.1, 22.3b to 22.3.2, etc., but only if
-        ;; the letter is the end of the version-string, to avoid
-        ;; 22.8X3 being valid
-        ((and (string-match "^[-._+ ]?\\([a-zA-Z]\\)$" s)
-           (= i (length ver)))
+                  ;; Convert 22.3a to 22.3.1, 22.3b to 22.3.2, etc., but only if
+                  ;; the letter is the end of the version-string, to avoid
+                  ;; 22.8X3 being valid
+                  ((and (string-match "^[-._+ ]?\\([a-zA-Z]\\)$" s)
+                        (= i (length ver)))
 		   (push (- (aref (downcase (match-string 1 s)) 0) ?a -1)
 			 lst))
 		  (t (error "Invalid version syntax: `%s'" ver))))))
-    (nreverse lst))))
+      (nreverse lst))))
 
 (defun version-list-< (l1 l2)
   "Return t if L1, a list specification of a version, is lower than L2.

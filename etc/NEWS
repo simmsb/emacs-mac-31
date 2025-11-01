@@ -327,13 +327,13 @@ deleted implicitly by functions like 'kill-buffer', 'bury-buffer' and
 +++
 *** Buffer-local window change functions run in their buffers now.
 Running the buffer-local version of each of the abnormal hooks
-'window-buffer-change-functions', 'window-size-change-functions'
+'window-buffer-change-functions', 'window-size-change-functions',
 'window-selection-change-functions' and 'window-state-change-functions'
 will make the respective buffer temporarily current for running the
-hook.'
+hook.
 
 +++
-*** 'window-buffer-change-functions' is run for removed buffer too.
+*** 'window-buffer-change-functions' is run for removed buffers too.
 The buffer-local version of 'window-buffer-change-functions' may be run
 twice now: Once for the buffer removed from the respective window and
 once for the buffer now shown in that window.
@@ -413,6 +413,13 @@ during the execution of particular commands.
 This moves in the opposite direction of 'other-window' and is for its
 default keybinding consistent with 'repeat-mode'.
 
++++
+*** New functions 'combine-windows' and 'uncombine-window'.
+'combine-windows' is useful to make a new parent window for several
+adjacent windows and subsequently operate on that parent.
+'uncombine-window' can then be used to restore the window configuration
+to the state it had before running 'combine-windows'.
+
 ** Frames
 
 +++
@@ -427,6 +434,11 @@ determines whether to call 'delete-frame'.
 This will inhibit implied resizing while a new frame is made and can be
 useful on tiling window managers where the initial frame size should be
 specified by external means.
+
+---
+*** Frames can now be renamed to F<number> on text terminals.
+Unlike with other frame names, an attempt to rename to F<number> throws
+an error when a frame of that name already exists.
 
 ** Mode Line
 
@@ -1555,6 +1567,13 @@ The new icons 'hs-indicator-show' and 'hs-indicator-hide' can be used
 to customize the indicators appearance only if 'hs-indicator-type' is
 set to 'margin' or nil.
 
++++
+*** New user option 'hs-hide-block-behavior'.
+This user option controls how 'hs-hide-block' and 'hs-toggle-hiding'
+should hide a block.  If set to 'after-bol', hide the innermost block to
+which the current line belongs.  If set to 'after-cursor', hide the block
+after cursor position.  By default this is set to 'after-bol'.
+
 ** C-ts mode
 
 +++
@@ -1672,6 +1691,15 @@ This is the new default value and causes warnings to be emitted
 at run-time for the use of the associated deprecated features.
 '(setq eieio-backward-compatibility t)' can be used to recover
 the previous silence.
+
+** Emacs Lisp mode
+
++++
+*** Semantic highlighting support for Emacs Lisp.
+'emacs-lisp-mode' can now use code analysis to highlight more symbols
+more accurately.  Customize the new user option
+'elisp-fontify-semantically' to non-nil to enable this feature, and see
+the Info node "(emacs) Semantic Font Lock" for more information.
 
 ** Text mode
 
@@ -2379,6 +2407,11 @@ default, "sudo".
 *** 'tramp-file-name-with-method' can now be set as connection-local variable.
 
 +++
+*** New optional connection methods "surs" and "sudors".
+These connection methods are similar to "su" and "sudo", but they use
+the modern 'su-rs' and 'sudo-rs' commands.
+
++++
 *** Connection method "kubernetes" supports now optional namespace.
 The host name for Kubernetes connections can be of kind
 [CONTAINER.]POD[%NAMESPACE], in order to specify the namespace to be
@@ -2518,6 +2551,24 @@ name of the directory now reverts the Dired buffer.
 *** 'dired-copy-filename-as-kill' supports project-relative names.
 With a new value of the prefix argument (1), this command copies file
 names relative to the root directory of the current project.
+
++++
+*** Warning when Dired displays a file name with a literal newline.
+On visiting a directory that contains a file whose name has a newline,
+and Dired displays that character as a literal newline, Emacs now
+automatically pops up a buffer warning that such a display can be
+problematic for Dired and showing a way to change the display to use the
+unproblematic character '\n'.
+
++++
+*** New user option 'dired-auto-toggle-b-switch'.
+When this user option is non-nil and 'dired-listing-switches' does not
+include the '-b' switch, then on visiting a directory containing a file
+whose name has a newline, Emacs automatically adds the '-b' switch and
+redisplays the directory in Dired to show '\n' in the file name instead
+of a literal newline.  This prevents executing many Dired operations on
+such a file from failing and signaling an error.  The default value of
+this user option is nil.
 
 ** Grep
 
@@ -2993,6 +3044,9 @@ version-list of a given package symbol.  These functions provide public
 interfaces for external tools to query information about built-in
 packages.
 
+---
+*** Uninstalling a package now removes its directory from 'load-path'.
+
 ** Rcirc
 
 +++
@@ -3091,7 +3145,7 @@ Meant to be given a global binding convenient to the user.  Example:
 
 - 'speedbar-prefer-window' tells 'speedbar' to open a side window
   instead of a frame.
-- 'speedbar-dedicated-window' defines whether the 'speedbar' is
+- 'speedbar-window-dedicated-window' defines whether 'speedbar' is
   displayed in a dedicated window.
 - 'speedbar-window-default-width' defines the initial width of the
   'speedbar-window'.
@@ -3124,6 +3178,13 @@ New faces have been added to 'icomplete-vertical-mode':
   appearance of unselected candidate prefixes.
 
 ** Customize
+
++++
+*** New function 'custom-initialize-after-file-load'.
+Useful to delay initialization to the end of the file, so it can use
+functions defined later than the variable, as is common for minor modes.
+'define-globalized-minor-mode' now automatically uses it if the
+init-value is non-nil.
 
 ---
 *** New major mode 'Customize-dirlocals-mode'.
@@ -3272,6 +3333,10 @@ code, message or one-liner message) appear in each output destination.
 The tabulated listings produced by 'flymake-show-buffer-diagnostics' and
 'flymake-show-project-diagnostics' now automatically adjust their column
 widths based on content, optimizing display space and readability.
+
+*** New value 'auto' of user option 'flymake-indicator-type'.
+This value set by default tries to use fringes if possible,
+otherwise falls back to margins.
 
 *** New user option 'elisp-flymake-byte-compile-executable'.
 This allows customizing the Emacs executable used for Flymake byte
@@ -3552,6 +3617,16 @@ See the new argument in 'make-thread'.  The default value allows the
 thread's current buffer to be killed by another thread.  This does not
 apply to the main thread's buffer.
 
+---
+** Defining or modifying a face so that it inherits from itself signals error.
+Calling any function that defines or modifies a face in a way that
+causes cyclical inheritance (i.e., the face inherits from itself, either
+directly or indirectly) now signals an error.  Previously, Lisp programs
+could get away with this, and the problem would either be detected at
+display time or even cause Emacs to hang trying to display such a face.
+Affected APIs include 'defface', 'set-face-attribute', their callers,
+and other similar functions.
+
 
 * Lisp Changes in Emacs 31.1
 
@@ -3614,6 +3689,15 @@ and signal an error if they are given a non-number.
 ** New functions 'oddp' and 'evenp'.
 They return non-nil if an integer is odd or even, respectively, and
 signal an error if they are given a non-integer.
+
++++
+** New functions 'drop-while' and 'take-while'.
+These work like 'drop' and 'take' but use a predicate instead of counting.
+
++++
+** New functions 'any' and 'all'.
+These return non-nil for lists where any and all elements, respectively,
+satisfy a given predicate.
 
 +++
 ** The 'defvar-local' macro second argument is now optional.
@@ -3816,10 +3900,10 @@ The column number is no longer available; the line number will be
 removed in next Emacs release.
 
 +++
-** defvar-keymap can now take a ':prefix t' option.
+** 'defvar-keymap' can now take a ':prefix t' option.
 This is an abbreviation for using the name of the keymap as the prefix
-command name.  E.g. (defvar-keymap foo-map :prefix t) is equivalent to
-(defvar-keymap foo-map :prefix 'foo-map).
+command name.  E.g., '(defvar-keymap foo-map :prefix t)' is equivalent
+to '(defvar-keymap foo-map :prefix 'foo-map)'.
 
 
 * Changes in Emacs 31.1 on Non-Free Operating Systems

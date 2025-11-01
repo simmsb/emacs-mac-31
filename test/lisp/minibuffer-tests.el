@@ -268,7 +268,29 @@
   (should (null
            (completion--pcm-first-difference-pos
             (car (completion-pcm-all-completions
-                  "f" '("few" "many") nil 0))))))
+                  "f" '("few" "many") nil 0)))))
+  (should (equal
+           (completion--pcm-first-difference-pos
+            (car (completion-pcm-all-completions
+                  "a*" '("ab" "ac") nil 2)))
+           1))
+  (should (equal
+           (completion--pcm-first-difference-pos
+            (car (completion-pcm-all-completions
+                  "a*" '("ab" "ac") nil 1)))
+           1))
+  (should (equal
+           (completion--pcm-first-difference-pos
+            (car (completion-pcm-all-completions
+                  "a*x" '("abx" "acx") nil 2)))
+           1))
+  (should (equal
+           (completion--pcm-first-difference-pos
+            (car (completion-pcm-all-completions
+                  "a*x" '("abxd" "acxe") nil 3)))
+           ;; FIXME: the highlighting should start at the 4th character
+           ;; rather than the third.
+           3)))
 
 (ert-deftest completion-pcm-test-6 ()
   ;; Wildcards and delimiters work
@@ -339,13 +361,54 @@
                   "-x" '("-_.x" "-__x") nil 2)
                  '("-_x" . 3))))
 
+(ert-deftest completion-pcm-test-pattern->regex ()
+  (should (equal (completion-pcm--pattern->regex
+                  '("A" any prefix "B" point "C"))
+                 "\\`A[^z-a]*?B[^z-a]*?C"))
+  (should (equal (completion-pcm--pattern->regex
+                  '(any any-delim prefix "A" "B" "C"))
+                 "\\`[^z-a]*?ABC"))
+  (should (equal (completion-pcm--pattern->regex
+                  '(any-delim "A" "B" star "C"))
+                 "\\`[-_./:| *]*?AB[^z-a]*?C"))
+  (should (equal (completion-pcm--pattern->regex
+                  '(any "A" any-delim "B" any-delim "C" any))
+                 "\\`[^z-a]*?A[-_./:| *]*?B[-_./:| *]*?C[^z-a]*?")))
+
 (ert-deftest completion-pcm-bug4219 ()
   ;; With `completion-ignore-case', try-completion should change the
   ;; case of existing text when the completions have different casing.
   (should (equal
            (let ((completion-ignore-case t))
              (completion-pcm-try-completion "a" '("ABC" "ABD") nil 1))
-           '("AB" . 2))))
+           '("AB" . 2)))
+  ;; Even when the text isn't growing.
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm-try-completion "ab" '("ABC" "ABD") nil 2))
+           '("AB" . 2)))
+  ;; Or when point is in the middle of the region changing case.
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm-try-completion "ab" '("ABC" "ABD") nil 1))
+           '("AB" . 2)))
+  ;; Even when the existing minibuffer contents has mixed case.
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm-try-completion "Ab" '("ABC" "ABD") nil 1))
+           '("AB" . 2)))
+  ;; But not if the completions don't actually all have the same case.
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm-try-completion "Ab" '("abc" "ABD") nil 1))
+           '("Ab" . 2)))
+  ;; We don't change case if it doesn't match all of the completions, though.
+  (should (equal
+           (let ((completion-ignore-case t)) (try-completion "a" '("ax" "Ay")))
+           "a"))
+  (should (equal
+           (let ((completion-ignore-case t)) (try-completion "a" '("Ay" "ax")))
+           "a")))
 
 (ert-deftest completion-substring-test-1 ()
   ;; One third of a match!
@@ -409,6 +472,15 @@
   (should (equal
            (completion-pcm--merge-try '("a" prefix "b") '("axb" "ayb") "" "")
            '("ab" . 2)))
+  ;; Letter-casing from the completions on the common prefix is still applied.
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm--merge-try '("a" prefix "b") '("Axb" "Ayb") "" ""))
+           '("Ab" . 2)))
+  (should (equal
+           (let ((completion-ignore-case t))
+             (completion-pcm--merge-try '("a" prefix "b") '("AAxb" "AAyb") "" ""))
+           '("Ab" . 2)))
   ;; substring completion should successfully complete the entire string
   (should (equal
            (completion-substring-try-completion "b" '("ab" "ab") nil 0)

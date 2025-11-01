@@ -493,7 +493,7 @@ there (in decreasing order of priority)."
 	   (setq parms (append initial-frame-alist window-system-frame-alist
 			       default-frame-alist parms nil))
 	   ;; Don't enable tab-bar in daemon's initial frame.
-	   (when (and (daemonp) (not (frame-parameter nil 'client)))
+	   (when (and (daemonp) (eq (selected-frame) terminal-frame))
 	     (setq parms (delq (assq 'tab-bar-lines parms) parms)))
 	   parms))
 	(if (null initial-window-system) ;; MS-DOS does this differently in pc-win.el
@@ -1115,6 +1115,34 @@ current buffer even if it is hidden."
          frame 'minibuffer (frame-root-window child-frame))))
 
     (normal-erase-is-backspace-setup-frame frame)
+
+    (when (window-system frame)
+      ;; On a window-system frame apply buffer-local values for the
+      ;; fringes, scroll bars and margins of root and minibuffer window
+      ;; of the new frame.  The 'frame-creation-function' above could
+      ;; not do that since the frame did not exist yet at the time the
+      ;; buffers for these windows were set (Bug#79606).
+      (let* ((root (frame-root-window frame))
+	     (buffer (window-buffer root)))
+	(with-current-buffer buffer
+	  (set-window-fringes
+	   root left-fringe-width right-fringe-width fringes-outside-margins)
+	  (set-window-scroll-bars
+	   root scroll-bar-width vertical-scroll-bar
+	   scroll-bar-height horizontal-scroll-bar)
+	  (set-window-margins
+	   root left-margin-width right-margin-width)))
+      (let* ((mini (minibuffer-window frame))
+	     (buffer (window-buffer mini)))
+	(when (eq (window-frame mini) frame)
+	  (with-current-buffer buffer
+	    (set-window-fringes
+	     mini left-fringe-width right-fringe-width fringes-outside-margins)
+	    (set-window-scroll-bars
+	     mini scroll-bar-width vertical-scroll-bar
+	     scroll-bar-height horizontal-scroll-bar)
+	    (set-window-margins
+	     mini left-margin-width right-margin-width)))))
 
     ;; We can run `window-configuration-change-hook' for this frame now.
     (frame-after-make-frame frame t)

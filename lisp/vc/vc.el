@@ -398,6 +398,30 @@
 ;;   Relocate the working tree, assumed to be one that uses the same
 ;;   backing repository as this working tree, at FROM to TO.
 ;;   Callers must ensure that FROM is not the current working tree.
+;;
+;; - delete-revision (rev)
+;;
+;;   Remove REV from the revision history of the current branch.
+;;   For a distributed VCS, this means a rebase operation to rewrite the
+;;   history of the current branch so that it no longer contains REV (or
+;;   its changes).  For a centralized VCS this may mean something
+;;   different; for example CVS has true undos (not yet implemented in
+;;   Emacs).  A distributed VCS that implements this must also implement
+;;   revision-published-p.
+;;
+;; - delete-revisions-from-end (rev)
+;;
+;;   Delete revisions from the revision history, from the end of the
+;;   branch up to but not including REV, including removing the changes
+;;   made by those revisions to the working tree.  If there are
+;;   uncommitted changes the implementation should discard them.
+;;
+;; - uncommit-revisions-from-end (rev)
+;;
+;;   Delete revisions from the revision history, from the end of the
+;;   branch up to but not including REV, but without removing the
+;;   changes made by those revisions from the working tree.
+;;   I.e., the working tree contents should not change.
 
 ;; HISTORY FUNCTIONS
 ;;
@@ -427,9 +451,10 @@
 ;;   received when performing a pull operation from UPSTREAM-LOCATION.
 ;;   Deprecated: implement incoming-revision and mergebase instead.
 ;;
-;; * incoming-revision (upstream-location &optional refresh)
+;; * incoming-revision (&optional upstream-location refresh)
 ;;
 ;;   Return revision at the head of the branch at UPSTREAM-LOCATION.
+;;   UPSTREAM-LOCATION defaults to where `vc-update' would pull from.
 ;;   If there is no such branch there, return nil.  (Should signal an
 ;;   error, not return nil, in the case that fetching data fails.)
 ;;   For a distributed VCS, should also fetch that revision into local
@@ -543,6 +568,16 @@
 ;;
 ;;   Return the most recent revision of FILE that made a change
 ;;   on LINE.
+;;
+;; - revision-published-p (rev)
+;;
+;;   For a distributed VCS, return whether REV is part of the public
+;;   history of this branch, or only local history.  I.e., whether REV
+;;   has been pushed.  Implementations should not consider whether REV
+;;   is part of the public history of any other branches.
+;;   It is an error if REV is not present on the current branch.
+;;   Centralized VCS *must not* implement this, and there is no default
+;;   implementation.
 
 ;; TAG/BRANCH SYSTEM
 ;;
@@ -2752,8 +2787,7 @@ global binding."
   (let* ((fileset (or fileset (vc-deduce-fileset t)))
          (backend (car fileset))
          (incoming (vc--incoming-revision backend
-                                          (or upstream-location "")
-                                          'refresh)))
+                                          upstream-location 'refresh)))
     (vc-diff-internal vc-allow-async-diff fileset
                       (vc-call-backend backend 'mergebase incoming)
                       incoming
@@ -2799,8 +2833,7 @@ global binding."
   (interactive (list (vc--maybe-read-upstream-location)))
   (let* ((fileset (or fileset (vc-deduce-fileset t)))
          (backend (car fileset))
-         (incoming (vc--incoming-revision backend
-                                          (or upstream-location ""))))
+         (incoming (vc--incoming-revision backend upstream-location)))
     (vc-diff-internal vc-allow-async-diff fileset
                       (vc-call-backend backend 'mergebase incoming)
                       ;; FIXME: In order to exclude uncommitted
@@ -2885,8 +2918,7 @@ includes uncommitted changes."
   (interactive (list (vc--maybe-read-upstream-location) nil))
   (let* ((fileset (or fileset (vc-deduce-fileset t)))
          (backend (car fileset))
-         (incoming (vc--incoming-revision backend
-                                          (or upstream-location ""))))
+         (incoming (vc--incoming-revision backend upstream-location)))
     (vc-diff-internal vc-allow-async-diff fileset
                       (vc-call-backend backend 'mergebase incoming)
                       nil
@@ -2985,7 +3017,11 @@ Return nil if the root directory cannot be identified."
 (defun vc-revision-other-window (rev)
   "Visit revision REV of the current file in another window.
 If the current file is named `F', the revision is named `F.~REV~'.
-If `F.~REV~' already exists, use it instead of checking it out again."
+If `F.~REV~' already exists, use it instead of checking it out again.
+
+If this command needs to split the current window, it by default obeys
+the user options `split-height-threshold' and `split-width-threshold',
+when it decides whether to split the window horizontally or vertically."
   (interactive
    (with-current-buffer (or (buffer-base-buffer) (current-buffer))
      (vc-ensure-vc-buffer)
@@ -3740,7 +3776,7 @@ The command prompts for the branch whose change log to show."
        (read-string "Upstream location/branch (empty for default): " nil
                     'vc-remote-location-history)))
 
-(defun vc--incoming-revision (backend upstream-location &optional refresh)
+(defun vc--incoming-revision (backend &optional upstream-location refresh)
   (or (vc-call-backend backend 'incoming-revision upstream-location refresh)
       (user-error "No incoming revision -- local-only branch?")))
 
@@ -3753,7 +3789,7 @@ UPSTREAM-LOCATION.  In some version control systems UPSTREAM-LOCATION
 can be a remote branch name."
   (interactive (list (vc--maybe-read-upstream-location)))
   (vc--with-backend-in-rootdir "VC root-log"
-    (vc-incoming-outgoing-internal backend (or upstream-location "")
+    (vc-incoming-outgoing-internal backend upstream-location
                                    "*vc-incoming*" 'log-incoming)))
 
 (defun vc-default-log-incoming (_backend buffer upstream-location)
@@ -3772,7 +3808,7 @@ UPSTREAM-LOCATION.  In some version control systems UPSTREAM-LOCATION
 can be a remote branch name."
   (interactive (list (vc--maybe-read-upstream-location)))
   (vc--with-backend-in-rootdir "VC root-log"
-    (vc-incoming-outgoing-internal backend (or upstream-location "")
+    (vc-incoming-outgoing-internal backend upstream-location
                                    "*vc-outgoing*" 'log-outgoing)))
 
 (defun vc-default-log-outgoing (_backend buffer upstream-location)
@@ -4200,8 +4236,8 @@ file names."
 
 ;;;###autoload
 (defun vc-rename-file (old new)
-  "Rename file OLD to NEW in both work area and repository.
-If called interactively, read OLD and NEW, defaulting OLD to the
+  "Rename file OLD to NEW in both working tree and repository.
+When called interactively, read OLD and NEW, defaulting OLD to the
 current buffer's file name if it's under version control."
   ;; FIXME: Support renaming whole directories.
   ;; The use of `vc-call' will need to change to something like
@@ -4213,15 +4249,19 @@ current buffer's file name if it's under version control."
   ;;
   ;; as was done in `vc-revert-file'; see bug#43464.  --spwhitton
   (interactive (list (read-file-name "VC rename file: " nil
-                                     (when (vc-backend buffer-file-name)
-                                       buffer-file-name) t)
+                                     (and (vc-backend buffer-file-name)
+                                          buffer-file-name)
+                                     t)
                      (read-file-name "Rename to: ")))
   ;; in CL I would have said (setq new (merge-pathnames new old))
   (let ((old-base (file-name-nondirectory old)))
-    (when (and (not (string= "" old-base))
-               (string= "" (file-name-nondirectory new)))
+    (when (and (not (string-empty-p old-base))
+               (string-empty-p (file-name-nondirectory new)))
       (setq new (concat new old-base))))
-  (let ((oldbuf (get-file-buffer old)))
+  (cl-callf expand-file-name old)
+  (cl-callf expand-file-name new)
+  (let ((oldbuf (get-file-buffer old))
+        (default-directory (file-name-directory old)))
     (when (and oldbuf (buffer-modified-p oldbuf))
       (error "Please save files before moving them"))
     (when (get-file-buffer new)

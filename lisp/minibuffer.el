@@ -2316,7 +2316,8 @@ Runs of equal candidate strings are eliminated.  GROUP-FUN is a
 		     ;; Windows can't show less than 3 lines anyway.
 		     (max 1 (/ (length strings) 2))))
 	   (colwidth (/ wwidth columns))
-	   (lines (or completions-max-height (frame-height))))
+	   (lines (or completions-max-height
+                      (frame-height (window-frame window)))))
       (unless (or tab-stop-list (null completion-tab-width)
                   (zerop (mod colwidth completion-tab-width)))
         ;; Align to tab positions for the case
@@ -2346,12 +2347,9 @@ Runs of equal candidate strings are eliminated.  GROUP-FUN is a
       (when track-eob
         (with-selected-window window
           (goto-char (point-max))
-          (previous-completion 1)
-          (recenter -1)
-          (when cursor-face-highlight-mode
-            (redisplay--update-cursor-face-highlight window))))))
+          (recenter -1)))))
   (remove-hook 'window-scroll-functions
-               'completion--lazy-insert-strings-on-scroll t))
+               #'completion--lazy-insert-strings-on-scroll t))
 
 (defun completion--lazy-insert-strings (&optional button)
   (setq button (or button completions--lazy-insert-button))
@@ -4293,36 +4291,59 @@ or a symbol, see `completion-pcm--merge-completions'."
         (_ (push (pop p) n))))
     (nreverse n)))
 
-(defun completion-pcm--pattern->regex (pattern &optional group)
-  (let ((re
-         (concat "\\`"
-                 (mapconcat
-                  (lambda (x)
-                    (cond
-                     ((stringp x) (regexp-quote x))
-                     (t
-                      (let ((re (if (eq x 'any-delim)
-                                    (concat completion-pcm--delim-wild-regex "*?")
-                                  "[^z-a]*?")))
-                        (if (if (consp group) (memq x group) group)
-                            (concat "\\(" re "\\)")
-                          re)))))
-                  pattern
-                  ""))))
-    ;; Avoid pathological backtracking.
-    (while (string-match "\\.\\*\\?\\(?:\\\\[()]\\)*\\(\\.\\*\\?\\)" re)
-      (setq re (replace-match "" t t re 1)))
-    re))
+(defun completion-pcm--pattern->segments (pattern)
+  "Segment PATTERN into more structured sublists.
 
-(defun completion-pcm--pattern-point-idx (pattern)
-  "Return index of subgroup corresponding to `point' element of PATTERN.
-Return nil if there's no such element."
+Returns a list of lists which when concatenated is semantically the same
+as PATTERN.
+
+The first element in each sublist is a (possibly empty) string.  The
+remaining elements in the sublist are all wildcard symbols.  If PATTERN
+ends with a wildcard, then each sublist is guaranteed to have at least
+one wildcard."
+  (let (ret)
+    (while pattern
+      (let ((fixed "")
+            wildcards)
+        ;; Pop strings from PATTERN and concatenate them.
+        (while (stringp (car-safe pattern))
+          (setq fixed (concat fixed (pop pattern))))
+        ;; Pop wildcards from PATTERN.
+        (while (and pattern (symbolp (car-safe pattern)))
+          (push (pop pattern) wildcards))
+        ;; The sublist is a fixed string followed by all the wildcards.
+        (push (cons fixed (nreverse wildcards)) ret)))
+    (nreverse ret)))
+
+(defun completion-pcm--segments->regex (segments &optional group)
+  (concat "\\`"
+          (mapconcat
+           (lambda (segment)
+             (concat
+              (regexp-quote (car segment))
+              (when (cdr segment)
+                (concat
+                 (when group "\\(")
+                 (if (cl-every (lambda (x) (eq x 'any-delim)) (cdr segment))
+                     (concat completion-pcm--delim-wild-regex "*?")
+                   "[^z-a]*?")
+                 (when group "\\)")))))
+           segments
+           "")))
+
+(defun completion-pcm--pattern->regex (pattern &optional group)
+  (completion-pcm--segments->regex (completion-pcm--pattern->segments pattern) group))
+
+(defun completion-pcm--segments-point-idx (segments)
+  "Return index of subgroup corresponding to `point' element of SEGMENTS.
+Return nil if there's no such element.
+This is used in combination with `completion-pcm--segments->regex'."
   (let ((idx nil)
         (i 0))
-    (dolist (x pattern)
-      (unless (stringp x)
-        (incf i)
-        (if (eq x 'point) (setq idx i))))
+    (dolist (x segments)
+      (incf i)
+      (when (memq 'point (cdr x))
+        (setq idx i)))
     idx))
 
 (defun completion-pcm--all-completions (prefix pattern table pred)
@@ -4553,8 +4574,9 @@ see) for later lazy highlighting."
         completion-lazy-hilit-fn nil)
   (cond
    ((and completions (cl-loop for e in pattern thereis (stringp e)))
-    (let* ((re (completion-pcm--pattern->regex pattern 'group))
-           (point-idx (completion-pcm--pattern-point-idx pattern)))
+    (let* ((segments (completion-pcm--pattern->segments pattern))
+           (re (completion-pcm--segments->regex segments 'group))
+           (point-idx (completion-pcm--segments-point-idx segments)))
       (setq completion-pcm--regexp re)
       (cond (completion-lazy-hilit
              (setq completion-lazy-hilit-fn
@@ -4698,12 +4720,13 @@ the same set of elements."
   (cond
    ((null (cdr strs)) (list (car strs)))
    (t
-    (let ((re (completion-pcm--pattern->regex pattern 'group))
+    (let ((segmented (completion-pcm--pattern->segments (append pattern '(any))))
           (ccs ()))                     ;Chopped completions.
 
       ;; First chop each string into the parts corresponding to each
       ;; non-constant element of `pattern', using regexp-matching.
-      (let ((case-fold-search completion-ignore-case))
+      (let ((re (concat (completion-pcm--segments->regex segmented t) "\\'"))
+            (case-fold-search completion-ignore-case))
         (dolist (str strs)
           (unless (string-match re str)
             (error "Internal error: %s doesn't match %s" str re))
@@ -4715,24 +4738,15 @@ the same set of elements."
               (push (substring str last next) chopped)
               (setq last next)
               (setq i (1+ i)))
-            ;; Add the text corresponding to the implicit trailing `any'.
-            (push (substring str last) chopped)
             (push (nreverse chopped) ccs))))
 
       ;; Then for each of those non-constant elements, extract the
       ;; commonality between them.
-      (let ((res ())
-            (fixed "")
-            ;; Accumulate each stretch of wildcards, and process them as a unit.
-            (wildcards ()))
-        ;; Make the implicit trailing `any' explicit.
-        (dolist (elem (append pattern '(any)))
-          (if (stringp elem)
-              (progn
-                (setq fixed (concat fixed elem))
-                (setq wildcards nil))
+      (let ((res ()))
+        (dolist (elem segmented)
+          (let ((fixed (car elem))
+                (wildcards (cdr elem)))
             (let ((comps ()))
-              (push elem wildcards)
               (dolist (cc (prog1 ccs (setq ccs nil)))
                 (push (car cc) comps)
                 (push (cdr cc) ccs))
@@ -4766,11 +4780,12 @@ the same set of elements."
                   ;; `prefix' only wants to include the fixed part before the
                   ;; wildcard, not the result of growing that fixed part.
                   (when (seq-some (lambda (elem) (eq elem 'prefix)) wildcards)
-                    (setq prefix fixed))
+                    (setq prefix (substring prefix 0 (length fixed))))
                   (push prefix res)
                   ;; Push all the wildcards in this stretch, to preserve `point' and
                   ;; `star' wildcards before ELEM.
-                  (setq res (append wildcards res))
+                  (dolist (wildcard wildcards)
+                    (push wildcard res))
                   ;; Extract common suffix additionally to common prefix.
                   ;; Don't do it for `any' since it could lead to a merged
                   ;; completion that doesn't itself match the candidates.
@@ -4788,10 +4803,7 @@ the same set of elements."
                                         comps))))))
                       (cl-assert (stringp suffix))
                       (unless (equal suffix "")
-                        (push suffix res))))
-                  ;; We pushed these wildcards on RES, so we're done with them.
-                  (setq wildcards nil))
-                (setq fixed "")))))
+                        (push suffix res)))))))))
         ;; We return it in reverse order.
         res)))))
 
@@ -5619,7 +5631,7 @@ and make sexp navigation more intuitive.
 The list of prompts activating this mode in specific minibuffer
 interactions is customizable via `minibuffer-regexp-prompts'."
   :global t
-  :initialize #'custom-initialize-delay
+  :initialize #'custom-initialize-after-file-load
   :init-value t
   (if minibuffer-regexp-mode
       (progn
@@ -5644,51 +5656,90 @@ interactions is customizable via `minibuffer-regexp-prompts'."
 
 (defface minibuffer-nonselected
   '((t (:background "yellow" :foreground "dark red" :weight bold)))
-  "Face for non-selected minibuffer prompts.
-It's displayed on the minibuffer window when the minibuffer
-remains active, but the minibuffer window is no longer selected."
+  "Face for highlighting contents of non-selected minibuffer window.
+Used by `minibuffer-nonselected-mode' for the contents of the minibuffer
+window when the minibuffer remains active but its window is currently
+not selected."
   :version "31.1")
 
-(defvar-local minibuffer--nonselected-overlay nil)
+(defvar minibuffer--nonselected-overlay nil
+  "Overlay for highlighting contents of non-selected minibuffer window.
+Used by `minibuffer-nonselected-mode'.")
 
-(defun minibuffer--nonselected-check (window)
-  "Check if the active minibuffer's window is no longer selected.
-Use overlay to highlight the minibuffer window when another window
-is selected.  But don't warn in case when the *Completions* window
-becomes selected."
-  (if (eq window (selected-window))
-      (with-current-buffer (window-buffer window)
-        (when (overlayp minibuffer--nonselected-overlay)
-          (delete-overlay minibuffer--nonselected-overlay)))
-    (unless (eq (buffer-local-value 'completion-reference-buffer
-                                    (window-buffer))
-                (window-buffer window))
-      (with-current-buffer (window-buffer window)
-        (let ((ov (make-overlay (point-min) (point-max))))
-          (overlay-put ov 'face 'minibuffer-nonselected)
-          (overlay-put ov 'evaporate t)
-          (setq minibuffer--nonselected-overlay ov))))))
+(defun minibuffer--nonselected-check (_frame)
+  "Check if active minibuffer window is no longer selected.
+Use overlay to highlight its contents when another window is selected.
+But don't highlight when the *Completions* window is selected or the
+buffer-local value of `completion-reference-buffer' in the selected
+window's buffer equals the buffer of the active minibuffer window."
+  (let* ((active-minibuffer-window (active-minibuffer-window))
+	 (active-minibuffer (when active-minibuffer-window
+			      (window-buffer active-minibuffer-window))))
+    (cond
+     ((or (not active-minibuffer-window)
+	  (eq active-minibuffer-window (selected-window))
+	  (equal (buffer-name (window-buffer)) "*Completions*")
+	  (eq (buffer-local-value
+	       'completion-reference-buffer (window-buffer))
+	      active-minibuffer))
+      ;; When there's no active minibuffer window or either the
+      ;; minibuffer or the *Completions* window is selected or the
+      ;; buffer-local value of 'completion-reference-buffer' in the
+      ;; selected window's buffer equals the buffer of the active
+      ;; minibuffer window, remove the overlay if it exists.
+      (when minibuffer--nonselected-overlay
+	(delete-overlay minibuffer--nonselected-overlay)))
+     ((not minibuffer--nonselected-overlay)
+      ;; When there's an active minibuffer window and neither it nor the
+      ;; *Completions* window is selected and there is no overlay, make
+      ;; the overlay in the active minibuffer.
+      (with-current-buffer active-minibuffer
+        (setq minibuffer--nonselected-overlay
+	      (make-overlay (point-min) (point-max)))
+        (overlay-put
+	 minibuffer--nonselected-overlay 'face 'minibuffer-nonselected)
+        (overlay-put
+	 minibuffer--nonselected-overlay 'evaporate t)))
+     ((not (eq (overlay-buffer minibuffer--nonselected-overlay)
+	       active-minibuffer))
+      ;; When there is an overlay but it is not in the active minibuffer
+      ;; move it to that buffer.
+      (with-current-buffer active-minibuffer
+	(move-overlay minibuffer--nonselected-overlay
+		      (point-min) (point-max) active-minibuffer))))))
 
 (defun minibuffer--nonselected-setup ()
-  "Setup hooks for `minibuffer-nonselected-mode' to update the overlay."
-  (add-hook 'window-buffer-change-functions
-            #'minibuffer--nonselected-check nil t)
-  (add-hook 'window-selection-change-functions
-            #'minibuffer--nonselected-check nil t))
+  "Set up hook for `minibuffer-nonselected-mode' unless it's there already."
+  (add-hook 'window-state-change-functions
+            #'minibuffer--nonselected-check))
+
+(defun minibuffer--nonselected-exit ()
+  "Remove hook for `minibuffer-nonselected-mode' if it is there."
+  (when (= (minibuffer-depth) 1)
+    (remove-hook 'window-state-change-functions
+		 #'minibuffer--nonselected-check)))
 
 (define-minor-mode minibuffer-nonselected-mode
-  "Minor mode to warn about non-selected active minibuffer.
-Use the face `minibuffer-nonselected' to highlight the minibuffer
-window when the minibuffer remains active, but the minibuffer window
-is no longer selected."
+  "Minor mode to warn about non-selected active minibuffer window.
+Use the face `minibuffer-nonselected' to highlight the contents of the
+minibuffer window when the minibuffer remains active but its window is
+no longer selected."
   :global t
-  :initialize #'custom-initialize-delay
+  :initialize #'custom-initialize-after-file-load
   :init-value t
   :version "31.1"
   (if minibuffer-nonselected-mode
-      (add-hook 'minibuffer-setup-hook #'minibuffer--nonselected-setup)
-    (remove-hook 'minibuffer-setup-hook #'minibuffer--nonselected-setup)))
-
+      (progn
+	(add-hook 'minibuffer-setup-hook #'minibuffer--nonselected-setup)
+	(add-hook 'minibuffer-exit-hook #'minibuffer--nonselected-exit)
+	(when (active-minibuffer-window)
+	  (minibuffer--nonselected-check (selected-frame))))
+    (remove-hook 'minibuffer-setup-hook #'minibuffer--nonselected-setup)
+    (remove-hook 'minibuffer-exit-hook #'minibuffer--nonselected-exit)
+    (remove-hook 'window-state-change-functions
+		 #'minibuffer--nonselected-check)
+    (when (overlayp minibuffer--nonselected-overlay)
+      (delete-overlay minibuffer--nonselected-overlay))))
 
 (provide 'minibuffer)
 
