@@ -152,11 +152,10 @@ typedef int suseconds_t;
 static int
 rpl_fd_isset (SOCKET fd, const fd_set * set)
 {
-  u_int i;
   if (set == NULL)
     return 0;
 
-  for (i = 0; i < set->fd_count; i++)
+  for (u_int i = 0; i < set->fd_count; i++)
     if (set->fd_array[i] == fd)
       return 1;
 
@@ -284,7 +283,6 @@ _GL_CXXALIAS_SYS_CAST (pselect, int,
 _GL_CXXALIASWARN (pselect);
 # endif
 #elif defined GNULIB_POSIXCHECK
-# undef pselect
 # if HAVE_RAW_DECL_PSELECT
 _GL_WARN_ON_USE (pselect, "pselect is not portable - "
                  "use gnulib module pselect for portability");
@@ -317,7 +315,6 @@ _GL_CXXALIASWARN (select);
 #  define select select_used_without_requesting_gnulib_module_select
 # endif
 #elif defined GNULIB_POSIXCHECK
-# undef select
 # if HAVE_RAW_DECL_SELECT
 _GL_WARN_ON_USE (select, "select is not always POSIX compliant - "
                  "use gnulib module select for portability");

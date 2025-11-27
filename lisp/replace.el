@@ -2459,6 +2459,7 @@ To be added to `context-menu-functions'."
 \\`U' to undo all replacements,
 \\`e' to edit the replacement string.
 \\`E' to edit the replacement string with exact case.
+\\`d' to display the diff buffer with all replacements.
 \\`C-l' to clear the screen, redisplay, and offer same replacement again,
 \\`Y' to replace all remaining matches in all remaining buffers (in
 multi-buffer replacements) with no more questions,
@@ -2492,6 +2493,7 @@ re-executed as a normal key sequence."
     (define-key map "^" 'backup)
     (define-key map "u" 'undo)
     (define-key map "U" 'undo-all)
+    (define-key map "d" 'diff)
     (define-key map "\C-h" 'help)
     (define-key map [f1] 'help)
     (define-key map [help] 'help)
@@ -2518,7 +2520,7 @@ The valid answers include `act', `skip', `act-and-show',
 `scroll-down', `scroll-other-window', `scroll-other-window-down',
 `edit', `edit-replacement', `edit-replacement-exact-case',
 `delete-and-edit', `automatic', `backup', `undo', `undo-all',
-`quit', and `help'.
+`diff', `quit', and `help'.
 
 This keymap is used by `y-or-n-p' as well as `query-replace'.")
 
@@ -2779,8 +2781,8 @@ to a regexp that is actually used for the search.")
   (isearch-clean-overlays))
 
 ;; A macro because we push STACK, i.e. a local var in `perform-replace'.
-(defmacro replace--push-stack (replaced search-str next-replace stack)
-  (declare (indent 0) (debug (form form form gv-place)))
+(defmacro replace--push-stack (replaced search-str next-replace next-replacement match-again stack)
+  (declare (indent 0) (debug (form form form form form gv-place)))
   `(push (list (point) ,replaced
                ;; If the replacement has already happened, all we need is the
                ;; current match start and end.  We could get this with a trivial
@@ -2795,7 +2797,7 @@ to a regexp that is actually used for the search.")
 		   (list
 		    (match-beginning 0) (match-end 0) (current-buffer))
 	         (match-data))
-	       ,search-str ,next-replace)
+	       ,search-str ,next-replace ,next-replacement ,match-again)
          ,stack))
 
 (defun replace--region-filter (bounds)
@@ -3147,7 +3149,9 @@ characters."
 				     real-match-data
 				     (replace-match-data
 				      nil real-match-data
-				      (nth 2 elt))))
+				      (nth 2 elt))
+                                     next-replacement (nth 5 elt)
+                                     match-again (nth 6 elt)))
 			   (message "No previous match")
 			   (ding 'no-terminate)
 			   (sit-for 1)))
@@ -3256,7 +3260,8 @@ characters."
                              (replace--push-stack
                               replaced
                               search-string-replaced
-                              next-replacement-replaced stack)))
+                              next-replacement-replaced next-replacement match-again
+                              stack)))
 			((or (eq def 'automatic) (eq def 'automatic-all))
 			 (or replaced
 			     (setq noedit
@@ -3334,6 +3339,16 @@ characters."
 			 (replace-dehighlight)
 			 (save-excursion (recursive-edit))
 			 (setq replaced t))
+
+                        ((eq def 'diff)
+			 (let ((display-buffer-overriding-action
+				'(nil (inhibit-same-window . t))))
+			   (save-selected-window
+                             (multi-file-replace-as-diff
+                              (list (or buffer-file-name (current-buffer)))
+                              from-string (or replacements next-replacement)
+                              regexp-flag delimited-flag))))
+
                         ((commandp def t)
                          (call-interactively def))
 			;; Note: we do not need to treat `exit-prefix'
@@ -3360,7 +3375,8 @@ characters."
                   (replace--push-stack
                    replaced
                    search-string-replaced
-                   next-replacement-replaced stack))
+                   next-replacement-replaced next-replacement match-again
+                   stack))
                 (setq next-replacement-replaced nil
                       search-string-replaced    nil
                       last-was-act-and-show     nil))))))

@@ -253,10 +253,10 @@ DEFINE_GDB_SYMBOL_END (INTTYPEBITS)
    So, USE_LSB_TAG is true only on hosts where it might be useful.  */
 DEFINE_GDB_SYMBOL_BEGIN (bool, USE_LSB_TAG)
 #if (ALIGNOF_EMACS_INT < IDEAL_GCALIGNMENT && !defined alignas	\
+     && ! (__GNUC__ || 4 <= __clang_major__)			\
+     && __STDC_VERSION__ < 202311 && __cplusplus < 201103)	\
      && !defined WIDE_EMACS_INT					\
-     && !defined HAVE_STRUCT_ATTRIBUTE_ALIGNED			\
-     && !defined __alignas_is_defined				\
-     && __STDC_VERSION__ < 202311 && __cplusplus < 201103)
+     && !defined HAVE_STRUCT_ATTRIBUTE_ALIGNED
 #define USE_LSB_TAG 0
 #else /* ALIGNOF_EMACS_INT >= IDEAL_GCALIGNMENT || defined alignas ... */
 #define USE_LSB_TAG (VAL_MAX / 2 < INTPTR_MAX)
@@ -268,10 +268,14 @@ DEFINE_GDB_SYMBOL_BEGIN (EMACS_INT, VALMASK)
 # define VALMASK (USE_LSB_TAG ? - (1 << GCTYPEBITS) : VAL_MAX)
 DEFINE_GDB_SYMBOL_END (VALMASK)
 
-/* Ignore 'alignas' on compilers lacking it.  */
-#if (!defined alignas && !defined __alignas_is_defined \
-     && __STDC_VERSION__ < 202311 && __cplusplus < 201103)
-# define alignas(a)
+/* Support 'alignas (A)' if possible, where A is an integer constant.  */
+#ifndef alignas
+# if __GNUC__ || 4 <= __clang_major__
+/* This is more reliable than the alignas operator, in GCC 14.  */
+#  define alignas(a) __attribute__ ((__aligned__ (a)))
+# elif __STDC_VERSION__ < 202311 && __cplusplus < 201103
+#  define alignas(a) /* not supported */
+# endif
 #endif
 
 /* The minimum alignment requirement for Lisp objects that is imposed by the
@@ -619,13 +623,13 @@ INLINE void set_sub_char_table_contents (Lisp_Object, ptrdiff_t,
 /* Defined in bignum.c.  */
 extern int check_int_nonnegative (Lisp_Object);
 extern intmax_t check_integer_range (Lisp_Object, intmax_t, intmax_t);
-extern double bignum_to_double (Lisp_Object) ATTRIBUTE_CONST;
+extern double bignum_to_double (Lisp_Object);
 extern Lisp_Object make_bigint (intmax_t);
 extern Lisp_Object make_biguint (uintmax_t);
 extern uintmax_t check_uinteger_max (Lisp_Object, uintmax_t);
 
 /* Defined in chartab.c.  */
-extern Lisp_Object char_table_ref (Lisp_Object, int) ATTRIBUTE_PURE;
+extern Lisp_Object char_table_ref (Lisp_Object, int);
 extern void char_table_set (Lisp_Object, int, Lisp_Object);
 
 /* Defined in data.c.  */
@@ -4110,9 +4114,9 @@ set_sub_char_table_contents (Lisp_Object table, ptrdiff_t idx, Lisp_Object val)
 
 /* Defined in bignum.c.  This part of bignum.c's API does not require
    the caller to access bignum internals; see bignum.h for that.  */
-extern intmax_t bignum_to_intmax (Lisp_Object) ATTRIBUTE_CONST;
-extern uintmax_t bignum_to_uintmax (Lisp_Object) ATTRIBUTE_CONST;
-extern ptrdiff_t bignum_bufsize (Lisp_Object, int) ATTRIBUTE_CONST;
+extern intmax_t bignum_to_intmax (Lisp_Object);
+extern uintmax_t bignum_to_uintmax (Lisp_Object);
+extern ptrdiff_t bignum_bufsize (Lisp_Object, int);
 extern ptrdiff_t bignum_to_c_string (char *, ptrdiff_t, Lisp_Object, int);
 extern Lisp_Object bignum_to_string (Lisp_Object, int);
 extern Lisp_Object make_bignum_str (char const *, int);
@@ -4423,6 +4427,7 @@ extern void message3_nolog (Lisp_Object);
 extern void message_dolog (const char *, ptrdiff_t, bool, bool);
 extern void message_with_string (const char *, Lisp_Object, bool);
 extern void message_log_maybe_newline (void);
+extern void reset_message_log_need_newline (void);
 extern void update_echo_area (void);
 extern void truncate_echo_area (ptrdiff_t);
 extern void redisplay (void);
