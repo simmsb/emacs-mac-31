@@ -911,7 +911,7 @@ overlaps; otherwise delete all hunks except the current one.
 When calling from Lisp, pass BEG and END as the bounds of the region in
 which to delete hunks; BEG and END omitted or nil means to delete all
 the hunks but the one which contains point."
-  (interactive (list (use-region-beginning) (use-region-end)))
+  (interactive "R")
   (when (buffer-narrowed-p)
     (user-error "Command is not safe in a narrowed buffer"))
   (let ((inhibit-read-only t))
@@ -980,14 +980,17 @@ data such as \"Index: ...\" and such."
       (goto-char orig)
       (signal (car err) (cdr err)))))
 
-(defun diff-file-kill ()
-  "Kill current file's hunks."
+(defun diff-file-kill (&optional delete)
+  "Kill current file's hunks.
+When called from Lisp with optional argument DELETE non-nil, delete
+them, instead."
   (interactive)
   (if (not (diff--some-hunks-p))
       (error "No hunks")
     (diff-beginning-of-hunk t)
     (let ((inhibit-read-only t))
-      (apply #'kill-region (diff-bounds-of-file)))
+      (apply (if delete #'delete-region #'kill-region)
+             (diff-bounds-of-file)))
     (ignore-errors (diff-beginning-of-hunk t))))
 
 (defun diff-kill-junk ()
@@ -1052,7 +1055,7 @@ data such as \"Index: ...\" and such."
 (defvar diff-remembered-defdir nil)
 
 (defun diff-filename-drop-dir (file)
-  (when (string-match "/" file) (substring file (match-end 0))))
+  (and (string-match "[/\\]" file) (substring file (match-end 0))))
 
 (defun diff-merge-strings (ancestor from to)
   "Merge the diff between ANCESTOR and FROM into TO.
@@ -1209,6 +1212,21 @@ Optional arguments OLD and NOPROMPT are passed on to
                          (ignore-errors (diff-file-next)))
                        (point)))))
 
+(defun diff-kill-creations-deletions (&optional delete)
+  "Kill all hunks for file creations and deletions.
+Optional argument DELETE is passed on to `diff-file-kill'."
+  (save-excursion
+    (cl-loop initially
+             (goto-char (point-min))
+             (ignore-errors (diff-file-next))
+             for (name1 name2) = (diff-hunk-file-names)
+             if (or (equal name1 null-device)
+                    (equal name2 null-device))
+             do (diff-file-kill delete)
+             else if (eq (prog1 (point)
+                           (ignore-errors (diff-file-next)))
+                         (point))
+             do (cl-return))))
 
 (defun diff-ediff-patch ()
   "Call `ediff-patch-file' on the current buffer."
@@ -2163,9 +2181,7 @@ When called from Lisp with optional arguments BEG and END non-nil,
 apply all hunks overlapped by the region from BEG to END as though
 called interactively with an active region delimited by BEG and
 END."
-  (interactive (list current-prefix-arg
-                     (use-region-beginning)
-                     (use-region-end)))
+  (interactive "P\nR")
   (cond*
    ((xor beg end)
     (error "Invalid call to `diff-apply-hunk'"))
@@ -2279,7 +2295,7 @@ When called from Lisp with optional arguments BEG and END non-nil,
 reverse-apply and kill all hunks overlapped by the region from BEG to
 END as though called interactively with an active region delimited by
 BEG and END."
-  (interactive (list (use-region-beginning) (use-region-end)))
+  (interactive "R")
   (when (xor beg end)
     (error "Invalid call to `diff-revert-and-kill-hunk'"))
   (when (or (not diff-ask-before-revert-and-kill-hunk)
@@ -2289,23 +2305,22 @@ BEG and END."
           (goto-char beg)
           (setq beg (car (diff-bounds-of-hunk)))
           (goto-char end)
-          (setq end (cadr (diff-bounds-of-hunk))))
+          (unless (looking-at diff-hunk-header-re)
+            (setq end (cadr (diff-bounds-of-hunk)))))
       (pcase-setq `(,beg ,end) (diff-bounds-of-hunk)))
     (when (null (diff-apply-buffer beg end t))
-      ;; Use `diff-hunk-kill' because it properly handles file headers,
-      ;; except if we are killing the last hunk we need not be concerned
-      ;; with that.  If we are not deleting the very last hunk then
-      ;; exploit how `diff-hunk-kill' will always leave us at the
-      ;; beginning of a hunk (except when killing the very last hunk!).
-      (if (eql end (point-max))
-          (let ((inhibit-read-only t))
-            (kill-region beg end))
-        (setq end (copy-marker end))
-        (unwind-protect
-            (cl-loop initially (goto-char beg)
-                     do (diff-hunk-kill)
-                     until (eql (point) (marker-position end)))
-          (set-marker end nil))))))
+      ;; Use `diff-hunk-kill' because it properly handles file headers.
+      (goto-char end)
+      (when-let* ((pos (diff--at-diff-header-p)))
+        (goto-char pos))
+      (setq beg (copy-marker beg) end (point-marker))
+      (unwind-protect
+          (cl-loop initially (goto-char beg)
+                   do (diff-hunk-kill)
+                   until (or (< (point) (marker-position beg))
+                             (eql (point) (marker-position end))))
+        (set-marker beg nil)
+        (set-marker end nil)))))
 
 (defun diff-apply-buffer (&optional beg end reverse test-or-no-save)
   "Apply the diff in the entire diff buffer.
@@ -2326,9 +2341,7 @@ changed buffers, `test' or t means to not actually apply or
 reverse-apply any hunks, but return the same information: nil if
 all hunks can be applied, or the number of hunks that can't be
 applied.  Other non-nil values are reserved."
-  (interactive (list (use-region-beginning)
-                     (use-region-end)
-                     current-prefix-arg))
+  (interactive "R\nP")
   (let ((buffer-edits nil)
         (failures 0)
         (diff-refine nil)

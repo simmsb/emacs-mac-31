@@ -64,6 +64,11 @@ See `run-hooks'."
   :group 'vc
   :version "28.1")
 
+(defface vc-dir-header-urgent-value '((t :inherit font-lock-warning-face))
+  "Face for urgent header values in VC-Dir buffers."
+  :group 'vc
+  :version "31.1")
+
 (defface vc-dir-directory '((t :inherit font-lock-comment-delimiter-face))
   "Face for directories in VC-Dir buffers."
   :group 'vc
@@ -999,9 +1004,11 @@ that share the same state."
   (vc-dir-at-event e (vc-dir-mark-unmark 'vc-dir-toggle-mark-file)))
 
 (defun vc-dir-clean-files ()
-  "Delete the marked files, or the current file if no marks.
-The files will not be marked as deleted in the version control
-system; see `vc-dir-delete-file'."
+  "Delete marked files from repository, or the current file if no marks.
+This command cleans unregistered files from the repository.
+(To delete files that are registered, use `vc-dir-delete-file' instead.)
+It is therefore an error to use this command to delete files that are
+tracked by a VCS."
   (interactive)
   (let* ((files (or (vc-dir-marked-files)
                     (list (vc-dir-current-file))))
@@ -1011,8 +1018,8 @@ system; see `vc-dir-delete-file'."
                                  'unregistered)))
                       files)))
     (when tracked
-      (user-error (ngettext "Trying to clean tracked file: %s"
-                            "Trying to clean tracked files: %s"
+      (user-error (ngettext "Cannot clean tracked file: %s"
+                            "Cannot clean tracked files: %s"
                             (length tracked))
                   (mapconcat #'file-name-nondirectory tracked ", ")))
     (map-y-or-n-p "Delete %s? " #'delete-file files)
@@ -1328,20 +1335,61 @@ the *vc-dir* buffer.
     (hack-dir-local-variables-non-file-buffer)
     (vc-dir-refresh)))
 
+(defvar-keymap vc-dir-outgoing-revisions-map
+  :doc "Local keymap for viewing outgoing revisions."
+  "<down-mouse-1>" #'vc-log-outgoing)
+
+(defcustom vc-dir-show-outgoing-count t
+  "Whether to display the number of unpushed revisions in VC-Dir.
+For some combinations of VC backends and remotes, determining how many
+outgoing revisions there are is slow, because the backend must fetch
+from the remote, and your connection to the remote is slow.  Customize
+this variable to nil to disable calculating the outgoing count and
+therefore also disable the fetching."
+  :type 'boolean
+  :group 'vc
+  :version "31.1")
+
+(defun vc-dir--count-outgoing (backend)
+  "Call `vc--count-outgoing' with a delayed message and local quits."
+  (let ((inhibit-quit t))
+    (prog1
+        (with-local-quit
+          (with-delayed-message
+              (2 (substitute-command-keys
+                  "Counting outgoing revisions ...
+(\\[keyboard-quit] to skip; \
+see `vc-dir-show-outgoing-count' if this is frequently slow)"))
+            (ignore-errors (vc--count-outgoing backend))))
+      (setq quit-flag nil))))
+
 (defun vc-dir-headers (backend dir)
-  "Display the headers in the *VC dir* buffer.
+  "Display the headers in the *VC-Dir* buffer.
 It calls the `dir-extra-headers' backend method to display backend
 specific headers."
   (concat
-   ;; First layout the common headers.
    (propertize "VC backend : " 'face 'vc-dir-header)
    (propertize (format "%s\n" backend) 'face 'vc-dir-header-value)
    (propertize "Working dir: " 'face 'vc-dir-header)
    (propertize (format "%s\n" (abbreviate-file-name dir))
                'face 'vc-dir-header-value)
-   ;; Then the backend specific ones.
    (vc-call-backend backend 'dir-extra-headers dir)
-   "\n"))
+   "\n"
+   (and-let* (vc-dir-show-outgoing-count
+              (count (vc-dir--count-outgoing backend))
+              (_ (plusp count)))
+     (concat (propertize "Outgoing   : "
+                         'face 'vc-dir-header)
+             (propertize (format (ngettext "%d unpushed revision"
+                                           "%d unpushed revisions"
+                                           count)
+                                 count)
+                         'face 'vc-dir-header-urgent-value
+                         'mouse-face 'highlight
+                         'keymap vc-dir-outgoing-revisions-map
+                         'help-echo "\\<vc-dir-outgoing-revisions-map>\
+\\[vc-log-outgoing]: List outgoing revisions")
+             "\n"))))
 
 (defun vc-dir-refresh-files (files)
   "Refresh some FILES in the *VC-Dir* buffer."

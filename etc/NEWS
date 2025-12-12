@@ -68,6 +68,17 @@ user's regular init file, but now site-start.el comes first.  This
 allows site administrators to customize things that can normally only be
 done from early-init.el, such as adding to 'package-directory-list'.
 
++++
+** Emacs prepares a User Lisp directory by default.
+If you have a directory named "user-lisp" in your Emacs configuration
+directory, then the recursive contents will now be byte-compiled,
+scraped for autoload cookies and ensured to be in 'load-path' by
+default.  You can disable the feature by setting 'user-lisp-auto-scrape'
+to nil, or set the 'user-lisp-directory' user option to process any
+other directory on your system.  You can also invoke the
+'prepare-user-lisp' command manually at any time.  See the Info node
+"(emacs) User Lisp Directory" for more details.
+
 
 * Changes in Emacs 31.1
 
@@ -1429,6 +1440,11 @@ It controls the automatic installation of tree-sitter grammar libraries
 needed for tree-sitter based modes, if these grammar libraries are not
 available when such modes are turned on.
 
+*** 'treesit-extra-load-path' now is a customizable user option.
+The first directory in the list is used as the default directory
+to install the language grammar when 'treesit-auto-install-grammar'
+is 'ask', 'ask-dir' or 'always'.
+
 *** 'treesit-language-source-alist' supports keywords.
 The language and URL are mandatory, but remaining data can use keywords:
 '(json "https://github.com/tree-sitter/tree-sitter-json" :commit "4d770d3")'.
@@ -1593,6 +1609,22 @@ convention (regexp arg second) and Emacs convention (regexp arg first).
 ** Hideshow
 
 +++
+*** New command 'hs-cycle'.
+This command cycles the visibility state of the current block between
+hide the parent block, hide the nested blocks only and show all the
+blocks.
+
++++
+*** New command 'hs-toggle-all'.
+This command hides or shows all the blocks in the current buffer.
+
+---
+*** 'hs-hide-level' no longer hide all the blocks in the current buffer.
+If 'hs-hide-level' was not inside a code block it would hide all the
+blocks in the buffer like 'hs-hide-all'.  Now it should only hide all
+the second level blocks.
+
++++
 *** New user option 'hs-display-lines-hidden'.
 If this option is non-nil, Hideshow displays the number of hidden lines
 next to the ellipsis.  By default this is disabled.
@@ -1634,7 +1666,7 @@ after cursor position.  By default this is set to 'after-bol'.
 This user option controls the positions on the headline of hideable blocks
 where the 'TAB' key cycles the blocks' visibility.
 
-+++
+---
 *** The variable 'hs-special-modes-alist' is now obsolete.
 Instead of customizing Hideshow for a mode by setting the elements of
 'hs-special-modes-alist', such as START, COMMENT-START,
@@ -2075,6 +2107,18 @@ The new variable 'message-header-use-obsolete-in-reply-to', nil by
 default, can be set to a non-nil value to restore the previous behavior.
 
 +++
+*** 'message-subject-re-regexp' default value is derived from 'mail-re-regexps'.
+'mail-re-regexps' is a new user option that is easier to customize than
+'message-subject-re-regexp'.  'message-subject-re-regexp' is still
+honored if it was already set.
+
++++
+*** 'message-strip-subject-re' now matches case-insensitively.
+
+---
+*** 'message-change-subject' inserts current subject into "future history".
+
++++
 *** Hashcash support has been removed.
 It is believed to no longer be useful as a method to fight spam.  The
 'message-generate-hashcash' option is now obsolete and has no effect.
@@ -2224,6 +2268,11 @@ This contains the list of regular expressions used to match "Re:" and
 international variants of it when modifying the Subject field in
 replies.
 
+** Mairix
+
+---
+*** 'mairix-search' now keeps its own minibuffer history.
+
 ** Imap
 
 ---
@@ -2257,17 +2306,6 @@ suspicious email addresses is determined by the function
 'textsec-suspicious-p', which see.)  This is controlled by the new user
 option 'rmail-detect-suspicious-headers', whose default value is
 non-nil; customize to nil to disable the check.
-
-** Message
-
-+++
-*** 'message-subject-re-regexp' default value is now derived from 'mail-re-regexps'.
-'mail-re-regexps' is a new user option that is easier to customize than
-'message-subject-re-regexp'.  'message-subject-re-regexp' is still
-honored if it was already set.
-
-+++
-*** 'message-strip-subject-re' now matches case-insensitively.
 
 ** Sendmail
 
@@ -2508,6 +2546,11 @@ This feature is experimental.
 
 ---
 *** Implementation of filesystem notifications for connection method "smb".
+
++++
+*** Remote process support has been rewritten for the "smb" connection method.
+For more information, see "(tramp) Running remote processes on MS
+Windows hosts" in the Tramp manual.
 
 +++
 *** New functions to extend the set of operations with a remote implementation.
@@ -3025,6 +3068,12 @@ bindings:
 - 'C-x v I D' is bound to 'vc-root-diff-incoming'
 - 'C-x v O L' is bound to 'vc-log-outgoing'
 - 'C-x v O D' is bound to 'vc-root-diff-outgoing'.
+
++++
+*** New display of outgoing revisions count in VC Directory.
+If there are outgoing revisions, VC Directory now includes a count of
+how many in its headers, to remind you to push them.
+You can disable this by customizing vc-dir-show-outgoing-count to nil.
 
 +++
 *** New user option 'vc-async-checkin' to enable async checkin operations.
@@ -4085,6 +4134,17 @@ This is an abbreviation for using the name of the keymap as the prefix
 command name.  E.g., '(defvar-keymap foo-map :prefix t)' is equivalent
 to '(defvar-keymap foo-map :prefix 'foo-map)'.
 
++++
+** New 'R' code letter for 'interactive' forms.
+This specifies the beginning and end of an active region, and nil twice
+if the region is inactive.  The interactive specification
+
+    (interactive "R")
+
+is equivalent to
+
+    (interactive (list (use-region-beginning) (use-region-end)))
+
 ** Toolkit
 
 ---
@@ -4191,6 +4251,12 @@ means of the GDI+ library.
 ** Emacs on MS-Windows now supports the ':data' keyword for 'play-sound'.
 In addition to ':file FILE' for playing a sound from a file, ':data
 DATA' can now be used to play a sound from memory.
+
+---
+** New primitive 'w32-sound-volume'.
+This primitive allows getting and setting the volume of the system's
+default audio device (or the "optimal device", if there are several
+devices).
 
 ---
 ** The MS-DOS port of Emacs now supports more recent releases of GCC and Binutils.

@@ -34,11 +34,15 @@
          (ref-time1 '(17337 16613))    ;Monday, Jan 2, 2006, 3:04:05 PM
          (ref-time2 '(22574 61591))    ;Friday, Nov 18, 2016, 12:14:15 PM
          (ref-time3 '(21377 34956))    ;Sunday, May 25, 2014, 06:07:08 AM
+         (time-stamp-active t)         ;default, but user may have changed it
          (time-stamp-time-zone t))     ;use UTC
      (cl-letf (((symbol-function 'time-stamp-conv-warn)
                 (lambda (old-format _new &optional _newer)
                   (ert-fail
-                   (format "Unexpected format warning for '%s'" old-format)))))
+                   (format "Unexpected format warning for '%s'" old-format))))
+               ((symbol-function 'time-stamp--message)
+                (lambda (msg)
+                  (ert-fail (format "Unexpected message: %s" msg)))))
        ;; Not all reference times are used in all tests;
        ;; suppress the byte compiler's "unused" warning.
        (list ref-time1 ref-time2 ref-time3)
@@ -56,23 +60,39 @@
        ,@body)))
 
 (defmacro with-time-stamp-system-name (name &rest body)
-  "Force function `system-name' to return NAME while evaluating BODY."
+  "Force `time-stamp--system-name' to return NAME while evaluating BODY."
   (declare (indent 1) (debug t))
-  `(cl-letf (((symbol-function 'system-name)
-              (lambda () ,name)))
+  `(cl-letf (((symbol-function 'time-stamp--system-name)
+              (lambda (type)
+                (time-stamp--system-name-1 ,name type))))
      ,@body))
+
+
+(defmacro time-stamp-test--count-function-calls (fn errmsg &rest forms)
+  "Return a form verifying that FN is called while FORMS are evaluated."
+  (declare (debug t) (indent 2))
+  (cl-with-gensyms (g-warning-count)
+    `(let ((,g-warning-count 0))
+       (cl-letf (((symbol-function ',fn)
+                  (lambda (&rest _args)
+                    (incf ,g-warning-count))))
+         ,@forms
+         (unless (= ,g-warning-count 1)
+           (ert-fail (format "Should have warned about %s" ,errmsg)))))))
 
 (defmacro time-stamp-should-warn (form)
   "Similar to `should' and also verify that FORM generates a format warning."
   (declare (debug t))
-  (cl-with-gensyms (g-warning-count)
-    `(let ((,g-warning-count 0))
-       (cl-letf (((symbol-function 'time-stamp-conv-warn)
-                  (lambda (_old _new &optional _newer)
-                    (incf ,g-warning-count))))
-         (should ,form)
-         (unless (= ,g-warning-count 1)
-           (ert-fail (format "Should have warned about format: %S" ',form)))))))
+  `(time-stamp-test--count-function-calls
+       time-stamp-conv-warn (format "format: %S" ',form)
+     (should ,form)))
+
+(defmacro time-stamp-should-message (variable &rest body)
+  "Fail test about VARIABLE if BODY does not call `time-stamp--message'."
+  (declare (indent 1) (debug t))
+  `(time-stamp-test--count-function-calls
+       time-stamp--message (format "variable %s" ',variable)
+     ,@body))
 
 ;;; Tests:
 
@@ -140,7 +160,7 @@
   (iter-yield-from (time-stamp-test-pattern-sequential))
   (iter-yield-from (time-stamp-test-pattern-multiply)))
 
-(ert-deftest time-stamp-custom-start ()
+(ert-deftest time-stamp-custom-start-0 ()
   "Test that `time-stamp' isn't stuck by a start matching 0 characters."
   (with-time-stamp-test-env
     (with-time-stamp-test-time ref-time1
@@ -164,6 +184,18 @@
           ;; the second template should be found immediately after the first
           (time-stamp)
           (should (equal (buffer-string) "::05::05")))))))
+
+(ert-deftest time-stamp-custom-start-multiline ()
+  "Test `time-stamp-start' matching across multiple lines."
+  (with-time-stamp-test-env
+    (with-time-stamp-test-time ref-time1
+      (let ((time-stamp-pattern "l.1\n%Y-%m-%d<-TS")) ;start includes newline
+        (with-temp-buffer
+          (insert "l.1\n<-TS\n")
+          ;; we should look for the end on the line where the start ends,
+          ;; not the line where the start starts
+          (time-stamp)
+          (should (equal (buffer-string) "l.1\n2006-01-02<-TS\n")))))))
 
 (ert-deftest time-stamp-custom-pattern ()
   "Test that `time-stamp-pattern' is parsed correctly."
@@ -330,6 +362,31 @@
           (setq time-stamp-format "2 %f")
           (time-stamp)
           (should (equal (buffer-string) expected-2)))))))
+
+(ert-deftest time-stamp-custom-messages ()
+  "Test that various incorrect variable values warn and do not crash."
+  (with-time-stamp-test-env
+    (let ((time-stamp-line-limit 8.5))
+      (time-stamp-should-message time-stamp-line-limit
+        (time-stamp)))
+    (let ((time-stamp-count 1.5))
+      (time-stamp-should-message time-stamp-count
+        (time-stamp)))
+    (let ((time-stamp-start 17))
+      (time-stamp-should-message time-stamp-start
+        (time-stamp)))
+    (let ((time-stamp-end 17))
+      (time-stamp-should-message time-stamp-end
+        (time-stamp)))
+    (let ((time-stamp-active nil)
+          (buffer-original-contents "Time-stamp: <>"))
+      (with-temp-buffer
+        (time-stamp)                    ;with no template, no message
+        (insert buffer-original-contents)
+        (time-stamp-should-message time-stamp-active
+          (time-stamp))
+        (should (equal (buffer-string) buffer-original-contents))))
+    ))
 
 ;;; Tests of time-stamp-string formatting
 
@@ -1213,6 +1270,7 @@ Return non-nil if the definition is found."
 ;; eval: (put 'with-time-stamp-test-env 'lisp-indent-function 0)
 ;; eval: (put 'with-time-stamp-test-time 'lisp-indent-function 1)
 ;; eval: (put 'with-time-stamp-system-name 'lisp-indent-function 1)
+;; eval: (put 'time-stamp-should-message 'lisp-indent-function 1)
 ;; eval: (put 'define-formatz-tests 'lisp-indent-function 1)
 ;; End:
 

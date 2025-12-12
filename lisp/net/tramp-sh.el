@@ -649,7 +649,9 @@ shell from reading its init file."
 
 ;;;###tramp-autoload
 (defconst tramp-actions-before-shell
-  '((tramp-login-prompt-regexp tramp-action-login)
+  '((tramp-keyboard-interactive-authentication-prompt-regexp
+     tramp-action-ignore-message)
+    (tramp-login-prompt-regexp tramp-action-login)
     (tramp-password-prompt-regexp tramp-action-password)
     (tramp-otp-password-prompt-regexp tramp-action-otp-password)
     (tramp-fingerprint-prompt-regexp tramp-action-fingerprint)
@@ -676,7 +678,9 @@ The ACTION should also be a symbol, but a function.  When the
 corresponding PATTERN matches, the ACTION function is called.")
 
 (defconst tramp-actions-copy-out-of-band
-  '((tramp-password-prompt-regexp tramp-action-password)
+  '((tramp-keyboard-interactive-authentication-prompt-regexp
+     tramp-action-ignore-message)
+    (tramp-password-prompt-regexp tramp-action-password)
     (tramp-otp-password-prompt-regexp tramp-action-otp-password)
     (tramp-wrong-passwd-regexp tramp-action-permission-denied)
     (tramp-copy-failed-regexp tramp-action-permission-denied)
@@ -3365,6 +3369,7 @@ will be used."
                 (insert
 		 (tramp-get-buffer-string (tramp-get-connection-buffer v))))
 	      (when (and display (get-buffer-window outbuf t)) (redisplay))))
+
 	;; When the user did interrupt, we should do it also.  We use
 	;; return code -1 as marker.
 	(quit
