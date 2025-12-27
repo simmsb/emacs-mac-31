@@ -1238,7 +1238,7 @@ static bool handling_queued_nsevents_p;
        selector:@selector(willSleep:)
 	   name:NSWorkspaceWillSleepNotification
 	 object:nil];
-  
+
   [NSApp registerUserInterfaceItemSearchHandler:self];
   Vmac_help_topics = Qnil;
 

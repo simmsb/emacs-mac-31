@@ -5864,7 +5864,7 @@
 	* doc/lispref/symbols.texi (Shorthand, Exceptions): New
 	subsubsection.
 
-	* src/lread.c (read1): Exempt punctionation-only symbols from
+	* src/lread.c (read1): Exempt punctuation-only symbols from
 	oblookup_considering_shorthand.
 
 	* test/lisp/progmodes/elisp-mode-tests.el
@@ -74080,7 +74080,7 @@
 	* lisp/emacs-lisp/bytecomp.el (byte-compile-associative): Rename to...
 	(byte-compile-variadic-numeric): ...this function and simplify,
 	fixing incorrect comments.  The 3-arg strength reduction is now
-	always done in the optimisers and is no longer needed here.
+	always done in the optimizers and is no longer needed here.
 	(byte-compile-min-max): New function.
 	(byte-compile-minus): Simplify, remove incorrect comment, and use
 	byte-compile-variadic-numeric.
@@ -115589,7 +115589,7 @@
 
 	* lisp/progmodes/hideif.el (hide-ifdef-mode-prefix-key): Make into
 	a defcustom since it seems like this is something that should be
-	user-customisable (bug#8922).
+	user-customizable (bug#8922).
 
 2019-08-21  Lars Ingebrigtsen  <larsi@gnus.org>
 
@@ -131651,7 +131651,7 @@
 	cache.
 	(c-parse-ps-state-below): Use the new function c-state-semi-trim-cache.
 	(c-before-change-check-<>-operators): Check simply for < or > in the
-	neighbourhood before doing more expensive processing.
+	neighborhood before doing more expensive processing.
 	(c-maybe-re-mark-raw-string): Give a backward search limit to an operation
 	which was needlessly lacking one.
 
