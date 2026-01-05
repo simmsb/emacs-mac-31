@@ -1,6 +1,6 @@
 ;;; frame.el --- multi-frame management independent of window systems  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1993-1994, 1996-1997, 2000-2025 Free Software
+;; Copyright (C) 1993-1994, 1996-1997, 2000-2026 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -957,9 +957,10 @@ also select the new frame."
          (windows (unless no-windows
                     (window-state-get (frame-root-window frame))))
          (default-frame-alist
-          (seq-remove (lambda (elem)
-                        (memq (car elem) frame-internal-parameters))
-                      (frame-parameters frame)))
+          (append `((cloned-from . ,frame))
+                  (seq-remove (lambda (elem)
+                                (memq (car elem) frame-internal-parameters))
+                              (frame-parameters frame))))
          new-frame)
     (when (and frame-resize-pixelwise
                (display-graphic-p frame))
@@ -1612,10 +1613,15 @@ resize and move FRAME."
           (if parent
               (frame-native-height parent)
             (nth 3 geometry)))
-         (parent-or-workarea
+         (workarea (cdr (assq 'workarea monitor-attributes)))
+         (parent-or-workarea-width
           (if parent
-              `(0 0 ,parent-or-display-width ,parent-or-display-height)
-            (cdr (assq 'workarea monitor-attributes))))
+              parent-or-display-width
+            (nth 2 workarea)))
+         (parent-or-workarea-height
+          (if parent
+              parent-or-display-height
+            (nth 3 workarea)))
          (outer-edges (frame-edges frame 'outer-edges))
          (outer-left (nth 0 outer-edges))
          (outer-top (nth 1 outer-edges))
@@ -1646,8 +1652,7 @@ resize and move FRAME."
       (setq text-width (cdr width)))
      ((and (floatp width) (> width 0.0) (<= width 1.0))
       (setq text-width
-            (- (round (* width (- (nth 2 parent-or-workarea)
-                               (nth 0 parent-or-workarea))))
+            (- (round (* width parent-or-workarea-width))
                outer-minus-text-width)))
      (width
       (user-error "Invalid width specification")))
@@ -1660,8 +1665,7 @@ resize and move FRAME."
       (setq text-height (cdr height)))
      ((and (floatp height) (> height 0.0) (<= height 1.0))
       (setq text-height
-            (- (round (* height (- (nth 3 parent-or-workarea)
-                                   (nth 1 parent-or-workarea))))
+            (- (round (* height parent-or-workarea-height))
                outer-minus-text-height)))
      (width
       (user-error "Invalid height specification")))
@@ -1682,9 +1686,8 @@ resize and move FRAME."
        (t
         (user-error "Invalid position specification"))))
      ((floatp left)
-      (setq left
-            (round (* left (- (nth 2 parent-or-workarea)
-                              (nth 0 parent-or-workarea))))))
+      (setq left (+ (round (* left parent-or-workarea-width))
+                    (if parent 0 (nth 0 workarea)))))
      (t (setq left outer-left)))
 
     (when negative
@@ -1713,9 +1716,8 @@ resize and move FRAME."
        (t
         (user-error "Invalid position specification"))))
      ((floatp top)
-      (setq top
-            (round (* top (- (nth 3 parent-or-workarea)
-                             (nth 1 parent-or-workarea))))))
+      (setq top (+ (round (* left parent-or-workarea-height))
+                   (if parent 0 (nth 1 workarea)))))
      (t (setq top outer-top)))
 
     (when negative
@@ -3190,7 +3192,9 @@ When called from Lisp, returns the new frame."
                  (if graphic "graphic" "non-graphic"))
               (setq undelete-frame--deleted-frames
                     (delq frame-data undelete-frame--deleted-frames))
-              (let* ((default-frame-alist (nth 1 frame-data))
+              (let* ((default-frame-alist
+                      (append `((undeleted . t))
+                              (nth 1 frame-data)))
                      (frame (make-frame)))
                 (window-state-put (nth 2 frame-data) (frame-root-window frame) 'safe)
                 (select-frame-set-input-focus frame)

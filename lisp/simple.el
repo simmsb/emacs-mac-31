@@ -1,6 +1,6 @@
 ;;; simple.el --- basic editing commands for Emacs  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1987, 1993-2025 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1987, 1993-2026 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: internal
@@ -3576,6 +3576,13 @@ as an argument limits undo to changes within the current region."
     ;; Display a message announcing success.
     (if message
 	(message "%s" message))))
+
+(defun undo-ignore-read-only (&optional arg)
+  "Perform `undo', ignoring the buffer's read-only status.
+A numeric ARG serves as a repeat count."
+  (interactive "P")
+  (let ((inhibit-read-only t))
+    (undo arg)))
 
 (defun buffer-disable-undo (&optional buffer)
   "Make BUFFER stop keeping undo information.

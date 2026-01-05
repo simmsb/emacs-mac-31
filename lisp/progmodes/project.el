@@ -1,7 +1,7 @@
 ;;; project.el --- Operations on the current project  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015-2025 Free Software Foundation, Inc.
-;; Version: 0.11.1
+;; Copyright (C) 2015-2026 Free Software Foundation, Inc.
+;; Version: 0.11.2
 ;; Package-Requires: ((emacs "26.1") (xref "1.7.0"))
 
 ;; This is a GNU ELPA :core package.  Avoid functionality that is not
@@ -466,7 +466,10 @@ the buffer's value of `default-directory'."
   :group 'project)
 
 (defcustom project-vc-ignores nil
-  "List of patterns to add to `project-ignores'."
+  "List of patterns to add to `project-ignores'.
+
+Only global or directory-local values are supported. And directory-local
+values will be applied to the corresponding directory subtrees."
   :type '(repeat string))
 ;; Change to `list-of-strings-p' when support for Emacs 28 is dropped.
 ;;;###autoload(put 'project-vc-ignores 'safe-local-variable (lambda (val) (and (listp val) (not (memq nil (mapcar #'stringp val))))))
@@ -635,6 +638,8 @@ See `project-vc-extra-root-markers' for the marker value format.")
       (let* ((parent (file-name-directory (directory-file-name root))))
         (setq root (vc-call-backend 'Git 'root parent))))
     (when root
+      (when backend
+        (require (intern (concat "vc-" (downcase (symbol-name backend))))))
       (when (not backend)
         (let* ((project-vc-extra-root-markers nil)
                ;; Avoid submodules scan.
@@ -678,24 +683,24 @@ See `project-vc-extra-root-markers' for the marker value format.")
      (funcall project-vc-external-roots-function)))
    (list (project-root project))))
 
+(defun project-vc--backend (project dir)
+  (if (file-in-directory-p dir (nth 2 project))
+      (cadr project)
+    ;; Don't presume other DIRs are under the same VCS as
+    ;; the project's root.
+    (vc-responsible-backend dir 'no-error)))
+
 (cl-defmethod project-files ((project (head vc)) &optional dirs)
   (mapcan
    (lambda (dir)
-     (let ((ignores (project--value-in-dir 'project-vc-ignores (nth 2 project)))
-           (backend (cadr project)))
-       (when backend
-         (require (intern (concat "vc-" (downcase (symbol-name backend))))))
-       (if (and backend
-                (file-in-directory-p dir (nth 2 project)))
-           (condition-case nil
-               (project--vc-list-files dir backend ignores)
-             (vc-not-supported
-              (project--files-in-directory
-               dir
-               (project--dir-ignores project dir))))
+     (let ((ignores (project--value-in-dir 'project-vc-ignores dir))
+           (backend (project-vc--backend project dir)))
+       (if backend
+           (vc-call-backend backend 'project-list-files dir ignores)
          (project--files-in-directory
-          dir
-          (project--dir-ignores project dir)))))
+          dir (append ignores (append
+                               (project-ignores nil nil)
+                               ignores))))))
    (or dirs
        (list (project-root project)))))
 
@@ -703,90 +708,92 @@ See `project-vc-extra-root-markers' for the marker value format.")
 (declare-function vc-git-command "vc-git")
 (declare-function vc-hg-command "vc-hg")
 
-(defun project--vc-list-files (dir backend extra-ignores)
-  (vc-call-backend backend 'project-list-files dir extra-ignores))
+(defun vc-default-project-list-files (backend dir extra-ignores)
+  (project--files-in-directory
+   dir
+   (project--vc-ignores dir backend extra-ignores)))
 
 (defun vc-git-project-list-files (dir extra-ignores)
   (defvar vc-git-use-literal-pathspecs)
-  (or
-   (not extra-ignores)
-   (version<= "2.13" (vc-git--program-version))
-   (signal 'vc-not-supported "Need newer Git to use negative pathspec like we do"))
-  (let* ((default-directory (expand-file-name (file-name-as-directory dir)))
-         (args '("-z" "-c" "--exclude-standard"))
-         (vc-git-use-literal-pathspecs nil)
-         (include-untracked (project--value-in-dir
-                             'project-vc-include-untracked
-                             dir))
-         (submodules (project--git-submodules))
-         files)
-    (setq args (append args
-                       (and (<= 31 emacs-major-version)
-                            (version<= "2.35" (vc-git--program-version))
-                            '("--sparse"))
-                       (and include-untracked '("-o"))))
-    (when extra-ignores
+  (if (not (or (not extra-ignores)
+               (version<= "2.13" (vc-git--program-version))))
+      ;; Need newer Git to use negative pathspec like we do".
+      (vc-default-project-list-files 'Git dir extra-ignores)
+    (let* ((default-directory (expand-file-name (file-name-as-directory dir)))
+           (args '("-z" "-c" "--exclude-standard"))
+           (vc-git-use-literal-pathspecs nil)
+           (include-untracked (project--value-in-dir
+                               'project-vc-include-untracked
+                               dir))
+           (submodules (project--git-submodules))
+           files)
       (setq args (append args
-                         (cons "--"
-                               (mapcar
-                                (lambda (i)
-                                  (format
-                                   ":(exclude,glob,top)%s"
-                                   (if (string-match "\\*\\*" i)
-                                       ;; Looks like pathspec glob
-                                       ;; format already.
-                                       i
-                                     (if (string-match "\\./" i)
-                                         ;; ./abc -> abc
-                                         (setq i (substring i 2))
-                                       ;; abc -> **/abc
-                                       (setq i (concat "**/" i))
-                                       ;; FIXME: '**/abc' should also
-                                       ;; match a directory with that
-                                       ;; name, but doesn't (git 2.25.1).
-                                       ;; Maybe we should replace
-                                       ;; such entries with two.
-                                       (if (string-match "/\\'" i)
-                                           ;; abc/ -> abc/**
-                                           (setq i (concat i "**"))))
-                                     i)))
-                                extra-ignores)))))
-    (setq files
-          (delq nil
-                (mapcar
-                 (lambda (file)
-                   (unless (or (member file submodules)
-                               ;; Should occur for sparse directories
-                               ;; only, when sparse index is enabled.
-                               (directory-name-p file))
-                     (if project-files-relative-names
-                         file
-                       (concat default-directory file))))
-                 (split-string
-                  (with-output-to-string
-                    (apply #'vc-git-command standard-output 0 nil "ls-files" args))
-                  "\0" t))))
-    (when (project--vc-merge-submodules-p default-directory)
-      ;; Unfortunately, 'ls-files --recurse-submodules' conflicts with '-o'.
-      (let ((sub-files
-             (mapcar
-              (lambda (module)
-                (when (file-directory-p module)
-                  (let ((sub-files
-                         (vc-git-project-list-files
-                          (concat default-directory module)
-                          extra-ignores)))
-                    (if project-files-relative-names
-                        (mapcar (lambda (file)
-                                  (concat (file-name-as-directory module) file))
-                                sub-files)
-                      sub-files))))
-              submodules)))
-        (setq files
-              (apply #'nconc files sub-files))))
-    ;; 'git ls-files' returns duplicate entries for merge conflicts.
-    ;; XXX: Better solutions welcome, but this seems cheap enough.
-    (delete-consecutive-dups files)))
+                         (and (<= 31 emacs-major-version)
+                              (version<= "2.35" (vc-git--program-version))
+                              '("--sparse"))
+                         (and include-untracked '("-o"))))
+      (when extra-ignores
+        (setq args (append args
+                           (cons "--"
+                                 (mapcar
+                                  (lambda (i)
+                                    (format
+                                     ":(exclude,glob,top)%s"
+                                     (if (string-match "\\*\\*" i)
+                                         ;; Looks like pathspec glob
+                                         ;; format already.
+                                         i
+                                       (if (string-match "\\./" i)
+                                           ;; ./abc -> abc
+                                           (setq i (substring i 2))
+                                         ;; abc -> **/abc
+                                         (setq i (concat "**/" i))
+                                         ;; FIXME: '**/abc' should also
+                                         ;; match a directory with that
+                                         ;; name, but doesn't (git 2.25.1).
+                                         ;; Maybe we should replace
+                                         ;; such entries with two.
+                                         (if (string-match "/\\'" i)
+                                             ;; abc/ -> abc/**
+                                             (setq i (concat i "**"))))
+                                       i)))
+                                  extra-ignores)))))
+      (setq files
+            (delq nil
+                  (mapcar
+                   (lambda (file)
+                     (unless (or (member file submodules)
+                                 ;; Should occur for sparse directories
+                                 ;; only, when sparse index is enabled.
+                                 (directory-name-p file))
+                       (if project-files-relative-names
+                           file
+                         (concat default-directory file))))
+                   (split-string
+                    (with-output-to-string
+                      (apply #'vc-git-command standard-output 0 nil "ls-files" args))
+                    "\0" t))))
+      (when (project--vc-merge-submodules-p default-directory)
+        ;; Unfortunately, 'ls-files --recurse-submodules' conflicts with '-o'.
+        (let ((sub-files
+               (mapcar
+                (lambda (module)
+                  (when (file-directory-p module)
+                    (let ((sub-files
+                           (vc-git-project-list-files
+                            (concat default-directory module)
+                            extra-ignores)))
+                      (if project-files-relative-names
+                          (mapcar (lambda (file)
+                                    (concat (file-name-as-directory module) file))
+                                  sub-files)
+                        sub-files))))
+                submodules)))
+          (setq files
+                (apply #'nconc files sub-files))))
+      ;; 'git ls-files' returns duplicate entries for merge conflicts.
+      ;; XXX: Better solutions welcome, but this seems cheap enough.
+      (delete-consecutive-dups files))))
 
 (defun vc-hg-project-list-files (dir extra-ignores)
   (let* ((default-directory (expand-file-name (file-name-as-directory dir)))
@@ -830,38 +837,38 @@ See `project-vc-extra-root-markers' for the marker value format.")
     (file-missing nil)))
 
 (cl-defmethod project-ignores ((project (head vc)) dir)
-  (let* ((root (nth 2 project))
-         (backend (cadr project)))
-    (append
-     (when (and backend
-                (file-equal-p dir root))
-       (delq
-        nil
-        (mapcar
-         (lambda (entry)
-           (cond
-            ((eq ?! (aref entry 0))
-             ;; No support for whitelisting (yet).
-             nil)
-            ((string-match "\\(/\\)[^/]" entry)
-             ;; FIXME: This seems to be Git-specific.
-             ;; And / in the entry (start or even the middle) means
-             ;; the pattern is "rooted".  Or actually it is then
-             ;; relative to its respective .gitignore (of which there
-             ;; could be several), but we only support .gitignore at
-             ;; the root.
-             (if (= (match-beginning 0) 0)
-                 (replace-match "./" t t entry 1)
-               (concat "./" entry)))
-            (t entry)))
-         (condition-case nil
-             (vc-call-backend backend 'ignore-completion-table root)
-           (vc-not-supported () nil)))))
-     (project--value-in-dir 'project-vc-ignores root)
-     (mapcar
-      (lambda (dir)
-        (concat dir "/"))
-      vc-directory-exclusion-list))))
+  (project--vc-ignores dir
+                       (project-vc--backend project dir)
+                       (project--value-in-dir 'project-vc-ignores dir)))
+
+(defun project--vc-ignores (dir backend extra-ignores)
+  (append
+   (when backend
+     (delq
+      nil
+      (mapcar
+       (lambda (entry)
+         (cond
+          ((eq ?! (aref entry 0))
+           ;; No support for whitelisting (yet).
+           nil)
+          ((string-match "\\(/\\)[^/]" entry)
+           ;; FIXME: This seems to be Git-specific.
+           ;; And / in the entry (start or even the middle) means
+           ;; the pattern is "rooted".  Or actually it is then
+           ;; relative to its respective .gitignore (of which there
+           ;; could be several), but we only support .gitignore at
+           ;; the root.
+           (if (= (match-beginning 0) 0)
+               (replace-match "./" t t entry 1)
+             (concat "./" entry)))
+          (t entry)))
+       (vc-call-backend backend 'ignore-completion-table dir))))
+   extra-ignores
+   (mapcar
+    (lambda (dir)
+      (concat dir "/"))
+    vc-directory-exclusion-list)))
 
 (defun project-combine-directories (&rest lists-of-dirs)
   "Return a sorted and culled list of directory names.
@@ -890,7 +897,7 @@ DIRS must contain directory names."
 
 (defun project--value-in-dir (var dir)
   (with-temp-buffer
-    (setq default-directory dir)
+    (setq default-directory (file-name-as-directory dir))
     (let ((enable-local-variables :all))
       (hack-dir-local-variables))
     ;; Don't use `hack-local-variables-apply' to avoid setting modes.
@@ -2236,17 +2243,17 @@ If ALLOW-EMPTY is non-nil, it is possible to exit with no input."
          pr-dir)
     (cl-loop
      do (setq pr-dir
-            (let (history-add-new-input)
-              (completing-read (if prompt
-                                   ;; TODO: Use `format-prompt' (Emacs 28.1+)
-                                   (format "%s: " (substitute-command-keys prompt))
-                                 "Select project: ")
-                               choices
-                               (and predicate
-                                    (lambda (choice)
-                                      (or (equal choice dir-choice)
-                                          (funcall predicate choice))))
-                               t nil 'project--dir-history)))
+              (let (history-add-new-input)
+                (completing-read (if prompt
+                                     ;; TODO: Use `format-prompt' (Emacs 28.1+)
+                                     (format "%s: " (substitute-command-keys prompt))
+                                   "Select project: ")
+                                 choices
+                                 (and predicate
+                                      (lambda (choice)
+                                        (or (equal choice dir-choice)
+                                            (funcall predicate choice))))
+                                 t nil 'project--dir-history)))
      ;; If the user simply pressed RET, do this again until they don't.
      while (and (not allow-empty) (equal pr-dir "")))
     (if (equal pr-dir dir-choice)

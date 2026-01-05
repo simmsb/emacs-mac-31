@@ -1,6 +1,6 @@
 ;;; vc-dir.el --- Directory status display under VC  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007-2025 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2026 Free Software Foundation, Inc.
 
 ;; Author: Dan Nicolaescu <dann@ics.uci.edu>
 ;; Keywords: vc tools
@@ -400,7 +400,8 @@ That is, refreshing the VC-Dir buffer also hides `up-to-date' and
     (let ((branch-map (make-sparse-keymap)))
       (define-key map "b" branch-map)
       (define-key branch-map "c" #'vc-create-branch)
-      (define-key branch-map "l" #'vc-print-branch-log)
+      (define-key branch-map "l" #'vc-print-fileset-branch-log)
+      (define-key branch-map "L" #'vc-print-root-branch-log)
       (define-key branch-map "s" #'vc-switch-branch))
 
     (let ((regexp-map (make-sparse-keymap)))

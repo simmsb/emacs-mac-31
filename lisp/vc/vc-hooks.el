@@ -1,6 +1,6 @@
 ;;; vc-hooks.el --- Preloaded support for version control  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1992-1996, 1998-2025 Free Software Foundation, Inc.
+;; Copyright (C) 1992-1996, 1998-2026 Free Software Foundation, Inc.
 
 ;; Author: FSF (see vc.el for full credits)
 ;; Maintainer: emacs-devel@gnu.org
@@ -1004,7 +1004,8 @@ In the latter case, VC mode is deactivated for this buffer."
   :prefix t
   "a"   #'vc-update-change-log
   "b c" #'vc-create-branch
-  "b l" #'vc-print-branch-log
+  "b l" #'vc-print-fileset-branch-log
+  "b L" #'vc-print-root-branch-log
   "b s" #'vc-switch-branch
   "d"   #'vc-dir
   "g"   #'vc-annotate
@@ -1017,8 +1018,8 @@ In the latter case, VC mode is deactivated for this buffer."
   "O"   #'vc-log-outgoing
   "M L" #'vc-log-mergebase
   "M D" #'vc-diff-mergebase
-  "B =" #'vc-diff-outgoing-base
-  "B D" #'vc-root-diff-outgoing-base
+  "o =" #'vc-diff-outgoing-base
+  "o D" #'vc-root-diff-outgoing-base
   "m"   #'vc-merge
   "r"   #'vc-retrieve-tag
   "s"   #'vc-create-tag
@@ -1088,9 +1089,13 @@ other commands receive global bindings where they had none before."
     (define-key map [vc-create-tag]
       '(menu-item "Create Tag" vc-create-tag
 		  :help "Create version tag"))
-    (define-key map [vc-print-branch-log]
-      '(menu-item "Show Branch History..." vc-print-branch-log
+    (define-key map [vc-print-fileset-branch-log]
+      '(menu-item "Show Branch History..." vc-print-fileset-branch-log
 		  :help "List the change log for another branch"))
+    (define-key map [vc-print-root-branch-log]
+                '(menu-item "Show Top of the Tree Branch History..."
+                            vc-print-root-branch-log
+		            :help "List the change log for another branch"))
     (define-key map [vc-switch-branch]
       '(menu-item "Switch Branch..." vc-switch-branch
 		  :help "Switch to another branch"))
