@@ -4836,8 +4836,6 @@ It also runs the string through `yank-transform-functions'."
 		       (get-text-property 0 'yank-handler string)))
 	 (param (or (nth 1 handler) string))
 	 (opoint (point))
-	 (inhibit-read-only inhibit-read-only)
-         (inhibit-modification-hooks inhibit-modification-hooks)
 	 end)
 
     ;; FIXME: This throws away any yank-undo-function set by previous calls
@@ -4848,18 +4846,14 @@ It also runs the string through `yank-transform-functions'."
       (insert param))
     (setq end (point))
 
-    ;; Prevent read-only properties from interfering with the following
-    ;; text property changes, and inhibit further modification hook
-    ;; calls.
-    (setq inhibit-read-only t inhibit-modification-hooks t)
+    (with-silent-modifications
+      (unless (nth 2 handler)           ; NOEXCLUDE
+        (remove-yank-excluded-properties opoint end))
 
-    (unless (nth 2 handler) ; NOEXCLUDE
-      (remove-yank-excluded-properties opoint end))
-
-    ;; If last inserted char has properties, mark them as rear-nonsticky.
-    (if (and (> end opoint)
-	     (text-properties-at (1- end)))
-	(put-text-property (1- end) end 'rear-nonsticky t))
+      ;; If last inserted char has properties, mark them as rear-nonsticky.
+      (if (and (> end opoint)
+	       (text-properties-at (1- end)))
+	  (put-text-property (1- end) end 'rear-nonsticky t)))
 
     (if (eq yank-undo-function t)		   ; not set by FUNCTION
 	(setq yank-undo-function (nth 3 handler))) ; UNDO
@@ -7013,7 +7007,8 @@ nothing."
     (progress-reporter-do-update reporter value suffix)))
 
 (defun make-progress-reporter (message &optional min-value max-value
-				       current-value min-change min-time)
+				       current-value min-change min-time
+                                       context)
   "Return progress reporter object for use with `progress-reporter-update'.
 
 MESSAGE is shown in the echo area, with a status indicator
@@ -7040,13 +7035,18 @@ and/or MAX-VALUE are nil.
 Optional MIN-TIME specifies the minimum interval time between
 echo area updates (default is 0.2 seconds.)  If the OS is not
 capable of measuring fractions of seconds, this parameter is
-effectively rounded up."
+effectively rounded up.
+
+Optional CONTEXT can be nil or `async'.  It is consulted by back ends before
+showing progress updates.  For example, when CONTEXT is `async',
+the echo area progress reports may be muted if the echo area is busy."
   (when (string-match "[[:alnum:]]\\'" message)
     (setq message (concat message "...")))
   (unless min-time
     (setq min-time 0.2))
   (let ((reporter
 	 (cons (or min-value 0)
+	       ;; FIXME: Use defstruct.
 	       (vector (if (>= min-time 0.02)
 			   (float-time) nil)
 		       min-value
@@ -7055,7 +7055,9 @@ effectively rounded up."
 		       (if min-change (max (min min-change 50) 1) 1)
                        min-time
                        ;; SUFFIX
-                       nil))))
+                       nil
+                       ;;
+                       context))))
     ;; Force a call to `message' now.
     (progress-reporter-update reporter (or current-value min-value))
     reporter))
@@ -7065,6 +7067,10 @@ effectively rounded up."
 (defun progress-reporter-text (reporter)
   "Return REPORTER's text."
   (aref (cdr reporter) 3))
+
+(defun progress-reporter-context (reporter)
+  "Return REPORTER's context."
+  (aref (cdr reporter) 7))
 
 (defun progress-reporter-force-update (reporter &optional value new-message suffix)
   "Report progress of an operation in the echo area unconditionally.
@@ -7084,20 +7090,26 @@ NEW-MESSAGE, if non-nil, sets a new message for the reporter."
 (defun progress-reporter-echo-area (reporter state)
   "Progress reporter echo area update function.
 REPORTER and STATE are the same as in
-`progress-reporter-update-functions'."
+`progress-reporter-update-functions'.
+
+Do not emit a message if the reporter context is `async' and the echo
+area is busy with something else."
   (let ((text (progress-reporter-text reporter)))
-    (pcase state
-      ((pred floatp)
-       (if (plusp state)
-           (message "%s%d%%" text (* state 100.0))
-         (message "%s" text)))
-      ((pred integerp)
-       (let ((message-log-max nil)
-             (pulse-char (aref progress-reporter--pulse-characters
-                               state)))
-         (message "%s %s" text pulse-char)))
-      ('done
-       (message "%sdone" text)))))
+    (unless (and (eq (progress-reporter-context reporter) 'async)
+                 (current-message)
+                 (not (string-prefix-p text (current-message))))
+      (pcase state
+        ((pred floatp)
+         (if (plusp state)
+             (message "%s%d%%" text (* state 100.0))
+           (message "%s" text)))
+        ((pred integerp)
+         (let ((message-log-max nil)
+               (pulse-char (aref progress-reporter--pulse-characters
+                                 state)))
+           (message "%s %s" text pulse-char)))
+        ('done
+         (message "%sdone" text))))))
 
 (defun progress-reporter-do-update (reporter value &optional suffix)
   (let* ((parameters      (cdr reporter))
