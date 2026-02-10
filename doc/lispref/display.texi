@@ -2243,6 +2243,9 @@ means hide the excess parts of @var{string} with a @code{display} text
 property (@pxref{Display Property}) showing the ellipsis, instead of
 actually truncating the string.
 
+See also the function @code{truncate-string-pixelwise} for pixel-level
+resolution.
+
 @example
 @group
 (truncate-string-to-width "\tab\t" 12 4)
@@ -2440,6 +2443,37 @@ non-@code{nil}, use any face remappings (@pxref{Face Remapping}) from
 that buffer when computing the width of @var{string}.
 @end defun
 
+@defun truncate-string-pixelwise string max-pixels &optional buffer ellipsis ellipsis-pixels
+This is a convenience function that uses @code{window-text-pixel-size}
+to truncate @var{string} to @var{max-pixels} pixels.  Caveat: if you
+call this function to measure the width of a string with embedded
+newlines, it will then return the width of the widest substring that
+does not include newlines.  The meaning of this result is the widest
+line taken by the string if inserted into a buffer.  If @var{buffer} is
+non-@code{nil}, use any face remappings (@pxref{Face Remapping}) from
+that buffer when computing the width of @var{string}.
+
+If @var{ellipsis} is non-@code{nil}, it should be a string which will
+replace the end of @var{string} when it is truncated.  In this case,
+more characters will be removed from @var{string} to free enough space
+for @var{ellipsis} to fit within @var{max-pixels} pixels.  However, if
+the pixel width of @var{string} is less than the pixel width of
+@var{ellipsis}, @var{ellipsis} will not be appended to the result.  If
+@var{ellipsis} is non-@code{nil} and not a string, it stands for the
+value returned by the function @code{truncate-string-ellipsis},
+described above.
+
+If @var{ellipsis-pixels} is non-@code{nil} and @var{ellipsis} is
+non-@code{nil}, it should be the number of pixels of @var{ellipsis} that
+you should precompute using @code{string-pixel-width}, specifying the
+same buffer.  This is useful to avoid the cost of recomputing this value
+repeatedly when you have many strings to truncate using the same
+ellipsis string.
+
+See also the function @code{truncate-string-to-width} for
+character-level resolution.
+@end defun
+
 @defun line-pixel-height
 This function returns the height in pixels of the line at point in the
 selected window.  The value includes the line spacing of the line
@@ -2582,10 +2616,13 @@ the spacing relative to the frame's default line height.
 
 @vindex line-spacing
   You can specify the line spacing for all lines in a buffer via the
-buffer-local @code{line-spacing} variable.  An integer specifies
-the number of pixels put below lines.  A floating-point number
-specifies the spacing relative to the default frame line height.  This
-overrides line spacings specified for the frame.
+buffer-local @code{line-spacing} variable.  An integer specifies the
+number of pixels put below lines.  A floating-point number specifies the
+spacing relative to the default frame line height.  A cons cell of
+integers or floating-point numbers specifies the spacing put above and
+below the line, allowing for vertically centering text.  This overrides
+line spacings specified for the frame.
+
 
 @kindex line-spacing @r{(text property)}
   Finally, a newline can have a @code{line-spacing} text or overlay
@@ -7412,7 +7449,7 @@ period much shorter than @code{image-cache-eviction-delay} (see
 below), you can opt to flush unused images yourself, instead of
 waiting for Emacs to do it automatically.
 
-@defun clear-image-cache &optional filter
+@defun clear-image-cache &optional filter animation-filter
 This function clears an image cache, removing all the images stored in
 it.  If @var{filter} is omitted or @code{nil}, it clears the cache for
 the selected frame.  If @var{filter} is a frame, it clears the cache
@@ -7420,6 +7457,16 @@ for that frame.  If @var{filter} is @code{t}, all image caches are
 cleared.  Otherwise, @var{filter} is taken to be a file name, and all
 images associated with that file name are removed from all image
 caches.
+
+This function also clears the image animation cache, which is a separate
+cache that Emacs maintains for animated multi-frame images
+(@pxref{Multi-Frame Images}).  If @var{animation-filter} is omitted or
+@code{nil}, it clears the animation cache in addition to the image
+caches selected by @var{filter}.  Otherwise, this function removes the
+image with specification @code{eq} to @var{animation-filter} only from
+the animation cache, and does not clear any image caches.  This can help
+reduce memory usage after an animation is stopped but the image is still
+displayed.
 @end defun
 
 If an image in the image cache has not been displayed for a specified

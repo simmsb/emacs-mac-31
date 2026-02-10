@@ -82,6 +82,13 @@ other directory on your system.  You can also invoke the
 
 * Changes in Emacs 31.1
 
++++
+** 'line-spacing' now supports specifying spacing above the line.
+Previously, only spacing below the line could be specified.  The user
+option can now be set to a cons cell to specify spacing both above and
+below the line, which allows for vertically centering text.
+
++++
 ** 'prettify-symbols-mode' attempts to ignore undisplayable characters.
 Previously, such characters would be rendered as, e.g., white boxes.
 
@@ -409,11 +416,20 @@ for which you can use '(category . tex-shell)'.
 
 +++
 *** New user option 'split-window-preferred-direction'.
-Users can now choose in which direction Emacs tries to split first:
-vertically or horizontally.  The new default is to prefer to split
-horizontally if the frame is landscape and vertically if it is portrait.
-You can customize this option to 'vertical' to restore Emacs's old
-behavior of always preferring vertical splits.
+Functions called by 'display-buffer' split the selected window when they
+need to create a new window.  A window can be split either vertically,
+one below the other, or horizontally, side by side.  This new option
+determines which direction will be tried first, when both directions are
+possible according to the values of 'split-width-threshold' and
+'split-height-threshold'.  The default value is 'longest', which means
+to prefer to split horizontally if the window's frame is a "landscape"
+frame, and vertically if it is a "portrait" frame.  (A frame is
+considered to be "portrait" if its vertical dimension in pixels is
+greater or equal to its horizontal dimension, otherwise it's considered
+to be "landscape".)  Previous versions of Emacs always tried to split
+vertically first, so to get previous behavior, you can customize this
+option to 'vertical'.  The value 'horizontal' always prefers the
+horizontal split.
 
 +++
 *** New argument INDIRECT for 'get-buffer-window-list'.
@@ -507,13 +523,17 @@ These are useful if you need to detect a cloned frame or undeleted frame
 in hooks like 'after-make-frame-functions' and
 'server-after-make-frame-hook'.
 
----
 *** Frames now have unique ids and the new function 'frame-id'.
 Each non-tooltip frame is assigned a unique integer id.  This allows you
 to unambiguously identify frames even if they share the same name or
 title.  When 'undelete-frame-mode' is enabled, each deleted frame's id
 is stored for resurrection.  The function 'frame-id' returns a frame's
 id (in C, use the frame struct member 'id').
+
+*** New commands 'select-frame-by-id', 'undelete-frame-by-id'.
+The command 'select-frame-by-id' selects a frame by ID and undeletes it
+if deleted.  The command 'undelete-frame-by-id' undeletes a frame by its
+ID.  When called interactively, both functions prompt for an ID.
 
 ** Mode Line
 
@@ -1211,6 +1231,11 @@ If the value of 'project-mode-line' is 'non-remote', project name and
 the Project menu will be shown on the mode line only for projects with
 local files.
 
+*** The "VC-aware" project backend caches the current project and its name.
+The duration for which the values are cached depends on whether it's
+called from 'non-essential' context, and it determined by variables
+'project-vc-cache-timeout' and 'project-vc-non-essential-cache-timeout'.
+
 ** Help
 
 +++
@@ -1338,10 +1363,10 @@ Northern Iroquoian language family: 'mohawk-postfix' (Mohawk
 [Kanien’kéha / Kanyen’kéha / Onkwehonwehnéha]), 'oneida-postfix' (Oneida
 [Onʌyote’a·ká· / Onyota’a:ká: / Ukwehuwehnéha]), 'cayuga-postfix'
 (Cayuga [Gayogo̱ho:nǫhnéha:ˀ]), 'onondaga-postfix' (Onondaga
-[Onųdaʔgegáʔ]), and 'seneca-postfix' (Seneca [Onödowá’ga:’]).
-Additionally, there is a general-purpose 'haudenosaunee-postfix' input
-method to facilitate writing in the orthographies of the five languages
-simultaneously.
+[Onųdaʔgegáʔ]), 'seneca-postfix' (Seneca [Onödowá’ga:’]), and
+'tuscarora-postfix' (Tuscarora [Skarù·ręʔ]).  Additionally, there is a
+general-purpose 'haudenosaunee-postfix' input method to facilitate
+writing in the orthographies of the six languages simultaneously.
 
 ---
 *** New input methods for languages based on Burmese.
@@ -1895,7 +1920,7 @@ is non-nil, this suffix is fontified using 'font-lock-type-face'.
 
 ---
 *** New user option 'yaml-ts-mode-yamllint-options'.
-Additional options for 'yamllint' the command used for Flymake's YAML
+Additional options for 'yamllint', the command used for Flymake's YAML
 support.
 
 ** EIEIO
@@ -2267,6 +2292,14 @@ response.
 It is believed to no longer be useful as a method to fight spam.  The
 'spam-use-hashcash' hook is now obsolete and has no effect.
 
+---
+*** Add 'M-i' keybinding as the symbolic prefix in the group keymap.
+The symbolic prefix is another kind of universal prefix that is used in
+Gnus, see "(gnus) Symbolic Prefixes" in the Gnus manual.
+
+---
+*** Sorting selected groups is now possible with 'gnus-topic-mode'.
+
 ** Sieve
 
 +++
@@ -2572,6 +2605,11 @@ for docstrings where symbols 'nil' and 't' are in quotes.
 In most cases, having it enabled leads to a large amount of false
 positives.
 
+---
+*** New function 'checkdoc-batch'.
+It checks the buffer in batch mode, prints all found errors
+and signals the first found error.
+
 *** New file-local variable 'lisp-indent-local-overrides'.
 This variable can be used to locally override the indent specification
 of symbols.
@@ -2764,14 +2802,18 @@ one as before.  This makes them different from 'vc-diff' and
 *** 'diff-apply-hunk' now supports creating and deleting files.
 
 +++
-*** 'diff-apply-hunk' and 'diff-apply-buffer' now consider the region.
-If the region is active, these commands now apply all hunks that the
-region overlaps.  Otherwise, they have their existing behavior.
+*** Diff mode's application and killing commands now consider the region.
+If the region is active, 'diff-apply-hunk', 'diff-apply-buffer' and
+'diff-hunk-kill' now apply or kill all hunks that the region overlaps.
+Otherwise, they have their existing behavior.
 
 +++
 *** 'diff-apply-buffer' can reverse-apply.
 With a prefix argument, it now reverse-applies hunks.
 This matches the existing prefix argument to 'diff-apply-hunk'.
+
+---
+*** 's' is now bound to 'diff-split-hunk' in read-only Diff mode buffers.
 
 ** Ediff
 
@@ -2984,6 +3026,12 @@ When point is between indentation, the command
 deletes the text in the region and deactivates the mark if Transient
 Mark mode is enabled, the mark is active, and prefix argument is 1.
 
+---
+*** 'python-eldoc-function-timeout' now accepts floating-point numbers.
+To allow for finer-grained adjustment of timeout for
+'python-eldoc-function', 'python-eldoc-function-timeout' now accepts
+floating-point numbers as well as integers.
+
 ** Tmm Menubar
 
 ---
@@ -3105,7 +3153,7 @@ When the argument is non-nil, the function switches to a buffer visiting
 the directory into which the repository was cloned.
 
 +++
-*** 'vc-revert' is now bound to '@' in VC-Dir.
+*** 'vc-revert' is now bound to '@' in VC Directory.
 
 +++
 *** 'vc-revert' is now additionally bound to 'C-x v @'.
@@ -3239,12 +3287,15 @@ include were committed and will be pushed.
 current VC fileset.
 
 +++
-*** New commands to report diffs of outstanding changes.
-'C-x v o =' ('vc-diff-outgoing-base') and 'C-x v o D'
+*** New commands to report information about outstanding changes.
+'C-x v T =' ('vc-diff-outgoing-base') and 'C-x v T D'
 ('vc-root-diff-outgoing-base') report diffs of changes since the merge
 base with the remote branch, including uncommitted changes.
-They are useful to view all outstanding (unmerged, unpushed) changes on
-the current branch.
+'C-x v T l' ('vc-log-outgoing-base') and 'C-x v T L'
+('vc-root-log-outgoing-base') show the corresponding revision logs.
+These are useful to view all outstanding (unmerged, unpushed) changes on
+the current branch.  They are also available as 'T =', 'T D', 'T l' and
+'T L' in VC Directory buffers.
 
 +++
 *** New user option 'vc-use-incoming-outgoing-prefixes'.
@@ -3357,6 +3408,13 @@ This command is Diff mode's specialized 'narrow-to-region'.
 'narrow-to-region' has long been disabled by default, so for
 consistency, 'diff-restrict-view' is now too.
 To enable it again, use 'M-x enable-command'.
+
+---
+*** 'C-x v !' has its own input history.
+
+---
+*** 'C-u C-x v +' and 'C-u C-x v P' for Git have an input history.
+This was already in place for Mercurial.
 
 ** Package
 
@@ -3538,6 +3596,10 @@ Meant to be given a global binding convenient to the user.  Example:
 *** 'speedbar-easymenu-definition-trailer' is now a function.
 
 ** Icomplete
+
+*** New key 'M-j' for 'icomplete-mode' and 'icomplete-vertical-mode'.
+Like 'M-j' in 'fido-mode', it can exit the minibuffer with a selected
+candidate even when 'icomplete-show-matches-on-no-input' is non-nil.
 
 *** New user options for 'icomplete-vertical-mode'.
 New user options have been added to enhance 'icomplete-vertical-mode':
@@ -3781,6 +3843,34 @@ The user options 'calendar-mark-holidays-flag' and
 'calendar-mark-diary-entries-flag' are not modified anymore when
 changing the marking state in the calendar buffer.
 
+*** New library for iCalendar data.
+A new library has been added to the calendar for handling iCalendar
+(RFC5545) data.  The library is designed for reuse in other parts of
+Emacs and in third-party packages.  Package authors can find the new
+library in the Emacs distribution under lisp/calendar/icalendar-*.el.
+
+Most of the functions and variables in the older icalendar.el have been
+marked obsolete and now suggest appropriate replacements from the new
+library.  diary-icalendar.el provides replacements for the diary-related
+features from icalendar.el; see below.
+
+** Diary
+
+*** New user option 'diary-date-insertion-form'.
+This user option determines how dates are inserted into the diary by
+Lisp functions.  Its value is a pseudo-pattern of the same type as in
+'diary-date-forms'.  It is used by 'diary-insert-entry' when inserting
+entries from the calendar, or when importing them from other formats.
+
++++
+*** New library 'diary-icalendar'.
+This library reimplements features previously provided by icalendar.el:
+import from iCalendar format to the diary, and export from the diary to
+iCalendar.  It also adds the ability to include iCalendar files in the
+diary and display and mark their contents in the calendar without
+importing them to the diary file.  The library uses the new iCalendar
+library (see above) and makes diary import and export more customizable.
+
 ** Calc
 
 *** New user option 'calc-string-maximum-character'.
@@ -3806,6 +3896,11 @@ can be used to specify a key for the sort order, which is updated upon
 each refresh.  The sort direction can be controlled by using a cons cell
 of a format string and a boolean.  Alternatively, a sorting function can
 be provided directly.
+
+---
+*** New user option 'display-time-help-echo-format'.
+This option controls the format of the help echo when hovering over the
+time.
 
 ** Fill
 
@@ -3947,6 +4042,11 @@ value.  Previously, only 'hi-lock-face-buffer' supported this.
 
 
 * New Modes and Packages in Emacs 31.1
+
+** New major mode 'icalendar-mode'.
+A major mode for displaying and editing iCalendar (RFC5545) data.  This
+mode handles line unfolding and fontification, including highlighting
+syntax errors in invalid data.
 
 ** New minor mode 'delete-trailing-whitespace-mode'.
 A simple buffer-local mode that runs 'delete-trailing-whitespace'
@@ -4154,6 +4254,19 @@ display time or even cause Emacs to hang trying to display such a face.
 Affected APIs include 'defface', 'set-face-attribute', their callers,
 and other similar functions.
 
+---
+** 'help-setup-xref' now re-enables the major mode of the Help buffer.
+As a result, in many cases the buffer will be read-only afterwards.
+This should not cause any trouble as long as the actual buffer
+modification takes place inside 'with-help-window' or
+'with-output-to-temp-buffer' after the call to 'help-setup-xref'.
+
+---
+** Xref commands don't automatically suggest to visit a tags table anymore.
+When no tags file is loaded, symbol completion just won't provide any
+suggestions.  So the 'M-?' command now works without a tags table.  And
+the 'M-.' will show a message describing the several built-in options
+that will provide an Xref backend when used.
 
 * Lisp Changes in Emacs 31.1
 
@@ -4302,11 +4415,13 @@ and 'dbus-call-method-asynchronously' to allow the user to interactively
 authorize the invoked D-Bus method (for example via polkit).
 
 +++
-*** New D-Bus functions to support systemd inhibitor locks.
-The functions 'dbus-make-inhibitor-lock', 'dbus-close-inhibitor-lock'
-and 'dbus-registered-inhibitor-locks' implement acquiring and releasing
-systemd inhibitor locks.  See the Info node "(dbus) Inhibitor Locks" for
-details.
+*** Support D-Bus file descriptor manipulation.
+A new ':keep-fd' parameter has been added to 'dbus-call-method' and
+'dbus-call-method-asynchronously' to instruct D-Bus to keep a file
+descriptor, which has been returned by a method call, internally.  The
+functions 'dbus--fd-open', 'dbus--fd-close' and 'dbus--registered-fds'
+implement managing these file descriptors.  See the Info node "(dbus)
+File Descriptors" for details.
 
 ** The customization group 'wp' has been removed.
 It has been obsolete since Emacs 26.1.  Use the group 'text' instead.
@@ -4315,6 +4430,14 @@ It has been obsolete since Emacs 26.1.  Use the group 'text' instead.
 ** New optional BUFFER argument for 'string-pixel-width'.
 If supplied, 'string-pixel-width' will use any face remappings from
 BUFFER when computing the string's width.
+
++++
+** New function 'truncate-string-pixelwise'.
+This function truncates a string to the specified maximum number of
+pixels rather than by characters, as in 'truncate-string-to-width', and
+respects face remappings if BUFFER is specified.  You can also specify
+an optional ellipsis string to append, similar to
+'truncate-string-to-width'.
 
 ---
 ** New macro 'with-work-buffer'.
@@ -4410,6 +4533,13 @@ depending on the language under point.
 Binding 'inhibit-message' to a non-nil value will now suppress both
 the display of messages and the clearing of the echo area, such as
 caused by calling 'message' with a nil argument.
+
+---
+** 'minibuffer-message' no longer blocks while displaying message.
+'minibuffer-message' now uses a timer to clear the message printed to
+the minibuffer, instead of waiting with 'sit-for' and then clearing it.
+This makes 'minibuffer-message' usable in Lisp programs which want to
+print a message and then continue to perform work.
 
 ** Special Events
 

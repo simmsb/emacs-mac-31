@@ -1148,8 +1148,8 @@ side-effects, and the argument LIST is not modified."
                              (make-symbol "f")))
                      (r (make-symbol "r")))
                 `(let (,@(and f `((,f ,pred)))
-                       (,tail ,list)
-                       (,r nil))
+                       (,r nil)
+                       (,tail ,list))
                    (while (and ,tail (funcall ,(or f pred) (car ,tail)))
                      (push (car ,tail) ,r)
                      (setq ,tail (cdr ,tail)))
@@ -2027,8 +2027,9 @@ and `event-end' functions."
         (let* ((spacing (when (display-graphic-p frame)
                           (or (with-current-buffer
                                   (window-buffer (frame-selected-window frame))
-                                line-spacing)
-                              (frame-parameter frame 'line-spacing)))))
+                                (total-line-spacing))
+                              (total-line-spacing
+                               (frame-parameter frame 'line-spacing))))))
 	  (cond ((floatp spacing)
 	         (setq spacing (truncate (* spacing
 					    (frame-char-height frame)))))
@@ -5444,9 +5445,11 @@ If BODY finishes, `while-no-input' returns whatever value BODY produced."
             (t val)))))))
 
 (defmacro condition-case-unless-debug (var bodyform &rest handlers)
-  "Like `condition-case' except that it does not prevent debugging.
-More specifically if `debug-on-error' is set then the debugger will be invoked
-even if this catches the signal."
+  "Like `condition-case', except that it does not prevent debugging.
+More specifically, if `debug-on-error' is set, then the debugger will
+be invoked even if some handler catches the signal.
+Note that this doesn't prevent the handler from executing, it just
+causes the debugger to be called before running the handler."
   (declare (debug condition-case) (indent 2))
   `(condition-case ,var
        ,bodyform
@@ -7935,5 +7938,13 @@ and return the value found in PLACE instead."
             `(progn
                ,(funcall setter val)
                ,val)))))
+
+(defun total-line-spacing (&optional line-spacing-param)
+  "Return numeric value of line-spacing, summing it if it's a cons.
+   When LINE-SPACING-PARAM is provided, calculate from it instead."
+  (let ((v (or line-spacing-param line-spacing)))
+    (pcase v
+      ((pred numberp) v)
+      (`(,above . ,below) (+ above below)))))
 
 ;;; subr.el ends here
