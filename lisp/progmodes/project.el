@@ -463,9 +463,9 @@ the buffer's value of `default-directory'."
   (let ((root (expand-file-name (file-name-as-directory (project-root project))))
         bufs)
     (dolist (buf (buffer-list))
-      (when (string-prefix-p root (expand-file-name
-                                   (buffer-local-value 'default-directory buf)))
-        (push buf bufs)))
+      (let ((dir (buffer-local-value 'default-directory buf)))
+        (when (and dir (string-prefix-p root (expand-file-name dir)))
+          (push buf bufs))))
     (nreverse bufs)))
 
 (defgroup project-vc nil
@@ -598,15 +598,17 @@ See `project-vc-extra-root-markers' for the marker value format.")
   "Number of seconds to cache a value in VC-aware project methods.
 It can be nil, a number, or an alist where
 the key is a predicate, and the value is a number.
+A predicate function should take a directory string and if it returns
+non-nil, the corresponding value will be used as the timeout.
 Set to nil to disable time-based expiration.")
 
 (defvar project-vc-non-essential-cache-timeout '((file-remote-p . nil)
                                                  (always . 300))
   "Number of seconds to cache non-essential information.
-Unlike `project-vc-cache-timeout' intended for interactive
-commands, this variable has much more aggressive caching,
-and is intended for \"background\" things like `project-mode-line'
-indicators and `project-uniquify-dirname-transform'.
+The format of the value is same as `project-vc-cache-timeout', but while
+the former is intended for interactive commands, this variable uses
+higher numbers, intended for \"background\" things like
+`project-mode-line' indicators and `project-uniquify-dirname-transform'.
 It is used when `non-essential' is non-nil.")
 
 (defun project--get-cached (dir key)
@@ -696,6 +698,7 @@ in the `project-current' call, the timeout is determined by
            vc-handled-backends))
          project)
     (while (and
+            root
             (eq backend 'Git)
             (project--vc-merge-submodules-p root)
             (project--submodule-p root))
@@ -782,18 +785,20 @@ in the `project-current' call, the timeout is determined by
       ;; Need newer Git to use negative pathspec like we do".
       (vc-default-project-list-files 'Git dir extra-ignores)
     (let* ((default-directory (expand-file-name (file-name-as-directory dir)))
-           (args '("-z" "-c" "--exclude-standard"))
            (vc-git-use-literal-pathspecs nil)
            (include-untracked (project--value-in-dir
                                'project-vc-include-untracked
                                dir))
            (submodules (project--git-submodules))
-           files)
-      (setq args (append args
+           (gitver (vc-git--program-version))
+           (dedup (and (version<= "2.31" gitver) '("--deduplicate")))
+           (args (append '("-z" "-c" "--exclude-standard")
                          (and (<= 31 emacs-major-version)
-                              (version<= "2.35" (vc-git--program-version))
+                              (version<= "2.35" gitver)
                               '("--sparse"))
-                         (and include-untracked '("-o"))))
+                         (and include-untracked '("-o"))
+                         dedup))
+           files)
       (when extra-ignores
         (setq args (append args
                            (cons "--"
@@ -801,13 +806,13 @@ in the `project-current' call, the timeout is determined by
                                   (lambda (i)
                                     (format
                                      ":(exclude,glob,top)%s"
-                                     (if (string-match "\\*\\*" i)
+                                     (if (string-match-p "\\*\\*" i)
                                          ;; Looks like pathspec glob
                                          ;; format already.
                                          i
-                                       (if (string-match "\\./" i)
+                                       (if (string-prefix-p "./" i)
                                            ;; ./abc -> abc
-                                           (setq i (substring i 2))
+                                           (substring i 2)
                                          ;; abc -> **/abc
                                          (setq i (concat "**/" i))
                                          ;; FIXME: '**/abc' should also
@@ -815,10 +820,10 @@ in the `project-current' call, the timeout is determined by
                                          ;; name, but doesn't (git 2.25.1).
                                          ;; Maybe we should replace
                                          ;; such entries with two.
-                                         (if (string-match "/\\'" i)
+                                         (if (string-suffix-p "/" i)
                                              ;; abc/ -> abc/**
-                                             (setq i (concat i "**"))))
-                                       i)))
+                                             (concat i "**")
+                                           i)))))
                                   extra-ignores)))))
       (setq files
             (delq nil
@@ -854,8 +859,7 @@ in the `project-current' call, the timeout is determined by
           (setq files
                 (apply #'nconc files sub-files))))
       ;; 'git ls-files' returns duplicate entries for merge conflicts.
-      ;; XXX: Better solutions welcome, but this seems cheap enough.
-      (delete-consecutive-dups files))))
+      (if dedup files (delete-consecutive-dups files)))))
 
 (defun vc-hg-project-list-files (dir extra-ignores)
   (let* ((default-directory (expand-file-name (file-name-as-directory dir)))
@@ -904,7 +908,7 @@ in the `project-current' call, the timeout is determined by
                        (project--value-in-dir 'project-vc-ignores dir)))
 
 (defun project--vc-ignores (dir backend extra-ignores)
-  (require 'vc)
+  (require 'vc)             ; Can be removed when we require Emacs 31.1.
   (append
    (when backend
      (delq
@@ -1859,10 +1863,10 @@ Return non-nil if PROJECT is not a remote project."
          (predicate
           (lambda (buffer)
             ;; BUFFER is an entry (BUF-NAME . BUF-OBJ) of Vbuffer_alist.
-            (and (memq (cdr buffer) buffers)
-                 (not
-                  (project--buffer-check
-                   buffer project-ignore-buffer-conditions)))))
+            (setq buffer (cdr buffer))
+            (and (memq buffer buffers)
+                 (not (project--buffer-check
+                       buffer project-ignore-buffer-conditions)))))
          (completion-ignore-case read-buffer-completion-ignore-case)
          (buffers-alist
           (if (and (fboundp 'uniquify-get-unique-names)
@@ -2495,15 +2499,17 @@ Return the number of detected projects."
   "Helper function used by `project-forget-zombie-projects'.
 PREDICATE can be a function with 1 argument which determines which
 projects should be deleted."
-  (dolist (proj (project-known-project-roots))
-    (when (and (funcall (or predicate #'identity) proj)
-               (condition-case-unless-debug nil
-                   (not (file-exists-p proj))
-                 (file-error
-                  (yes-or-no-p
-                   (format "Forget unreachable project `%s'? "
-                           proj)))))
-      (project-forget-project proj))))
+  (defvar tramp-error-show-message-timeout)
+  (let (tramp-error-show-message-timeout)
+    (dolist (proj (project-known-project-roots))
+      (when (and (funcall (or predicate #'identity) proj)
+                 (condition-case-unless-debug nil
+                     (not (file-exists-p proj))
+                   (file-error
+                    (yes-or-no-p
+                     (format "Forget unreachable project `%s'? "
+                             proj)))))
+        (project-forget-project proj)))))
 
 (defun project-forget-zombie-projects (&optional interactive)
   "Forget all known projects that don't exist any more."
