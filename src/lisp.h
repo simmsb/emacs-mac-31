@@ -4231,7 +4231,6 @@ extern ptrdiff_t multibyte_chars_in_text (const unsigned char *, ptrdiff_t);
 extern void syms_of_character (void);
 
 /* Defined in charset.c.  */
-extern void mark_charset (void);
 extern void init_charset (void);
 extern void init_charset_once (void);
 extern void syms_of_charset (void);
@@ -4395,6 +4394,8 @@ extern void message1 (const char *);
 extern void message1_nolog (const char *);
 extern void message3 (Lisp_Object);
 extern void message3_nolog (Lisp_Object);
+extern void message3_frame (Lisp_Object, struct frame *);
+extern void message3_frame_nolog (Lisp_Object, struct frame *);
 extern void message_dolog (const char *, ptrdiff_t, bool, bool);
 extern void message_with_string (const char *, Lisp_Object, bool);
 extern void message_log_maybe_newline (void);
@@ -5170,7 +5171,7 @@ extern void *w32_daemon_event;
 /* True if handling a fatal error already.  */
 extern bool fatal_error_in_progress;
 
-/* True means don't do use window-system-specific display code.  */
+/* True means don't use window-system-specific display code.  */
 extern bool inhibit_window_system;
 /* True means that a filter or a sentinel is running.  */
 extern bool running_asynch_code;
@@ -5283,7 +5284,7 @@ maybe_disable_address_randomization (int argc, char **argv)
 extern int emacs_exec_file (char const *, char *const *, char *const *);
 extern void init_standard_fds (void);
 extern char *emacs_get_current_dir_name (void);
-extern void stuff_char (char c);
+extern int stuff_char (char c);
 extern void init_foreground_group (void);
 extern void sys_subshell (void);
 extern void sys_suspend (void);

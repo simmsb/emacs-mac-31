@@ -141,6 +141,7 @@ This macro interprets the following keywords:
             (package-user-dir package-test-user-dir)
             (package-gnupghome-dir (expand-file-name "gnupg" package-user-dir))
             (package-archives `(("gnu" . ,(or ,location package-test-data-dir))))
+            (package-review-policy nil)
             (default-directory package-test-file-dir)
             abbreviated-home-dir
             package--initialized
@@ -522,8 +523,7 @@ but with a different end of line convention (bug#48137)."
           (goto-char (point-min))
           (should (re-search-forward re nil t)))))))
 
-
-
+
 ;;; Package Menu tests
 
 (defmacro with-package-menu-test (&rest body)
@@ -661,10 +661,9 @@ but with a different end of line convention (bug#48137)."
         (revert-buffer)
         (should (package-installed-p 'simple-single '(1 4)))))))
 
-;; Fails in batch: signal
 (ert-deftest package-test-update-archives-async ()
   "Test updating package archives asynchronously."
-  :tags '(:expensive-test :nobatch)
+  :tags '(:expensive-test)
   (let* ((package-menu-async t)
          (default-directory package-test-data-dir)
          (python-interpreter (seq-some #'executable-find '("python" "python3" "python2")))
@@ -895,8 +894,7 @@ but with a different end of line convention (bug#48137)."
 		nil t))))))
 
 
-
-
+
 ;;; Tests for package-x features.
 
 (with-suppressed-warnings ((obsolete package-x))

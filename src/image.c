@@ -2198,6 +2198,14 @@ four_corners_best (Emacs_Pix_Context pimg, int *corners,
   RGB_PIXEL_COLOR best UNINIT;
   int i, best_count;
 
+#ifdef USE_CAIRO
+  /* Sometimes the Cairo codepath calls this function *after* the image
+     sizes have been modified by native-transforms, so the pimg
+     dimensions don't match WIDTH and HEIGHT.  */
+  width = pimg->width;
+  height = pimg->height;
+#endif
+
   if (corners && corners[BOT_CORNER] >= 0)
     {
       /* Get the colors at the corner_pixels of pimg.  */
@@ -12031,7 +12039,7 @@ webp_load (struct frame *f, struct image *img)
 	{
 	  /* Open the WebP file.  */
 	  specified_file = image_spec_value (img->spec, QCfile, NULL);
-	  contents_cpy = (uint8_t *) slurp_image (f, img, specified_file,
+	  contents_cpy = (uint8_t *) slurp_image (f, specified_file,
 						  &size, "WebP");
 	  if (!contents_cpy)
 	    goto cleanup;
@@ -12041,10 +12049,10 @@ webp_load (struct frame *f, struct image *img)
 	{
 #ifdef HAVE_MACGUI
           specified_data = mac_preprocess_image_for_2x_data (f, img,
-                                                             specified_data, false);
+							 specified_data, false);
 #endif
-	  contents = SDATA (specified_data);
-	  size = SBYTES (specified_data);
+          contents = SDATA (specified_data);
+          size = SBYTES (specified_data);
 	}
       else
 	{
@@ -12320,9 +12328,6 @@ webp_load (struct frame *f, struct image *img)
 
   success = true;
  cleanup:
-#ifdef HAVE_MACGUI
-  mac_postprocess_image_for_2x (img);
-#endif
   WebPFree (decoded_cpy);
   xfree (contents_cpy);
   return success;
@@ -14614,8 +14619,8 @@ The list of capabilities can include one or more of the following:
   if (FRAME_WINDOW_P (f))
     {
 #ifdef HAVE_NATIVE_TRANSFORMS
-# if defined HAVE_IMAGEMAGICK || defined (USE_CAIRO) || defined (HAVE_MACGUI)  || defined (HAVE_NS) \
-  || defined (HAVE_HAIKU) | defined HAVE_ANDROID
+# if defined HAVE_IMAGEMAGICK || defined (USE_CAIRO) || defined (HAVE_MACGUI) || defined (HAVE_NS) \
+  || defined (HAVE_HAIKU) || defined HAVE_ANDROID
       return list2 (Qscale, Qrotate90);
 # elif defined (HAVE_X_WINDOWS) && defined (HAVE_XRENDER)
       if (FRAME_DISPLAY_INFO (f)->xrender_supported_p)
@@ -14708,7 +14713,7 @@ static struct image_type const image_types[] =
 #endif
 #ifdef HAVE_IMAGEMAGICK
  { SYMBOL_INDEX (Qimagemagick), imagemagick_image_p, imagemagick_load,
-   imagemagick_clear_image },
+   image_clear_image },
 #elif defined HAVE_MACGUI
  { SYMBOL_INDEX (Qimagemagick), imagemagick_image_p, image_io_load,
    image_clear_image },

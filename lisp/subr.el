@@ -160,6 +160,10 @@ of previous VARs.
       (push `(set-default ',(pop args) ,(pop args)) exps))
     `(progn . ,(nreverse exps))))
 
+(defun set-local (variable value)
+  "Make VARIABLE buffer local and set it to VALUE."
+  (set (make-local-variable variable) value))
+
 (defmacro setq-local (&rest pairs)
   "Make each VARIABLE local to current buffer and set it to corresponding VALUE.
 
@@ -181,7 +185,7 @@ In some corner cases you may need to resort to
 \(fn [VARIABLE VALUE]...)"
   (declare (debug setq))
   (unless (evenp (length pairs))
-    (error "PAIRS must have an even number of variable/value members"))
+    (signal 'wrong-number-of-arguments (list 'setq-local (length pairs))))
   (let ((expr nil))
     (while pairs
       (unless (symbolp (car pairs))
@@ -229,7 +233,7 @@ in order to restore the state of the local variables set via this macro.
 \(fn [VARIABLE VALUE]...)"
   (declare (debug setq))
   (unless (evenp (length pairs))
-    (error "PAIRS must have an even number of variable/value members"))
+    (signal 'wrong-number-of-arguments (list 'buffer-local-set-state (length pairs))))
   (let ((vars nil)
         (tmp pairs))
     (while tmp (push (car tmp) vars) (setq tmp (cddr tmp)))
@@ -568,7 +572,35 @@ Defaults to `error'."
            (cons parent (get parent 'error-conditions)))))
     (put name 'error-conditions
          (delete-dups (copy-sequence (cons name conditions))))
+    ;; FIXME: Make `error-message-string' more flexible, e.g. allow
+    ;; the message to be specified by a `format' string or a function.
     (when message (put name 'error-message message))))
+
+(defun error-type-p (symbol)
+  "Return non-nil if SYMBOL is a condition type."
+  (get symbol 'error-conditions))
+
+(defun error--p (object)
+  "Return non-nil if OBJECT looks like a valid error descriptor."
+  (let ((type (car-safe object)))
+    (and type (symbolp type) (listp (cdr object))
+         (error-type-p type))))
+
+(defalias 'error-type #'car
+ "Return the symbol which represents the type of ERROR.
+\n(fn ERROR)")
+
+(defun error-has-type-p (error condition)
+  "Return non-nil if ERROR is of type CONDITION (or a subtype of it)."
+  (unless (error--p error)
+    (signal 'wrong-type-argument (list #'error--p error)))
+  (or (eq condition t)
+      (memq condition (get (car error) 'error-conditions))))
+
+(defalias 'error-slot-value #'elt
+  "Access the SLOT of object ERROR.
+Slots are specified by position, and slot 0 is the error symbol.
+\n(fn ERROR SLOT)")
 
 ;; We put this here instead of in frame.el so that it's defined even on
 ;; systems where frame.el isn't loaded.
@@ -1136,24 +1168,27 @@ side-effects, and the argument LIST is not modified."
     list))
 
 (defun internal--effect-free-fun-arg-p (x)
-  (or (symbolp x) (closurep x) (memq (car-safe x) '(function quote))))
+  ;; FIXME: Rename it to `macroexp-FOO-p' and give it a proper docstring
+  ;; which explains the finer difference with `macroexp-copyable-p'
+  ;; (and maybe adjust the docstring of `macroexp-copyable-p' accordingly).
+  (or (closurep x) (memq (car-safe x) '(function quote))))
 
 (defun take-while (pred list)
   "Return the longest prefix of LIST whose elements satisfy PRED."
   (declare (compiler-macro
-            (lambda (_form)
+            (lambda (form)
               (let* ((tail (make-symbol "tail"))
-                     (pred (macroexpand-all pred macroexpand-all-environment))
-                     (f (and (not (internal--effect-free-fun-arg-p pred))
-                             (make-symbol "f")))
                      (r (make-symbol "r")))
-                `(let (,@(and f `((,f ,pred)))
-                       (,r nil)
-                       (,tail ,list))
-                   (while (and ,tail (funcall ,(or f pred) (car ,tail)))
-                     (push (car ,tail) ,r)
-                     (setq ,tail (cdr ,tail)))
-                   (nreverse ,r))))))
+                (if (not (internal--effect-free-fun-arg-p pred))
+                    ;; Don't inline since it would just duplicate the code
+                    ;; without allowing any more optimizations.
+                    form
+                  `(let ((,r nil)
+                         (,tail ,list))
+                     (while (and ,tail (funcall ,pred (car ,tail)))
+                       (push (car ,tail) ,r)
+                       (setq ,tail (cdr ,tail)))
+                     (nreverse ,r)))))))
   (let ((r nil))
     (while (and list (funcall pred (car list)))
       (push (car list) r)
@@ -1163,33 +1198,60 @@ side-effects, and the argument LIST is not modified."
 (defun drop-while (pred list)
   "Skip initial elements of LIST satisfying PRED and return the rest."
   (declare (compiler-macro
-            (lambda (_form)
-              (let* ((tail (make-symbol "tail"))
-                     (pred (macroexpand-all pred macroexpand-all-environment))
-                     (f (and (not (internal--effect-free-fun-arg-p pred))
-                             (make-symbol "f"))))
-                `(let (,@(and f `((,f ,pred)))
-                       (,tail ,list))
-                   (while (and ,tail (funcall ,(or f pred) (car ,tail)))
-                     (setq ,tail (cdr ,tail)))
-                   ,tail)))))
+            (lambda (form)
+              (let* ((tail (make-symbol "tail")))
+                (if (not (internal--effect-free-fun-arg-p pred))
+                    ;; Don't inline since it would just duplicate the code
+                    ;; without allowing any more optimizations.
+                    form
+                  `(let ((,tail ,list))
+                     (while (and ,tail (funcall ,pred (car ,tail)))
+                       (setq ,tail (cdr ,tail)))
+                     ,tail))))))
   (while (and list (funcall pred (car list)))
     (setq list (cdr list)))
   list)
 
 (defun all (pred list)
   "Non-nil if PRED is true for all elements in LIST."
-  (declare (compiler-macro (lambda (_) `(not (drop-while ,pred ,list)))))
+  (declare (compiler-macro
+            (lambda (form)
+              (if (not (internal--effect-free-fun-arg-p pred))
+                  ;; Don't inline since it would just duplicate the code
+                  ;; without allowing any more optimizations.
+                  form
+                `(not (drop-while ,pred ,list))))))
   (not (drop-while pred list)))
 
-(defun any (pred list)
+(defun member-if (pred list)
   "Non-nil if PRED is true for at least one element in LIST.
-Returns the LIST suffix starting at the first element that satisfies PRED,
-or nil if none does."
+Returns the suffix of LIST starting with the first element that
+satisfies PRED, or nil if none do.
+
+Compatibility note: this function replaces `cl-member-if' but does not
+support the latter's `:key KEY-FN' argument.  It is better to compose
+any KEY-FN into PRED.  For example, you can replace
+
+    (cl-member-if #\\='foo items :key #\\='bar)
+
+with
+
+    (member-if (lambda (x) (foo (bar x))) items)"
   (declare (compiler-macro
-            (lambda (_)
-              `(drop-while (lambda (x) (not (funcall ,pred x))) ,list))))
+            (lambda (form)
+              (if (not (internal--effect-free-fun-arg-p pred))
+                  ;; Don't inline since it would just duplicate the code
+                  ;; without allowing any more optimizations.
+                  form
+                (let* ((x (make-symbol "x")))
+                  `(drop-while (lambda (,x)
+                                 (not (funcall ,pred ,x)))
+                               ,list))))))
   (drop-while (lambda (x) (not (funcall pred x))) list))
+
+;; This is good to have for improved readability in certain uses, but
+;; use the traditional Lisp name for the underlying function.  --spwhitton
+(defalias 'any #'member-if)
 
 ;;;; Keymap support.
 
@@ -4451,6 +4513,10 @@ at BEG.  Likewise, if the targeted overlays end after END, they
 will be altered so that they start at END.  Overlays that start
 at or after BEG and end before END will be removed completely.
 
+Empty overlays will be removed if they are at BEG, between BEG
+and END, or at END provided END denotes the position at the end
+of the buffer.
+
 BEG and END default respectively to the beginning and end of the
 buffer.
 Values are compared with `eq'.
@@ -5139,11 +5205,11 @@ about encoding which is not currently made available to Lisp."
                      (+ (length arg) 3)
                    (length arg))))
         (cond ((<= (+ fixed-args-len next-len len)
-                   command-line-max-length)
+                   (connection-local-value command-line-max-length))
                (push arg next)
                (incf next-len len))
               ((<= (+ fixed-args-len len)
-                   command-line-max-length)
+                   (connection-local-value command-line-max-length))
                (push (nreverse next) all-partitions)
                (setq next (list arg) next-len len))
               (t
@@ -6218,7 +6284,10 @@ consisting of STR followed by an invisible left-to-right mark
   "Return non-nil if STRING1 is greater than STRING2 in lexicographic order.
 Case is significant.
 Symbols are also allowed; their print names are used instead."
-  (declare (pure t) (side-effect-free t))
+  (declare (compiler-macro (lambda (_)
+                             (let ((arg1 (make-symbol "arg1")))
+                               `(let ((,arg1 ,string1))
+                                  (string-lessp ,string2 ,arg1))))))
   (string-lessp string2 string1))
 
 
@@ -7724,7 +7793,8 @@ seconds."
      (condition-case err
          (funcall fun)
        (error
-        (unless (y-or-n-p-with-timeout (format "Error %s; continue?" err)
+        (unless (y-or-n-p-with-timeout (format "Error %s; continue?"
+                                               (error-message-string err))
                                        5 t)
           (error err))))
      ;; Continue running.
@@ -7770,6 +7840,18 @@ If OBJECT is already a list, return OBJECT itself.  If it's
 not a list, return a one-element list containing OBJECT."
   (declare (side-effect-free error-free))
   (if (listp object)
+      object
+    (list object)))
+
+(defun ensure-proper-list (object)
+  "Return OBJECT as a list.
+If OBJECT is already a proper list, return OBJECT itself.  If it's not a
+proper list, return a one-element list containing OBJECT.
+
+`ensure-list' is usually preferable because that function runs in
+constant time, but this one has to traverse the whole of OBJECT."
+  (declare (side-effect-free error-free))
+  (if (proper-list-p object)
       object
     (list object)))
 

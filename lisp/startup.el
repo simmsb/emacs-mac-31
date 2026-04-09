@@ -958,7 +958,7 @@ to prepare for opening the first frame (e.g. open a connection to an X server)."
 	       (push (cons 'tty-color-mode
                            (cond
                             ((numberp argval) argval)
-                            ((string-match "-?[0-9]+" argval)
+                            ((string-match "-?[0-9]+$" argval)
                              (string-to-number argval))
                             (t (intern argval))))
                      default-frame-alist))
@@ -1123,15 +1123,12 @@ init-file, or to a default value if loading is not possible."
          (display-warning
           'initialization
           (format-message "\
-An error occurred while loading `%s':\n\n%s%s%s\n\n\
+An error occurred while loading `%s':\n\n%s\n\n\
 To ensure normal operation, you should investigate and remove the
 cause of the error in your initialization file.  Start Emacs with
 the `--debug-init' option to view a complete error backtrace."
                           user-init-file
-                          (get (car error) 'error-message)
-                          (if (cdr error) ": " "")
-                          (mapconcat (lambda (s) (prin1-to-string s t))
-                                     (cdr error) ", "))
+                          (error-message-string error))
           :warning)
          (setq init-file-had-error t))))))
 
@@ -1591,17 +1588,7 @@ please check its value")
     ;; If there was an error, print the error message and exit.
     (error
      (princ
-      (if (eq (car error) 'error)
-	  (apply #'concat (cdr error))
-	(if (memq 'file-error (get (car error) 'error-conditions))
-	    (format "%s: %s"
-                    (nth 1 error)
-                    (mapconcat (lambda (obj) (prin1-to-string obj t))
-                               (cdr (cdr error)) ", "))
-	  (format "%s: %s"
-                  (get (car error) 'error-message)
-                  (mapconcat (lambda (obj) (prin1-to-string obj t))
-                             (cdr error) ", "))))
+      (error-message-string error)
       'external-debugging-output)
      (terpri 'external-debugging-output)
      (setq initial-window-system nil)
@@ -1850,6 +1837,11 @@ If this is nil, no message will be displayed."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Fancy splash screen
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The default frame sizes are chosen so as to neatly accommodate the
+;; fancy splash screen contents.
+;; Therefore if you make a change that affects the total number of
+;; lines, you may also need to update default frame sizes.
 
 (defconst fancy-startup-text
   `((:face (variable-pitch font-lock-comment-face)
@@ -2168,9 +2160,10 @@ a face or button specification."
    :face 'default "Control-g"
    :face 'variable-pitch ".\n")
 
+  (fancy-splash-insert :face '(variable-pitch bold) "New to Emacs?")
   (fancy-splash-insert
    :face 'variable-pitch
-   "New to Emacs?  Consider enabling "
+   "  Consider enabling "
    :link `("newcomer presets"
 	   ,(lambda (_button) (info "(emacs) Newcomers Theme")))
    " by clicking this checkbox:  ")
@@ -2441,6 +2434,30 @@ splash screen in another window."
 	(display-buffer splash-buffer)
       (switch-to-buffer splash-buffer))))
 
+(defun startup-insert-newcomers-theme ()
+  "Insert information about `newcomers-presets' theme at point."
+  (insert "New to Emacs?  Consider enabling ")
+  (insert-button "newcomer presets"
+                 'action (lambda (_button)
+                           (info "(emacs) Newcomers Theme"))
+                 'follow-link t)
+  (insert ": ")
+  (insert-button (if (custom-theme-enabled-p 'newcomers-presets)
+                     "Disable"
+                   "Enable")
+                 'action (lambda (button)
+                           (let ((inhibit-read-only t))
+                             (replace-region-contents
+                              (button-start button)
+                              (button-end button)
+                              (pcase (button-label button)
+                                ("Enable"
+                                 (load-theme 'newcomers-presets)
+                                 "Disable")
+                                ("Disable"
+                                 (disable-theme 'newcomers-presets)
+                                 "Enable")))))))
+
 (defun normal-mouse-startup-screen ()
   ;; The user can use the mouse to activate menus
   ;; so give help in terms of menu items.
@@ -2484,6 +2501,8 @@ To quit a partially entered command, type Control-g.\n")
 		 'action (lambda (_button) (customize-group 'initialization))
 		 'follow-link t)
   (insert "\tChange initialization settings including this screen\n")
+
+  (startup-insert-newcomers-theme)
 
   (save-restriction
     (narrow-to-region (point) (point))
@@ -2569,6 +2588,11 @@ If you have no Meta key, you may instead type ESC followed by the character.)"))
                                        (get-scratch-buffer-create)))
 		 'follow-link t)
   (insert "\n")
+
+  (startup-insert-newcomers-theme)
+
+  (insert "\n")
+
   (save-restriction
     (narrow-to-region (point) (point))
     (insert "\n" (emacs-version) "\n")
