@@ -2940,9 +2940,6 @@ internal_equal_1 (Lisp_Object o1, Lisp_Object o2, enum equal_kind equal_kind,
 	if (ASIZE (o2) != size)
 	  return false;
 
-	if (mint_ptrp (o1))
-	  return xmint_pointer (o1) == xmint_pointer (o2);
-
 	switch (PSEUDOVECTOR_TYPE (XVECTOR (o1)))
 	  {
 	  case PVEC_BIGNUM:

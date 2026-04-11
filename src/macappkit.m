@@ -6415,7 +6415,6 @@ static BOOL emacsViewUpdateLayerDisabled;
 
   [self setTextContentType:nil];
 
-	[self updateMTLObjects];
 	[self setPaused:false];
 	[self setEnableSetNeedsDisplay:false];
 

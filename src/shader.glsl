@@ -1,4 +1,7 @@
 #include <metal_stdlib>
+
+// after changing this, run `cat shader.glsl | xxd -i > shader.xxd`
+
 using namespace metal;
 struct VertexOut {
     float4 position [[position]];
@@ -103,6 +106,12 @@ struct FragmentMeta {
     float timeDelta;
 };
 
+#define PRECISION 0.01
+
+float close_to_zero(float4 pos) {
+    return dot(pos, pos) < (PRECISION * PRECISION);
+}
+
 fragment float4 invert_colors_fragment(
     VertexOut in [[stage_in]],
     texture2d<float> input_texture [[texture(0)]],
@@ -121,6 +130,10 @@ fragment float4 invert_colors_fragment(
     // zw has the width and height
     float4 currentCursor = float4(normalize_res(meta->currentCursor.xy, 1.), normalize_res(meta->currentCursor.zw, 0.));
     float4 previousCursor = float4(normalize_res(meta->previousCursor.xy, 1.), normalize_res(meta->previousCursor.zw, 0.));
+
+    if (close_to_zero(currentCursor) || close_to_zero(previousCursor)) {
+	return color;
+    }
 
     // When drawing a parellelogram between cursors for the trail i need to determine where to start at the top-left or top-right vertex of the cursor
     float vertexFactor = determineStartVertexFactor(currentCursor.xy, previousCursor.xy);
