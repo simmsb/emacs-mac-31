@@ -1719,7 +1719,7 @@ from which to check out the file(s)."
             (t
              (vc-register vc-fileset))))
      ((eq state 'missing)
-      (vc-delete-file files))
+      (vc-delete-file fileset-only-files))
      ;; Files are up-to-date, or need a merge and user specified a revision
      ((or (eq state 'up-to-date) (and verbose (eq state 'needs-update)))
       (cond
@@ -5789,14 +5789,11 @@ to the root of this working tree."
   (let ((backend (or (vc-deduce-backend)
                      (vc-responsible-backend default-directory)
                      (error "No VC backend"))))
-    ;; Manually construct VC project objects because `project-current'
-    ;; might find a non-VC project within the VC working tree containing
-    ;; DIRECTORY, but we should ignore that (bug#80939).
+    ;; Skip to the VC root, otherwise `project-current' could find a
+    ;; non-VC project between DEFAULT-DIRECTORY and there (bug#80939).
     (funcall project-find-matching-buffer-function
-             `(vc ,backend ,(vc-root-dir backend))
-             `(vc ,backend
-                  ,(let ((default-directory directory))
-                     (vc-root-dir backend))))))
+             (project-current nil (vc-root-dir backend))
+             (project-current nil directory))))
 
 ;;;###autoload
 (defun vc-working-tree-switch-project (dir)
