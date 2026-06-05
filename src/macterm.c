@@ -5031,7 +5031,7 @@ mac_cgevent_to_input_event (CGEventRef cgevent, struct input_event *buf)
 
   if (flags & kCGEventFlagMaskShift)
     emacs_modifiers |= shift_modifier;
-  for (i = 0; i < ARRAYELTS (mask_table); i++)
+  for (i = 0; i < countof (mask_table); i++)
     if (flags & mask_table[i].device_indep)
       {
 	Lisp_Object modifier_symbols[NSIDES];

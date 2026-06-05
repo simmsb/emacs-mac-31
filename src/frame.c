@@ -1771,7 +1771,7 @@ affects all frames on the same terminal device.  */)
     emacs_abort ();
 #else /* not MSDOS */
 
-#ifdef defined WINDOWSNT || defined HAVE_MACGUI /* This should work now! */
+#if defined WINDOWSNT || defined HAVE_MACGUI /* This should work now! */
   if (!FRAME_TERMCAP_P (sf)
 #ifdef HAVE_MACGUI
       && sf->output_method != output_initial
@@ -5427,7 +5427,7 @@ void
 gui_report_frame_params (struct frame *f, Lisp_Object *alistptr)
 {
   Lisp_Object tem;
-  uintmax_t w;
+  uintptr_t w;
 
   /* Represent negative positions (off the top or left screen edge)
      in a way that Fmodify_frame_parameters will understand correctly.  */

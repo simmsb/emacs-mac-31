@@ -5331,7 +5331,7 @@ image_load_image_io (struct frame *f, struct image *img, CFStringRef type)
 	      CFDictionaryRef dict;
 	      CFNumberRef num;
 
-	      for (int i = 0; i < ARRAYELTS (dict_keys); i++)
+	      for (int i = 0; i < countof (dict_keys); i++)
 		{
 		  dict = CFDictionaryGetValue (src_props, dict_keys[i]);
 		  if (dict)
@@ -5342,7 +5342,7 @@ image_load_image_io (struct frame *f, struct image *img, CFStringRef type)
 		      break;
 		    }
 		}
-	      for (int i = 0; i < ARRAYELTS (dict_keys); i++)
+	      for (int i = 0; i < countof (dict_keys); i++)
 		{
 		  dict = CFDictionaryGetValue (props, dict_keys[i]);
 		  if (dict)
@@ -5941,11 +5941,11 @@ mac_get_uti_from_image_type (Lisp_Object type)
 #endif
   };
 
-  for (int i = 0; i < ARRAYELTS (table); i++)
+  for (int i = 0; i < countof (table); i++)
     if (EQ (table[i].type, type))
       return table[i].uti;
 
-  for (int i = 0; i < ARRAYELTS (table1); i++)
+  for (int i = 0; i < countof (table1); i++)
     if (EQ (table1[i].type, type))
       {
 	Lisp_Object rest, uti = cfstring_to_lisp_nodecode (table1[i].uti);
@@ -13345,7 +13345,7 @@ is not available.  */)
   block_input ();
   identifiers[0] = CGImageSourceCopyTypeIdentifiers ();
   identifiers[1] = mac_document_copy_type_identifiers ();
-  for (j = 0; j < ARRAYELTS (identifiers); j++)
+  for (j = 0; j < countof (identifiers); j++)
     if (identifiers[j])
       {
 	CFIndex i, count;

@@ -73,6 +73,8 @@ typedef const struct _EmacsDocument *EmacsDocumentRef; /* opaque */
 
 #define Emacs_Cursor CFTypeRef
 
+#define WINDOW_HANDLE_UINTPTR(h) ((uintptr_t) (h))
+
 #ifndef DRAWING_USE_GCD
 #define DRAWING_USE_GCD 1
 #endif

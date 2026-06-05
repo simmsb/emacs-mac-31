@@ -313,7 +313,7 @@ mac_aelist_to_lisp (const AEDescList *desc_list)
   if (desc_list->descriptorType == typeAppleEvent && !attribute_p)
     {
       attribute_p = true;
-      count = ARRAYELTS (ae_attr_table);
+      count = countof (ae_attr_table);
       goto again;
     }
 
@@ -515,7 +515,7 @@ create_apple_event_from_lisp (Lisp_Object apple_event, AppleEvent *result)
 	  data = XCDR (XCDR (attr));
 	  if (!mac_string_to_four_char_code (type, &desc_type))
 	    continue;
-	  for (i = 0; i < ARRAYELTS (ae_attr_table); i++)
+	  for (i = 0; i < countof (ae_attr_table); i++)
 	    if (EQ (name, ae_attr_table[i].symbol))
 	      {
 		switch (desc_type)
@@ -1850,7 +1850,7 @@ xrm_q_get_resource_1 (XrmDatabase database, Lisp_Object node_id,
   labels[2] = SINGLE_COMPONENT;
 
   key = Fcons (node_id, Qnil);
-  for (k = 0; k < ARRAYELTS (labels); k++)
+  for (k = 0; k < countof (labels); k++)
     {
       XSETCDR (key, labels[k]);
       i = hash_find (h, key);
@@ -2007,8 +2007,8 @@ xrm_get_preference_database (const char *application)
   key_set = CFSetCreateMutable (NULL, 0, &kCFCopyStringSetCallBacks);
   if (key_set == NULL)
     goto out;
-  for (iu = 0; iu < ARRAYELTS (user_doms); iu++)
-    for (ih = 0; ih < ARRAYELTS (host_doms); ih++)
+  for (iu = 0; iu < countof (user_doms); iu++)
+    for (ih = 0; ih < countof (host_doms); ih++)
       {
 	key_array = CFPreferencesCopyKeyList (app_id, user_doms[iu],
 					      host_doms[ih]);
@@ -3117,7 +3117,7 @@ syms_of_mac (void)
   DEFSYM (QHFS_plus_D, "HFS+D");
   DEFSYM (QHFS_plus_C, "HFS+C");
 
-  for (int i = 0; i < ARRAYELTS (ae_attr_table); i++)
+  for (int i = 0; i < countof (ae_attr_table); i++)
     {
       ae_attr_table[i].symbol = intern_c_string (ae_attr_table[i].name);
       staticpro (&ae_attr_table[i].symbol);

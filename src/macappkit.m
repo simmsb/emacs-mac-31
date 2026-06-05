@@ -8925,7 +8925,7 @@ static BOOL NonmodalScrollerPagingBehavior;
   CGFloat knobProportion = [self knobProportion];
   const NSControlSize controlSizes[] =
     {NSControlSizeRegular, NSControlSizeSmall}; /* Descending */
-  int i, count = ARRAYELTS (controlSizes);
+  int i, count = countof (controlSizes);
   NSRect knobRect, bounds = [self bounds];
   CGFloat shorterDimension =
     !isHorizontal ? NSWidth (bounds) : NSHeight (bounds);
@@ -11862,7 +11862,7 @@ mac_fake_menu_bar_click (EventPriority priority)
 	    {kEventParamClickCount, typeUInt32, sizeof (UInt32), &count}};
 	  int j;
 
-	  for (j = 0; j < ARRAYELTS (params); j++)
+	  for (j = 0; j < countof (params); j++)
 	    if (err == noErr)
 	      err = SetEventParameter (event, params[j].name, params[j].type,
 				       params[j].size, params[j].data);
@@ -13571,7 +13571,7 @@ handle_services_invocation (NSInvocation *invocation)
 	  if (err == noErr)
 	    err = mac_store_event_ref_as_apple_event (0, 0, Qservice,
 						      Qperform, event,
-						      ARRAYELTS (names),
+						      countof (names),
 						      names, types);
 	  ReleaseEvent (event);
 	}
@@ -15581,7 +15581,7 @@ static const struct {
     &NSAccessibilitySelectedTextRangesAttribute,
     CFSTR ("AXSelectedTextRanges"), ax_get_selected_text_ranges},
 };
-static const size_t ax_attribute_count = ARRAYELTS (ax_attribute_table);
+static const size_t ax_attribute_count = countof (ax_attribute_table);
 static NSArrayOf (NSAccessibilityAttributeName) *ax_attribute_names;
 static Lisp_Object ax_attribute_event_ids;
 
@@ -15612,7 +15612,7 @@ static const struct {
    ax_get_attributed_string_for_range},
 };
 static const size_t ax_parameterized_attribute_count =
-  ARRAYELTS (ax_parameterized_attribute_table);
+  countof (ax_parameterized_attribute_table);
 static NSArrayOf (NSAccessibilityParameterizedAttributeName)
   *ax_parameterized_attribute_names;
 
@@ -15622,7 +15622,7 @@ static const struct {
 } ax_action_table[] = {
   {&NSAccessibilityShowMenuAction, NULL},
 };
-static const size_t ax_action_count = ARRAYELTS (ax_action_table);
+static const size_t ax_action_count = countof (ax_action_table);
 static NSArrayOf (NSAccessibilityActionName) *ax_action_names;
 static Lisp_Object ax_action_event_ids;
 

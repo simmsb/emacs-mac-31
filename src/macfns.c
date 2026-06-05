@@ -857,7 +857,7 @@ mac_color_map_lookup (const char *colorname)
   Lisp_Object ret = mac_color_lookup (colorname);
 
   if (NILP (ret))
-    for (int i = 0; i < ARRAYELTS (mac_color_map); i++)
+    for (int i = 0; i < countof (mac_color_map); i++)
       if (xstrcasecmp (colorname, mac_color_map[i].name) == 0)
 	{
 	  ret = make_fixnum (mac_color_map[i].color);
@@ -4667,7 +4667,7 @@ mac_input_source_properties (TISInputSourceRef source, Lisp_Object format)
 		}
 	    }
 
-	  for (i = ARRAYELTS (keys); i > 0; i--)
+	  for (i = countof (keys); i > 0; i--)
 	    if (EQ (format, Qt)
 		|| (SYMBOLP (format) ? EQ (format, keys[i-1].sym)
 		    : !NILP (Fmemq (keys[i-1].sym, format))))
@@ -5016,7 +5016,7 @@ Return t if the value was changed without error.  */)
   if (NILP (selected))
     error ("Tabbing is not supported on this macOS version or frame");
 
-  for (i = 0; i < ARRAYELTS (setters); i++)
+  for (i = 0; i < countof (setters); i++)
     if (EQ (setters[i].prop, prop))
       {
 	if (!FRAME_VISIBLE_P (f))
@@ -5030,7 +5030,7 @@ Return t if the value was changed without error.  */)
 	break;
       }
 
-  if (!(i < ARRAYELTS (setters)))
+  if (!(i < countof (setters)))
     error ("Invalid tab group property: %s", SDATA (SYMBOL_NAME (prop)));
   if (STRINGP (result))
     xsignal1 (Qerror, result);
@@ -5078,7 +5078,7 @@ above properties instead of just a property value.  */)
   CHECK_SYMBOL (prop);
 
   block_input ();
-  for (i = 0; i < ARRAYELTS (getters); i++)
+  for (i = 0; i < countof (getters); i++)
     if (NILP (prop))
       result = Fcons (getters[i].prop, Fcons (getters[i].func (f), result));
     else if (EQ (getters[i].prop, prop))
@@ -5088,7 +5088,7 @@ above properties instead of just a property value.  */)
       }
   unblock_input ();
 
-  if (!(NILP (prop) || i < ARRAYELTS (getters)))
+  if (!(NILP (prop) || i < countof (getters)))
     error ("Invalid tab group property: %s", SDATA (SYMBOL_NAME (prop)));
 
   return result;
