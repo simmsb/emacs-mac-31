@@ -1077,6 +1077,14 @@ bool redisplaying_p;
    the callers.  */
 bool display_working_on_window_p;
 
+/* Non-zero when we do not allow resizing frames.  For example,
+   display_mode_line and other functions produce glyphs for the mode
+   line, in particular when called from non-redisplay code (so
+   redisplaying_p is false).  We inhibit resizing of the frames during
+   that time, because that could change glyph_row pointers in the glyph
+   matrix behind the back of teh code which manipulates these pointers.  */
+int dont_resize_frames;
+
 /* If a string, XTread_socket generates an event to display that string.
    (The display is done in read_char.)  */
 
@@ -2851,7 +2859,7 @@ remember_mouse_glyph (struct frame *f, int gx, int gy, NativeRectangle *rect)
     text_glyph:
       gr = 0; gy = 0;
       for (; r <= end_row && r->enabled_p; ++r)
-	if (r->y + (int) r->height > y)
+	if (r->y + r->height > y)
 	  {
 	    gr = r; gy = r->y;
 	    break;
@@ -2951,7 +2959,7 @@ remember_mouse_glyph (struct frame *f, int gx, int gy, NativeRectangle *rect)
     row_glyph:
       gr = 0, gy = 0;
       for (; r <= end_row && r->enabled_p; ++r)
-	if (r->y + (int) r->height > y)
+	if (r->y + r->height > y)
 	  {
 	    gr = r; gy = r->y;
 	    break;
@@ -3148,7 +3156,7 @@ funcall_with_backtraces (ptrdiff_t nargs, Lisp_Object *args)
 }
 
 #define SAFE_CALLMANY(inhibit_quit, f, array) \
-  dsafe__call (inhibit_quit, f, ARRAYELTS (array), array)
+  dsafe__call (inhibit_quit, f, countof (array), array)
 #define dsafe_calln(inhibit_quit, ...)                 \
   SAFE_CALLMANY (inhibit_quit,			       \
                  backtrace_on_redisplay_error          \
@@ -7096,7 +7104,7 @@ load_overlay_strings (struct it *it, ptrdiff_t charpos)
 {
   ptrdiff_t n = 0;
   struct overlay_entry entriesbuf[20];
-  ptrdiff_t size = ARRAYELTS (entriesbuf);
+  ptrdiff_t size = countof (entriesbuf);
   struct overlay_entry *entries = entriesbuf;
   struct itree_node *node;
 
@@ -12251,7 +12259,7 @@ vadd_to_log (char const *format, va_list ap)
   ptrdiff_t form_nargs = format_nargs (format);
   ptrdiff_t nargs = 1 + form_nargs;
   Lisp_Object args[10];
-  eassert (nargs <= ARRAYELTS (args));
+  eassert (nargs <= countof (args));
   AUTO_STRING (args0, format);
   args[0] = args0;
   for (ptrdiff_t i = 1; i < nargs; i++)
@@ -13512,7 +13520,7 @@ truncate_echo_area (ptrdiff_t nchars)
 	 initialized yet, just toss it.  */
       if (sf->glyphs_initialized_p)
 	with_echo_area_buffer (0, 0, truncate_message_1,
-			       (void *) (intptr_t) nchars, Qnil);
+			       (void *) (intptr_t) {nchars}, Qnil);
     }
 }
 
@@ -14018,6 +14026,9 @@ unwind_format_mode_line (Lisp_Object vector)
     }
 
   Vmode_line_unwind_vector = vector;
+
+  if (dont_resize_frames > 0)
+    dont_resize_frames--;
 }
 
 
@@ -14154,6 +14165,7 @@ gui_consider_frame_title (Lisp_Object frame)
       title_start = MODE_LINE_NOPROP_LEN (0);
       init_iterator (&it, XWINDOW (f->selected_window), -1, -1,
 		     NULL, DEFAULT_FACE_ID);
+      dont_resize_frames++;
       display_mode_element (&it, 0, -1, -1, fmt, Qnil, false);
       len = MODE_LINE_NOPROP_LEN (title_start);
       title = mode_line_noprop_buf + title_start;
@@ -19874,7 +19886,7 @@ try_cursor_movement (Lisp_Object window, struct text_pos startp,
       && !(!NILP (Vdisplay_line_numbers)
 	   && NILP (Finternal_lisp_face_equal_p (Qline_number,
 						 Qline_number_current_line,
-						 w->frame)))
+						 w->frame, Qt)))
       /* This code is not used for mini-buffer for the sake of the case
 	 of redisplaying to replace an echo area message; since in
 	 that case the mini-buffer contents per se are usually
@@ -22689,7 +22701,7 @@ try_window_id (struct window *w)
       || (!NILP (Vdisplay_line_numbers)
 	  && NILP (Finternal_lisp_face_equal_p (Qline_number,
 						Qline_number_current_line,
-						w->frame))))
+						w->frame, Qt))))
     GIVE_UP (24);
 
   /* composition-break-at-point is incompatible with the optimizations
@@ -28179,6 +28191,10 @@ display_mode_line (struct window *w, enum face_id face_id, Lisp_Object format)
 			 format_mode_line_unwind_data (NULL, NULL,
 						       Qnil, false));
 
+  /* We cannot allow frame-resizing as long as the code below runs,
+     because that could invalidate the it.glyph_row->glyphs pointers.  */
+  dont_resize_frames++;
+
   /* Temporarily make frame's keyboard the current kboard so that
      kboard-local variables in the mode_line_format will get the right
      values.  */
@@ -28294,8 +28310,6 @@ display_mode_line (struct window *w, enum face_id face_id, Lisp_Object format)
     }
   pop_kboard ();
 
-  unbind_to (count, Qnil);
-
   /* Fill up with spaces.  */
   display_string (" ", Qnil, Qnil, 0, 0, &it, 10000, -1, -1, 0);
 
@@ -28324,6 +28338,8 @@ display_mode_line (struct window *w, enum face_id face_id, Lisp_Object format)
 	last->pixel_width += max (0, (box_thickness
 				      - (it.current_x - it.last_visible_x)));
     }
+
+  unbind_to (count, Qnil);
 
   return it.glyph_row->height;
 }
@@ -29067,6 +29083,7 @@ are the selected window and the WINDOW's buffer).  */)
   set_buffer_internal_1 (XBUFFER (buffer));
 
   init_iterator (&it, w, -1, -1, NULL, face_id);
+  dont_resize_frames++;
 
   /* Make sure `base_line_number` is fresh in case we encounter a `%l`.  */
   if (current_buffer == XBUFFER ((w)->contents)
@@ -29128,7 +29145,7 @@ pint2str (register char *buf, register int width, register ptrdiff_t d)
 	}
     }
 
-  for (width -= (int) (p - buf); width > 0; --width)
+  for (width -= p - buf; width > 0; --width)
     *p++ = ' ';
   *p-- = '\0';
   while (p > buf)
