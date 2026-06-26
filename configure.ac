@@ -7584,7 +7584,7 @@ fail;
        AC_MSG_RESULT(10.11 or later)
        if test "${with_mac_metal}" != "no"; then
 	 AC_DEFINE(HAVE_MAC_METAL, 1, [Define to 1 if using Metal framework.])
-	 libs_metal="-framework Metal -framework MetalKit"
+	 libs_metal="-framework Metal"
        fi
      else
        AC_MSG_RESULT(before 10.11)
