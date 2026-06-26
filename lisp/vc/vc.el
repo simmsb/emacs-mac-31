@@ -460,17 +460,21 @@
 ;;   revision shown, rather than the working revision, which is normally
 ;;   the case).  Not all backends support this.
 ;;
-;; - log-outgoing (buffer upstream-location) (DEPRECATED)
+;; - log-outgoing (buffer upstream-location) (SOFT DEPRECATED)
 ;;
 ;;   Insert in BUFFER the revision log for the changes that will be
 ;;   sent when performing a push operation to UPSTREAM-LOCATION.
-;;   Deprecated: implement incoming-revision and mergebase instead.
+;;   Deprecated: implement incoming-revision and mergebase instead,
+;;   unless what `vc-default-log-outgoing' does with those is too slow
+;;   for this backend.
 ;;
-;; - log-incoming (buffer upstream-location) (DEPRECATED)
+;; - log-incoming (buffer upstream-location) (SOFT DEPRECATED)
 ;;
 ;;   Insert in BUFFER the revision log for the changes that will be
 ;;   received when performing a pull operation from UPSTREAM-LOCATION.
-;;   Deprecated: implement incoming-revision and mergebase instead.
+;;   Deprecated: implement incoming-revision and mergebase instead,
+;;   unless what `vc-default-log-incoming' does with those is too slow
+;;   for this backend.
 ;;
 ;; * incoming-revision (&optional upstream-location refresh)
 ;;
@@ -3531,7 +3535,7 @@ When called from Lisp, optional argument FILESET overrides the fileset."
     (vc-print-log-internal backend (cadr fileset) nil nil
                            (vc--outgoing-base-mergebase backend
                                                         upstream-location)
-                           'log-unintegrated)))
+                           '(log-unintegrated))))
 
 ;;;###autoload
 (defun vc-root-log-unintegrated (&optional upstream-location)
@@ -3643,7 +3647,8 @@ When called from Lisp, optional argument FILESET overrides the fileset."
                            ;; REFRESH nil here because we just refreshed.
                            (vc--outgoing-base-mergebase backend
                                                         upstream-location
-                                                        nil 'force-topic))))
+                                                        nil 'force-topic)
+                           '(log-unintegrated))))
 
 ;;;###autoload
 (defun vc-root-log-remote-unintegrated (&optional upstream-location)
@@ -4309,7 +4314,7 @@ button for.  Same for CURRENT-REVISION.  LIMIT means the usual."
       before-after))))
 
 (defun vc-print-log-internal (backend files working-revision
-                                      &optional is-start-revision limit type)
+                                      &optional is-start-revision limit types)
   "For specified BACKEND and FILES, show the VC log.
 Leave point at WORKING-REVISION, if it is non-nil.
 If IS-START-REVISION is non-nil, start the log from WORKING-REVISION
@@ -4323,9 +4328,9 @@ LIMIT can also be a string, which means the revision before which to stop."
          (shortlog (not (null (memq (if dir-present 'directory 'file)
                                     vc-log-short-style))))
 	 (buffer-name "*vc-change-log*")
-         (type (or type (if shortlog 'short 'long))))
+         (types (cl-adjoin (if shortlog 'short 'long) types)))
       (vc-log-internal-common
-       backend buffer-name files type
+       backend buffer-name files types
        (lambda (bk buf _type-arg files-arg)
          (vc-call-backend bk 'print-log files-arg buf shortlog
                           (when is-start-revision working-revision) limit)
@@ -4353,11 +4358,12 @@ LIMIT can also be a string, which means the revision before which to stop."
            (vc-call-backend bk 'show-log-entry working-revision)))
        (lambda (_ignore-auto _noconfirm)
 	 (vc-print-log-internal backend files working-revision
-                                is-start-revision limit type)))))
+                                is-start-revision limit types)))))
 
-(defvar vc-log-view-type nil
-  "Set this to record the type of VC log shown in the current buffer.
-Supported values are:
+(define-obsolete-variable-alias 'vc-log-view-type 'vc-log-view-types "32.1")
+(defvar vc-log-view-types nil
+  "List of types of the VC log shown in the current buffer.
+Supported elements are:
 
   `short'            -- short log form, one line for each commit
   `long'             -- long log form, including full log message and author
@@ -4367,7 +4373,7 @@ Supported values are:
   `log-unintegrated' -- log of changes you've not yet finished sharing
   `log-search'       -- log entries matching a pattern; shown in long format
   `mergebase'        -- log created by `vc-log-mergebase'.")
-(put 'vc-log-view-type 'permanent-local t)
+(put 'vc-log-view-types 'permanent-local t)
 (defvar vc-sentinel-movepoint)
 
 (defvar vc-log-finish-functions '(vc-shrink-buffer-window)
@@ -4377,21 +4383,22 @@ Each function runs in the log output buffer without args.")
 (defun vc-log-internal-common (backend
 			       buffer-name
 			       files
-			       type
+			       types
 			       backend-func
 			       setup-buttons-func
 			       goto-location-func
 			       rev-buff-func)
   (let (retval (buffer (get-buffer-create buffer-name)))
     (with-current-buffer buffer
-      (setq-local vc-log-view-type type))
-    (setq retval (funcall backend-func backend buffer-name type files))
+      (setq-local vc-log-view-types types))
+    (setq retval
+          (funcall backend-func backend buffer-name (car types) files))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
 	;; log-view-mode used to be called with inhibit-read-only bound
 	;; to t, so let's keep doing it, just in case.
 	(vc-call-backend backend
-                         (if (and (eq type 'with-diff)
+                         (if (and (memq 'with-diff types)
                                   (vc-find-backend-function
                                    backend 'region-history-mode))
                              'region-history-mode
@@ -4411,15 +4418,16 @@ Each function runs in the log output buffer without args.")
        (set-buffer-modified-p nil)
        (run-hooks 'vc-log-finish-functions)))))
 
-(defun vc-incoming-outgoing-internal (backend upstream-location buffer-name type)
+(defun vc-incoming-outgoing-internal
+    (backend upstream-location buffer-name types)
   (vc-log-internal-common
-   backend buffer-name (list (vc-root-dir)) type
+   backend buffer-name (list (vc-root-dir)) types
    (lambda (bk buf type-arg _files)
      (vc-call-backend bk type-arg buf upstream-location))
    (lambda (_bk _files-arg _ret) nil)
    nil ;; Don't move point.
    (lambda (_ignore-auto _noconfirm)
-     (vc-incoming-outgoing-internal backend upstream-location buffer-name type))))
+     (vc-incoming-outgoing-internal backend upstream-location buffer-name types))))
 
 (defun vc--read-limit ()
   "Read a LIMIT argument for a VC log command."
@@ -4509,7 +4517,7 @@ with its diffs (if the underlying VCS backend supports that)."
     (let* ((with-diff (and (eq limit 1) revision))
            (vc-log-short-style (and (not with-diff) vc-log-short-style)))
       (vc-print-log-internal backend (list rootdir) revision revision limit
-                             (and with-diff 'with-diff))
+                             (and with-diff '(with-diff)))
       ;; We're looking at the root, so displaying " from <some-file>" in
       ;; the mode line isn't helpful.
       (setq vc-parent-buffer-name nil))))
@@ -4673,7 +4681,8 @@ can be a remote branch name."
   (interactive (list (vc--maybe-read-upstream-location)))
   (vc--with-backend-in-rootdir "VC root-log"
     (vc-incoming-outgoing-internal backend upstream-location
-                                   "*vc-incoming*" 'log-incoming)))
+                                   "*vc-incoming*"
+                                   '(log-incoming short))))
 ;; We plan to reuse the name `vc-log-incoming' for the fileset-specific
 ;; command in Emacs 32.1.  --spwhitton
 (define-obsolete-function-alias 'vc-log-incoming #'vc-root-log-incoming
@@ -4697,29 +4706,33 @@ can be a remote branch name."
   (interactive (list (vc--maybe-read-upstream-location)))
   (vc--with-backend-in-rootdir "VC root-log"
     (vc-incoming-outgoing-internal backend upstream-location
-                                   "*vc-outgoing*" 'log-outgoing)))
+                                   "*vc-outgoing*"
+                                   '(log-outgoing short))))
 ;; We plan to reuse the name `vc-log-outgoing' for the fileset-specific
 ;; command in Emacs 32.1.  --spwhitton
 (define-obsolete-function-alias 'vc-log-outgoing #'vc-root-log-outgoing
   "31.1")
 
 (defun vc-default-log-outgoing (backend buffer upstream-location)
+  (vc-standard-log-outgoing backend buffer upstream-location nil))
+
+(defun vc-standard-log-outgoing
+    (backend buffer upstream-location &optional skip-mergebase)
+  "VC `log-outgoing' in terms of `incoming-revision' and `mergebase'.
+BACKEND is the VC backend, BUFFER is the buffer to log to,
+UPSTREAM-LOCATION is the place to which the changes are outgoing.
+Optional argument SKIP-MERGEBASE, if non-nil, skips calling `mergebase'
+and instead passes `incoming-revision' directly as the log limit.
+For some backends this is equivalent, and saves running one external
+command.  Whether this equivalence holds depends on the details of the
+`print-log' implementation for BACKEND when `vc-log-view-types' contains
+`log-outgoing'."
   (let ((incoming (vc--incoming-revision backend upstream-location))
         (default-directory (vc-root-dir backend)))
     (vc-call-backend backend 'print-log (list default-directory)
                      buffer t ""
-                     (vc-call-backend backend 'mergebase incoming))))
-
-(defun vc--count-outgoing (backend)
-  "Return number of changes that will be sent with a `vc-push'."
-  (with-temp-buffer
-    (let ((display-buffer-overriding-action
-           '(display-buffer-no-window (allow-no-window . t))))
-      (vc-incoming-outgoing-internal backend nil
-                                     (current-buffer) 'log-outgoing))
-    (let ((proc (get-buffer-process (current-buffer))))
-      (while (accept-process-output proc)))
-    (how-many log-view-message-re)))
+                     (if skip-mergebase incoming
+                       (vc-call-backend backend 'mergebase incoming)))))
 
 ;;;###autoload
 (defun vc-log-search (pattern)
@@ -4740,7 +4753,8 @@ will output log entries, and displays those log entries instead."
     (unless backend
       (error "Buffer is not version controlled"))
     (vc-incoming-outgoing-internal backend pattern
-                                   "*vc-search-log*" 'log-search)))
+                                   "*vc-search-log*"
+                                   '(log-search long))))
 
 ;;;###autoload
 (defun vc-log-mergebase (_files rev1 rev2)
@@ -4749,8 +4763,9 @@ The merge base is a common ancestor of revisions REV1 and REV2."
   (interactive
    (vc-diff-build-argument-list-internal
     (or (ignore-errors (vc-deduce-fileset t))
-        (let ((backend (or (vc-deduce-backend) (vc-responsible-backend default-directory))))
-          (list backend (list (vc-call-backend backend 'root default-directory)))))))
+        (let ((backend (or (vc-deduce-backend)
+                           (vc-responsible-backend default-directory))))
+          `(,backend (,(vc-call-backend backend 'root default-directory)))))))
   (vc--with-backend-in-rootdir "VC root-log"
     (setq rev1 (vc-call-backend backend 'mergebase rev1 rev2))
     (vc-print-log-internal backend (list rootdir) (or rev2 "") t rev1)))
@@ -4770,7 +4785,7 @@ mark."
     (unless backend
       (error "Buffer is not version controlled"))
     (with-current-buffer buf
-      (setq-local vc-log-view-type 'long))
+      (setq-local vc-log-view-types '(long)))
     (vc-call region-history file buf lfrom lto)
     (with-current-buffer buf
       (vc-call-backend backend 'region-history-mode)
@@ -5393,15 +5408,19 @@ of the current file."
          (vc-working-revision file)))))
 
 (defun vc--subject-to-file-name (subject)
-  "Generate a file name for a patch with subject line SUBJECT."
+  "Generate a file name for a patch with subject line SUBJECT.
+
+The resulting filename is similar to the names generated by \"git
+format-patch\", but without the leading patch sequence number \"0001-\".
+Any leading \"[PATCH 1/1]\" style strings, and any text properties are
+removed from SUBJECT prior to conversion."
   (let* ((stripped
-          (replace-regexp-in-string "\\`\\[.*PATCH.*\\]\\s-*" ""
+          (replace-regexp-in-string "\\`\\[[^][]*PATCH[^][]*]\\s-*" ""
                                     subject))
-         (truncated (if (length> stripped 50)
-                        (substring stripped 0 50)
-                      stripped)))
+         (truncated (substring-no-properties stripped
+                                             0 (min (length stripped) 50))))
     (concat
-     (string-trim (replace-regexp-in-string "\\W" "-" truncated)
+     (string-trim (replace-regexp-in-string "\\W+" "-" truncated)
                   "-+" "-+")
      ".patch")))
 

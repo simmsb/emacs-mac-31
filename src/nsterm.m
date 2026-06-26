@@ -1651,8 +1651,13 @@ ns_make_frame_visible (struct frame *f)
           unblock_input ();
         }
 
-      /* Making a frame invisible seems to break the parent->child
-         relationship, so reinstate it.  */
+      /* A child window cannot remain attached while hidden.  Per Apple's
+         documentation, "Calling orderOut(_:) on a child window causes the
+         window to be removed from its parent window before being removed"
+         (https://developer.apple.com/documentation/appkit/nswindow/orderout(_:)),
+         and ns_make_frame_invisible hides the frame with -orderOut:.  The
+         parent->child relationship is therefore broken while invisible, so
+         reinstate it now that we are making the frame visible again.  */
       if ([window parentWindow] == nil && FRAME_PARENT_FRAME (f) != NULL)
         {
           block_input ();
@@ -9823,14 +9828,6 @@ static void cancel_ns_deferred_UAZoomChangeFocus_timer ()
       if ([self respondsToSelector:@selector(setTabbingMode:)])
         [self setTabbingMode:NSWindowTabbingModeDisallowed];
 #endif
-      /* Always show the toolbar below the window title.  This is needed
-	 on Mac OS 11+ where the toolbar style is decided by the system
-	 (which is unpredictable) and the newfangled "compact" toolbar
-	 may be chosen (which is undesirable).  */
-#if defined (NS_IMPL_COCOA) && MAC_OS_X_VERSION_MAX_ALLOWED >= 110000
-      if ([self respondsToSelector:@selector(setToolbarStyle:)])
-	[self setToolbarStyle: NSWindowToolbarStyleExpanded];
-#endif
     }
 
   return self;
@@ -9947,7 +9944,7 @@ static void cancel_ns_deferred_UAZoomChangeFocus_timer ()
 
 #ifdef NS_IMPL_COCOA
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 1070
-      if ([ourView respondsToSelector:@selector (toggleFullScreen)])
+      if ([ourView respondsToSelector:@selector (toggleFullScreen:)])
 #endif
           /* If we are the descendent of a fullscreen window and we
              have no new parent, go fullscreen.  */
@@ -9972,15 +9969,22 @@ static void cancel_ns_deferred_UAZoomChangeFocus_timer ()
 
 #ifdef NS_IMPL_COCOA
 #if MAC_OS_X_VERSION_MIN_REQUIRED < 1070
-      if ([ourView respondsToSelector:@selector (toggleFullScreen)])
+      if ([ourView respondsToSelector:@selector (toggleFullScreen:)])
 #endif
 	/* Child frames must not be fullscreen.  */
 	if ([ourView fsIsNative] && [ourView isFullscreen])
 	  [ourView toggleFullScreen:self];
 #endif
 
-      [parentWindow addChildWindow:self
-                           ordered:NSWindowAbove];
+      /* -addChildWindow: also orders the child window onto the screen, so
+         attaching a child frame Emacs considers invisible is what
+         resurrects a dismissed completion popup (corfu, company-box, ...)
+         when relationships are rebuilt.  Only attach a visible child; a
+         hidden one is re-attached by ns_make_frame_visible when it is
+         shown again.  */
+      if (FRAME_VISIBLE_P (ourFrame))
+        [parentWindow addChildWindow:self
+                             ordered:NSWindowAbove];
     }
 
   /* Check our child windows are configured correctly.  */

@@ -1,4 +1,4 @@
-;;; elisp-scope.el --- Semantic analysis for Elisp symbols  -*- lexical-binding: t; -*-
+;;; elisp-scope.el --- Semantic analysis for Emacs Lisp symbols  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
@@ -2794,6 +2794,7 @@ are analyzed."
                    (symbols-with-pos-enabled t)
                    (message-log-max nil)
                    (inhibit-message t)
+                   (macroexp-enable-preserve-posification nil)
                    (macroexpand-all-environment
                     (append (mapcar #'list elisp-scope-unsafe-macros) macroexpand-all-environment)))
                (ignore-errors (macroexpand-1 form macroexpand-all-environment)))

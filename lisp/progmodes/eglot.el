@@ -317,7 +317,7 @@ automatically)."
     ((toml-ts-mode conf-toml-mode) . ("tombi" "lsp"))
     (nix-mode . ,(eglot-alternatives '("nil" "rnix-lsp" "nixd")))
     (nickel-mode . ("nls"))
-    ((nushell-mode nushell-ts-mode) . ("nu" "--lsp"))
+    ((nushell-mode nushell-ts-mode nu-ts-mode) . ("nu" "--lsp"))
     (gdscript-mode . ("localhost" 6008))
     (fennel-mode . ("fennel-ls"))
     (move-mode . ("move-analyzer"))
@@ -537,15 +537,12 @@ or file operation kinds not in the alist."
   "If non-nil, activate Eglot in cross-referenced non-project files."
   :type 'boolean)
 
-(defcustom eglot-documentation-renderer (cond ((fboundp 'gfm-view-mode)
-                                               'gfm-view-mode)
-                                              (t
-                                               nil))
-  "Control rendering of LSP documentation fragments.
-If set to the major mode symbol `gfm-view-mode', request
-markdown-snippets and use `gfm-view-mode' to render it.
-If t, always request and render plain text snippets.  If set to nil,
-decide dynamically."
+(defcustom eglot-documentation-renderer nil
+  "Controls rendering of LSP documentation fragments.
+If set to a major mode symbol like `gfm-view-mode', or the experimental
+`markdown-ts-view-mode', request markdown snippets and use that mode to
+render them.  If t, request and render plain text instead.  If nil,
+request markdown snippets and select a renderer dynamically."
   :type '(choice (const :tag "Plain text" t)
                 (const :tag "Auto-detect" nil)
                 (function :tag "Renderer"))
@@ -738,16 +735,11 @@ This can be useful when using docker to run a language server.")
 
 (declare-function treesit-grammar-location "treesit.c")
 
-(defun eglot--builtin-mdown-p ()
-  (and (fboundp 'markdown-ts-view-mode)
-       (fboundp 'treesit-grammar-location)
-       (treesit-grammar-location 'markdown)))
-
 (defun eglot--accepted-formats ()
-  (if (and (not (eq t eglot-documentation-renderer))
-           (or (fboundp 'gfm-view-mode) (eglot--builtin-mdown-p)))
-      ["markdown" "plaintext"]
-    ["plaintext"]))
+  (if (or (eq t eglot-documentation-renderer)
+          (not (or eglot-documentation-renderer (fboundp 'gfm-view-mode))))
+      ["plaintext"]
+    ["markdown" "plaintext"]))
 
 (defconst eglot--uri-path-allowed-chars
   (let ((vec (copy-sequence url-path-allowed-chars)))
@@ -1272,7 +1264,8 @@ object."
     ;; `file-name-handler-alist' should know how to handle them
     ;; (bug#58790).
     (if (string= "file" (url-type url))
-        (let* ((unhexed (url-unhex-string (url-filename url)))
+        (let* ((unhexed (decode-coding-string
+                         (url-unhex-string (url-filename url)) 'utf-8-unix))
                ;; Remove the leading "/" for local MS Windows-style paths.
                (norm (if (and (not remote-prefix)
                                     (eq system-type 'windows-nt)
@@ -2125,7 +2118,7 @@ and also used as a hint of the request cancellation mechanism (see
                       :timeout-fn (wrapfn timeout-fn)
                       moreargs)))
     (when (and hint eglot-advertise-cancellation)
-      (push id (plist-get inflight hint)))
+      (push id (cl-getf inflight hint)))
     id))
 
 (cl-defun eglot--delete-overlays (&optional (prop 'eglot--overlays))

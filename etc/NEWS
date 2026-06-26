@@ -49,6 +49,37 @@ behavior.
 If this variable is nil, 'tty-cursor-movement-use-TAB-BS' has no effect,
 and Emacs will never use TABs for any cursor-movement sequences.
 
+---
+** File- and directory-local variables respect user option setters.
+Values of variables that are user options mentioned in file-local
+variable sections and directory-locals via ".dir-locals.el" are now
+set similarly to 'setopt-local'; i.e., if a user option has a defcustom
+':set' function, that function will be invoked.
+
+---
+** New user option 'setopt-local-type-mismatch'.
+This option controls what 'setopt-local' does when it detects a type
+mismatch between the specified value and the :type specification of a
+user option.  Its backward-compatible default is nil which emits a
+warning and accepts the type-mismatched value.  You can control this by
+customizing 'setopt-local-type-mismatch' to a non-nil value: the value
+'accept' inhibits the warning and silently accepts type-mismatched
+values; the value 'discard' inhibits the warning and discards
+type-mismatched values; any other non-nil value prompts you whether to
+accept or ignore the value.
+
+---
+** Specifying a minor mode as a local variables enables that mode,
+unconditionally.  The previous behavior, toggling the mode, was
+neither reliable nor generally desirable.
+
++++
+** Emacs tries to display overlay arrow in the left margin.
+On a non-graphical display (or when the left fringe is not shown), if a
+left margin is present, Emacs will now display the overlay arrow into
+this margin.  Edebug is now using this feature by explicitly setting up
+a left margin for it.
+
 
 * Editing Changes in Emacs 32.1
 
@@ -70,6 +101,56 @@ check out the repository to prepare a patch for the package maintainer.
 ---
 *** Messages from Ansible are now recognized.
 
+** Man
+
+---
+*** OSC 8 hyperlinks in man pages are now buttonized.
+When a man page contains OSC 8 hyperlink escape sequences, they
+are now buttonized, allowing using mouse or 'RET' to follow them.
+
+** VC
+
++++
+*** VC-Dir outgoing revisions count is now asynchronous.
+This means it won't get in your way even if it's slow for your
+repository.  As such, the 'vc-dir-show-outgoing-count' option is now
+obsolete.
+
+---
+*** VC-Dir now shows key binding hints.
+To hide these, you can customize the new user option
+'vc-dir-show-key-binding-hints' to nil.
+
+** Outline mode
+
+*** New command 'outline-show-entry-and-parents'.
+It is bound to 'C-e' and reveals the current entry
+with its parent hierarchy.
+
+---
+*** New function 'outline-search-from-regexp'.
+A generic 'outline-search-function' implementation driven by
+'outline-regexp', suitable for modes or minor modes that customize
+'outline-regexp' but do not need a custom search strategy.
+Install it with:
+
+  (setq-local outline-search-function #'outline-search-from-regexp)
+
+---
+*** 'outline-search-function' is now a user option.
+Previously a plain variable, it is now a 'defcustom'
+with named choices for the predefined search functions
+('outline-search-from-regexp' and 'outline-search-level')
+as well as the default nil and arbitrary user functions.
+
+** Newsticker
+
+---
+*** New command to copy the URL of the selected newsticker item.
+The new command 'newsticker-copy-url', bound to 'w', adds the URL of
+the currently selected item in the list view to the kill-ring.
+
+
 
 * New Modes and Packages in Emacs 32.1
 
@@ -89,6 +170,28 @@ To install the grammars, use 'M-x markdown-ts-mode-install-parsers'.
 
 
 * Lisp Changes in Emacs 32.1
+
++++
+** 'ignore' is now also a place, acting as a "blackhole" like /dev/null.
+E.g. (push (new-elem) (pcase (foo) (0 var1) (1 var2) (_ (ignore))))
+
++++
+** 'kill-all-local-variables' can kill locals silently and reset the buffer.
+This function's KILL-PERMANENT argument now accepts the value
+'permanent-local', which kills all locals ignoring any variable
+watchers.  That argument can also be 'reset', which does what
+'permanent-local' does, and also resets the buffer as if it were newly
+created.  Use these with caution to avoid unexpected behavior such as
+'default-directory' being reset to nil.
+
+---
+** 'with-work-buffer' kills all locals silently and resets its buffers.
+When this macro returns a buffer to its buffer pool, it now kills all
+buffer locals silently, ignoring any variable watchers, and resets the
+buffer as if it were newly created.
+
++++
+** The new function 'markers-in' returns the set of markers in a region.
 
 ---
 ** New variable 'completion-frontend-properties'.

@@ -1331,7 +1331,7 @@ remote, otherwise search locally."
     ;; Use 1 rather than file-executable-p to better match the
     ;; behavior of call-process.
     (let ((default-directory (file-name-quote default-directory 'top)))
-      (locate-file command exec-path exec-suffixes 1))))
+      (locate-file command exec-path (default-value 'exec-suffixes) 1))))
 
 (declare-function read-library-name "find-func" nil)
 
@@ -4623,7 +4623,9 @@ already the major mode."
      ;; so it is risky to put them on with a local variable list.
      (if (stringp val)
          (set-text-properties 0 (length val) nil val))
-     (set (make-local-variable var) val))))
+     (if (custom-variable-p var)
+         (setopt--set-local var val)
+       (set (make-local-variable var) val)))))
 
 ;;; Handling directory-local variables, aka project settings.
 
@@ -8486,8 +8488,10 @@ normally equivalent short `-D' option is just passed on to
           (defvar dired--ls-error-buffer) ; Pacify byte-compiler.
           (let ((errbuf (get-buffer-create "*ls error*")))
             (with-current-buffer errbuf
-              (erase-buffer)
-              (insert-file-contents errfile))
+              (setq buffer-read-only t)
+              (let ((inhibit-read-only t))
+                (erase-buffer)
+                (insert-file-contents errfile)))
             (setq dired--ls-error-buffer errbuf)))
         (defvar dired--ls-error-file) ; Pacify byte-compiler.
         (setq dired--ls-error-file errfile)

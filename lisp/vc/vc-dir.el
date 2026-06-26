@@ -64,6 +64,11 @@ See `run-hooks'."
   :group 'vc
   :version "28.1")
 
+(defface vc-dir-key-binding-hint-label '((t :inherit font-lock-builtin-face))
+  "Face for key binding labels in VC-Dir buffers."
+  :group 'vc
+  :version "32.1")
+
 (defface vc-dir-header-urgent-value '((t :inherit font-lock-warning-face))
   "Face for urgent header values in VC-Dir buffers."
   :group 'vc
@@ -520,11 +525,13 @@ If BODY uses EVENT, it should be a variable,
 
 (defconst vc-dir--up-to-date-states '(up-to-date ignored))
 
-(defun vc-dir-update (entries buffer &optional noinsert)
+(defun vc-dir-update (entries buffer &optional noinsert clear-others)
   "Update BUFFER's VC-Dir ewoc from ENTRIES.
 This has the effect of adding ENTRIES to the VC-Dir buffer BUFFER.
 If optional argument NOINSERT is non-nil, update ewoc nodes, but don't
 add elements of ENTRIES to the buffer that aren't already in the ewoc.
+If optional argument CLEAR-OTHERS is non-nil, remove any remaining
+entries we didn't update.
 Also update some VC file properties from ENTRIES."
   (with-current-buffer buffer
     ;; Insert the entries sorted by name into the ewoc.
@@ -537,7 +544,7 @@ Also update some VC file properties from ENTRIES."
                                   (directory-file-name (expand-file-name (car entry))))
                                  entry))
                          entries)))
-	  ;; Sort: first files and then subdirectories.
+	    ;; Sort: first files and then subdirectories.
             (mapcar #'cdr
                     (sort entry-dirs
                           (lambda (pair1 pair2)
@@ -630,8 +637,15 @@ Also update some VC file properties from ENTRIES."
 	      ;; Now insert the node itself.
 	      (ewoc-enter-last vc-ewoc
 			       (apply #'vc-dir-create-fileinfo entry))))))
-      (when to-remove
-	(let ((inhibit-read-only t)
+      (when clear-others
+        ;; Remove the ones that haven't been updated at all.
+        ;; Those not-updated are those whose state is nil because the
+        ;; file/dir doesn't exist and isn't versioned.
+        (ewoc-filter vc-ewoc
+                     (lambda (info)
+                       (not (vc-dir-fileinfo->needs-update info)))))
+      (when (or to-remove clear-others)
+        (let ((inhibit-read-only t)
               (crt (ewoc-nth vc-ewoc -1))
               (first (ewoc-nth vc-ewoc 0)))
           (while (not (eq crt first))
@@ -652,6 +666,36 @@ Also update some VC file properties from ENTRIES."
     (pcase-dolist (`(,file ,state ,_extra) entries)
       (vc-file-setprop file 'vc-backend
                        (if (eq state 'unregistered) 'none vc-dir-backend)))))
+
+(defun vc-dir-mark-some-files (fun)
+  "Mark and unmark VC-Dir items based on return value of FUN.
+This function calls FUN for each file entry in the current VC-Dir
+buffer.  If FUN returns non-nil the file is marked if it wasn't already;
+if FUN returns nil, the file is unmarked if it wasn't already.
+FUN is not called for directory entries, and all such are unmarked.
+
+FUN should be a function of five arguments
+    (NAME STATE DISPLAY-STATE MARKED EXTRA)
+where these are the file name; its VC state; its VC-Dir display state if
+any; whether the file is already marked; and any extra backend-specific
+information."
+  ;; `save-excursion' won't do because when the ewoc elements refresh it
+  ;; invalidates its marker.  But we know the ewoc's size won't change,
+  ;; so we can just use an integer.
+  (let ((opoint (point)))
+    (unwind-protect
+        (ewoc-map (lambda (f)
+                    (setf (vc-dir-fileinfo->marked f)
+                          (and (not (vc-dir-fileinfo->directory f))
+                               (funcall fun
+                                        (vc-dir-fileinfo->name f)
+                                        (vc-dir-fileinfo->state f)
+                                        (vc-dir-fileinfo->display-state f)
+                                        (vc-dir-fileinfo->marked f)
+                                        (vc-dir-fileinfo->extra f))))
+                    t)
+                  vc-ewoc)
+      (goto-char opoint))))
 
 (defun vc-dir-busy ()
   (and (buffer-live-p vc-dir-process-buffer)
@@ -675,12 +719,27 @@ Also update some VC file properties from ENTRIES."
       t)
     t))
 
+;; By design the vc-dir-next-* commands move point from the current
+;; entry to the next one of the same type.  But for technical reasons
+;; any buffer position before the "./" entry is part of that entry, so
+;; there is no previous entry from which to move via vc-dir-next-* to
+;; this entry.  But from the UX perspective such movement is natural, so
+;; we enable it by making these commands move point directly to the "./"
+;; entry (instead of the "next" one) whenever point is before this
+;; entry, as determined by the following function.  See bug#81248 for
+;; further details.
+(defun vc-dir--before-dotname-p ()
+  "Return non-nil if point is before the \"./\" entry."
+  (< (point) (ewoc-location (ewoc-nth vc-ewoc 0))))
+
 (defun vc-dir-next-line (arg)
   "Go to the next line.
 With prefix argument ARG, move that many lines."
   (interactive "p")
   (with-no-warnings
-    (ewoc-goto-next vc-ewoc arg)
+    (if (vc-dir--before-dotname-p)
+        (ewoc-goto-node vc-ewoc (ewoc-nth vc-ewoc 0))
+      (ewoc-goto-next vc-ewoc arg))
     (vc-dir-move-to-goal-column)))
 
 (defun vc-dir-previous-line (arg)
@@ -697,7 +756,9 @@ With prefix argument ARG, move that many lines."
     (if
 	(catch 'foundit
 	  (while t
-	    (let* ((next (ewoc-next vc-ewoc (ewoc-locate vc-ewoc))))
+	    (let* ((next (if (vc-dir--before-dotname-p)
+                             (ewoc-nth vc-ewoc 0)
+                           (ewoc-next vc-ewoc (ewoc-locate vc-ewoc)))))
 	      (cond ((not next)
 		     (throw 'foundit t))
 		    (t
@@ -867,6 +928,11 @@ share the same state."
       (if (vc-dir-fileinfo->directory data)
 	  ;; It's a directory, mark child files.
 	  (let (crt-data)
+            ;; First, if the directory itself is marked, unmark it,
+            ;; since we don't allow both a directory and its children to
+            ;; be marked.
+            (setf (vc-dir-fileinfo->marked data) nil)
+	    (ewoc-invalidate vc-ewoc crt)
 	    (while (and (setq crt (ewoc-next vc-ewoc crt))
 			(setq crt-data (ewoc-data crt))
 			(not (vc-dir-fileinfo->directory crt-data)))
@@ -966,9 +1032,12 @@ Replace mark on `%s' with marks on all subitems but this one?"
               (setf (vc-dir-fileinfo->marked (ewoc-data parent)) nil)
               (push parent to-inval)
               (dolist (child all-children)
-                (setf (vc-dir-fileinfo->marked (ewoc-data child))
-                      (not (memq child subtree)))
-                (push child to-inval))))
+                (let ((data (ewoc-data child)))
+                  ;; Mark only file children, not directory children.
+                  (unless (vc-dir-fileinfo->directory data)
+                    (setf (vc-dir-fileinfo->marked data)
+                          (not (memq child subtree)))
+                    (push child to-inval))))))
         ;; The current item is a directory that's not marked, implicitly
         ;; or explicitly, but it has marked items below it.
         ;; Offer to unmark those.
@@ -1027,11 +1096,12 @@ that share the same state."
 	   (data (ewoc-data crt)))
       (if (vc-dir-fileinfo->directory data)
 	  ;; It's a directory, unmark child files.
-	  (while (setq crt (ewoc-next vc-ewoc crt))
-	    (let ((crt-data (ewoc-data crt)))
-	      (unless (vc-dir-fileinfo->directory crt-data)
-		(setf (vc-dir-fileinfo->marked crt-data) nil)
-		(ewoc-invalidate vc-ewoc crt))))
+          (let (crt-data)
+	    (while (and (setq crt (ewoc-next vc-ewoc crt))
+			(setq crt-data (ewoc-data crt))
+			(not (vc-dir-fileinfo->directory crt-data)))
+	      (setf (vc-dir-fileinfo->marked crt-data) nil)
+	      (ewoc-invalidate vc-ewoc crt)))
 	;; It's a file
 	(let ((crt-state (vc-dir-fileinfo->state (ewoc-data crt))))
 	  (ewoc-map
@@ -1100,7 +1170,10 @@ tracked by a VCS."
 The files will also be marked as deleted in the version control
 system."
   (interactive)
-  (vc-delete-file (or (vc-dir-marked-files) (vc-dir-current-file))))
+  (if-let* ((fileset-only-files
+             (nth 2 (vc-dir-deduce-fileset 'state-model-only-files))))
+      (vc-delete-file fileset-only-files)
+    (user-error "Nothing to delete here")))
 
 (defun vc-dir-find-file ()
   "Find the file on the current line."
@@ -1270,16 +1343,20 @@ that file."
 
 (defun vc-dir-recompute-file-state (fname def-dir)
   "Compute state of FNAME known to live inside DEF-DIR."
-  (let* ((file-short (file-relative-name fname def-dir))
-	 (_remove-me-when-CVS-works
-	  (when (eq vc-dir-backend 'CVS)
-	    ;; FIXME: Warning: UGLY HACK.  The CVS backend caches the state
-	    ;; info, this forces the backend to update it.
-	    (vc-call-backend vc-dir-backend 'registered fname)))
-	 (state (vc-call-backend vc-dir-backend 'state fname))
-	 (extra (vc-call-backend vc-dir-backend
-				 'status-fileinfo-extra fname)))
-    (list file-short state extra)))
+  (let ((fname-short (file-relative-name fname def-dir)))
+    (when (eq vc-dir-backend 'CVS)
+      ;; FIXME: Warning: UGLY HACK.  The CVS backend caches the state
+      ;; info, this forces the backend to update it.
+      (vc-call-backend vc-dir-backend 'registered fname))
+    (let* ((default-directory def-dir)
+           (state (vc-call-backend vc-dir-backend 'state fname-short))
+           (extra (vc-call-backend vc-dir-backend
+                                   'status-fileinfo-extra fname-short)))
+      ;; Ensure we return a nil state if the file does not exist and is
+      ;; not tracked so that it disappears from VC-Dir (bug#81191).
+      (if (and (eq state 'up-to-date) (not (file-exists-p fname)))
+          (list fname-short nil nil)
+        (list fname-short state extra)))))
 
 (defun vc-dir-find-child-files (dirname)
   ;; Give a DIRNAME string return the list of all child files shown in
@@ -1313,8 +1390,7 @@ that file."
 
 (defun vc-dir-resynch-file (&optional fname)
   "Update the entries for FNAME in any directory buffers that list it."
-  (let* ((file  (or fname buffer-file-name))
-         (file-tn (file-truename file))
+  (let* ((file (file-truename (or fname buffer-file-name)))
          (drop '()))
     (save-current-buffer
       ;; look for a vc-dir buffer that might show this file.
@@ -1333,20 +1409,20 @@ that file."
                          ;; `default-directory' in order to do its work,
                          ;; but that's irrelevant to us here.
                          (buffer-local-toplevel-value 'default-directory))))
-              (when (file-in-directory-p file-tn ddir)
-                (if (file-directory-p file-tn)
+              (when (file-in-directory-p file ddir)
+                (if (file-directory-p file)
 		    (progn
-		      (vc-dir-resync-directory-files file-tn)
-		      (ewoc-set-hf vc-ewoc
-				   (vc-dir-headers vc-dir-backend ddir) ""))
+		      (vc-dir-resync-directory-files file)
+		      (vc-dir--set-header ddir))
                   (let* ((complete-state
-                          ;; Pass FILE not FILE-TN here.  See bug#80967.
-                          (vc-dir-recompute-file-state file ddir))
+                          ;; Pass two truenames (bug#80803, bug#80967).
+                          (vc-dir-recompute-file-state file
+                                                       (file-truename ddir)))
 			 (state (cadr complete-state)))
-                    (vc-dir-update
-                     (list complete-state)
-                     status-buf (or (not state)
-				    (eq state 'up-to-date)))))))))))
+                    (vc-dir-update (list complete-state)
+                                   status-buf
+                                   (or (not state)
+				       (eq state 'up-to-date)))))))))))
     ;; Remove out-of-date entries from vc-dir-buffers.
     (setq vc-dir-buffers
           (cl-nset-difference vc-dir-buffers drop :test #'eq))))
@@ -1414,33 +1490,106 @@ the *vc-dir* buffer.
 
 (defcustom vc-dir-show-outgoing-count t
   "Whether to display the number of unpushed revisions in VC-Dir.
-For some combinations of VC backends and remotes, determining how many
-outgoing revisions there are is slow, because the backend must fetch
-from the remote, and your connection to the remote is slow.  Customize
-this variable to nil to disable calculating the outgoing count and
-therefore also disable the fetching."
+This variable was for when the number of unpushed revisions was counted
+synchronously.  As that is now done asynchronously, this toggle is no
+longer needed."
   :type 'boolean
   :safe #'booleanp
   :group 'vc
   :version "31.1")
+(make-obsolete-variable 'vc-dir-show-outgoing-count nil "32.1")
 
-(defun vc-dir--count-outgoing (backend)
-  "Call `vc--count-outgoing' with a delayed message and local quits."
-  (let ((inhibit-quit t))
-    (prog1
-        (with-local-quit
-          (with-delayed-message
-              (2 (substitute-command-keys
-                  "Counting outgoing revisions ...
-(\\[keyboard-quit] to skip; \
-see `vc-dir-show-outgoing-count' if this is frequently slow)"))
-            (ignore-errors (vc--count-outgoing backend))))
-      (setq quit-flag nil))))
+(defvar log-view-message-re)
+
+(defun vc-dir--count-outgoing (backend overlay)
+  "Populate OVERLAY with count of outgoing revisions for backend BACKEND.
+See `vc-dir-async-header-values' for an explanation of how this function
+uses OVERLAY."
+  (overlay-put overlay 'after-string
+               (propertize "[counting ...]" 'face 'vc-dir-header-value))
+  ;; `vc-incoming-outgoing-internal' invokes external processes
+  ;; synchronously before we can get to the `vc-run-delayed', so
+  ;; postpone running it a little.
+  (overlay-put
+   overlay 'timer
+   (run-with-idle-timer
+    0.2 nil
+    (lambda ()
+      (let* ((default-directory
+	      (buffer-local-value 'default-directory
+				  (overlay-buffer overlay)))
+	     (display-buffer-overriding-action
+              '(display-buffer-no-window (allow-no-window . t)))
+             (unknown (propertize "<<unknown>>" 'face 'vc-dir-header-value))
+             (buf (generate-new-buffer " *temp*" t))
+             proc)
+        (with-current-buffer buf
+          (condition-case _
+              (progn
+                (vc-incoming-outgoing-internal backend nil
+                                               (current-buffer)
+                                               '(log-outgoing short))
+                (setq proc (get-buffer-process (current-buffer)))
+                (overlay-put overlay 'proc proc)
+                (vc-run-delayed
+                  (unwind-protect
+                      (overlay-put
+                       overlay 'after-string
+                       (if (or (not (eq (process-status proc) 'exit))
+                               (plusp (process-exit-status proc)))
+                           unknown
+                         (goto-char (point-min))
+                         (let ((count (how-many log-view-message-re)))
+                           (if (zerop count)
+                               (propertize "No unpushed revisions"
+                                           'face 'vc-dir-header-value)
+                             (propertize
+                              (format (ngettext "%d unpushed revision"
+                                                "%d unpushed revisions"
+                                                count)
+                                      count)
+                              'face 'vc-dir-header-urgent-value
+                              'mouse-face 'highlight
+                              'keymap vc-dir-outgoing-revisions-map
+                              'help-echo "\\<vc-dir-outgoing-revisions-map>\
+\\[vc-root-log-outgoing]: List outgoing revisions")))))
+                    (kill-buffer))))
+            (error (overlay-put overlay 'after-string unknown)
+                   (kill-buffer buf)))))))))
+
+(defvar-local vc-dir-async-header-values
+  '(("Outgoing" . vc-dir--count-outgoing))
+  "List of specifications for asynchronously computed VC-Dir header values.
+Each element is a pair (HEADER . FUN) where
+- HEADER is a string label for the header in the VC-Dir buffer.
+- FUN is a function of two arguments (BACKEND OVERLAY) that starts the
+  asynchronous computation of the header's value.  BACKEND is the VC
+  backend.  OVERLAY is an overlay in the target VC-Dir buffer.
+  FUN should set
+  - the `after-string' property of the overlay to a temporary value
+    indicating that an async computation is in progress, conventionally
+    of the form \"[%s ...]\";
+  - the `timer' property of the overlay to any idle timer it schedules
+  - the `proc' property of the overlay to the asynchronous process it starts;
+  - the `after-string' property of the overlay to the computed header
+    value after the asychronous computation completes, \"<<unknown>>\"
+    if the information was not obtainable.
+  See `vc-dir--count-outgoing' for an example.
+
+VC backend `dir-extra-headers' implementations may push additional
+elements to this list.")
+
+(defcustom vc-dir-show-key-binding-hints t
+  "Whether to show key binding hints in VC-Dir buffers."
+  :type 'boolean
+  :group 'vc
+  :version "32.1")
 
 (defun vc-dir-headers (backend dir)
   "Display the headers in the *VC-Dir* buffer.
 It calls the `dir-extra-headers' backend method to display backend
 specific headers."
+  (kill-local-variable 'vc-dir-async-header-values)
   (concat
    (propertize "VC backend : " 'face 'vc-dir-header)
    (propertize (format "%s\n" backend) 'face 'vc-dir-header-value)
@@ -1449,21 +1598,71 @@ specific headers."
                'face 'vc-dir-header-value)
    (vc-call-backend backend 'dir-extra-headers dir)
    "\n"
-   (and-let* (vc-dir-show-outgoing-count
-              (count (vc-dir--count-outgoing backend))
-              (_ (plusp count)))
-     (concat (propertize "Outgoing   : "
-                         'face 'vc-dir-header)
-             (propertize (format (ngettext "%d unpushed revision"
-                                           "%d unpushed revisions"
-                                           count)
-                                 count)
-                         'face 'vc-dir-header-urgent-value
-                         'mouse-face 'highlight
-                         'keymap vc-dir-outgoing-revisions-map
-                         'help-echo "\\<vc-dir-outgoing-revisions-map>\
-\\[vc-root-log-outgoing]: List outgoing revisions")
-             "\n"))))
+   (mapconcat (pcase-lambda (`(,header . ,_))
+                (concat (propertize (format "%-11s: " header)
+                                    'face 'vc-dir-header)
+                        "\n"))
+              vc-dir-async-header-values)
+   (and
+    vc-dir-show-key-binding-hints
+    (concat
+     "\n"
+     (substitute-command-keys
+      (concat
+       "\\<vc-dir-mode-map>"
+       (propertize "Act  " 'font-lock-face 'vc-dir-key-binding-hint-label)
+       " "
+       "(\\[vc-revert]) Revert, "
+       "(\\[vc-dir-delete-file]) Delete, "
+       "(\\[vc-dir-ignore]) Ignore, "
+       "(\\[vc-next-action]/\\[vc-dir-root-next-action]) Commit/commit all, "
+       "(\\[vc-push]) Push"
+       "\n"
+       (propertize "Marks" 'font-lock-face 'vc-dir-key-binding-hint-label)
+       "  "
+       "(\\[vc-dir-mark]) Mark, "
+       "(\\[vc-dir-unmark]) Unmark, "
+       "(\\[vc-dir-unmark-all-files]) Unmark same state/dir, "
+       "(\\[universal-argument] \\[vc-dir-unmark-all-files]) Unmark all"
+       "\n"
+       (propertize "View " 'font-lock-face 'vc-dir-key-binding-hint-label)
+       "              "
+       "(\\[vc-diff]) Diff, "
+       "(\\[revert-buffer]) Refresh, "
+       "(\\[vc-dir-hide-up-to-date]) Hide up-to-date"))
+     "\n"))))
+
+(defun vc-dir--set-header (def-dir)
+  (ewoc-set-hf vc-ewoc (vc-dir-headers vc-dir-backend def-dir) "")
+  ;; Clear overlays in the header from the last run.
+  (dolist (overlay (overlays-in (point-min)
+                                (length (car (ewoc-get-hf vc-ewoc)))))
+    (when-let* ((proc (overlay-get overlay 'proc))
+                (_ (eq 'run (process-status proc))))
+      (kill-process proc))
+    (when-let* ((timer (overlay-get overlay 'timer)))
+      (cancel-timer timer))
+    (delete-overlay overlay))
+  ;; Set up new async header overlays.
+  (save-excursion
+    (pcase-dolist (`(,field . ,fun) vc-dir-async-header-values)
+      (goto-char (point-min))
+      (when (re-search-forward (format "^%s\\s-" field) nil t)
+        (funcall fun vc-dir-backend
+                 (make-overlay (pos-eol) (pos-eol)))))))
+
+(defun vc-dir--set-vc-dir-process-buffer (backend)
+  ;; Create a buffer that can be used by `dir-status' and call
+  ;; `dir-status' with this buffer as the current buffer.  Use
+  ;; `vc-dir-process-buffer' to remember this buffer, so that it can be
+  ;; used later to kill the update process in case it takes too long.
+  (let ((buffer (current-buffer)))
+    (unless (buffer-live-p vc-dir-process-buffer)
+      (with-current-buffer
+          (setq vc-dir-process-buffer
+                (generate-new-buffer (format " *VC-%s* tmp status"
+                                             backend)))
+        (setq vc-parent-buffer buffer)))))
 
 (defun vc-dir-refresh-files (files)
   "Refresh some FILES in the *VC-Dir* buffer."
@@ -1475,9 +1674,7 @@ specific headers."
     ;; It should compute the results, and then call the function
     ;; passed as an argument in order to update the vc-dir buffer
     ;; with the results.
-    (unless (buffer-live-p vc-dir-process-buffer)
-      (setq vc-dir-process-buffer
-            (generate-new-buffer (format " *VC-%s* tmp status" backend))))
+    (vc-dir--set-vc-dir-process-buffer backend)
     (let ((buffer (current-buffer)))
       (with-current-buffer vc-dir-process-buffer
         (setq default-directory def-dir)
@@ -1489,25 +1686,8 @@ specific headers."
            ;; If MORE-TO-COME is true, then more updates will come from
            ;; the asynchronous process.
            (with-current-buffer buffer
-             (vc-dir-update entries buffer)
-             (unless more-to-come
-               (setq mode-line-process nil)
-               ;; Remove the ones that haven't been updated at all.
-               ;; Those not-updated are those whose state is nil because the
-               ;; file/dir doesn't exist and isn't versioned.
-               (ewoc-filter vc-ewoc
-                            (lambda (info)
-			      ;; The state for directory entries might
-			      ;; have been changed to 'up-to-date,
-			      ;; reset it, otherwise it will be removed when doing 'x'
-			      ;; next time.
-			      ;; FIXME: There should be a more elegant way to do this.
-			      (when (and (vc-dir-fileinfo->directory info)
-					 (eq (vc-dir-fileinfo->state info)
-					     'up-to-date))
-				(setf (vc-dir-fileinfo->state info) nil))
-
-                              (not (vc-dir-fileinfo->needs-update info))))))))))))
+             (vc-dir-update entries buffer nil (not more-to-come))
+             (unless more-to-come (setq mode-line-process nil)))))))))
 
 (defun vc-dir-revert-buffer-function (&optional _ignore-auto _noconfirm)
   (vc-dir-refresh)
@@ -1522,7 +1702,7 @@ Throw an error if another update process is in progress."
       (error "Another update process is in progress, cannot run two at a time")
     (let ((def-dir default-directory)
 	  (backend vc-dir-backend))
-      (when vc-dir-save-some-buffers-on-revert
+      (when (and vc-dir-save-some-buffers-on-revert (not non-essential))
         (vc-buffer-sync-fileset `(,vc-dir-backend (,def-dir)) t))
       (vc-set-mode-line-busy-indicator)
       ;; Call the `dir-status' backend function.
@@ -1530,23 +1710,15 @@ Throw an error if another update process is in progress."
       ;; It should compute the results, and then call the function
       ;; passed as an argument in order to update the vc-dir buffer
       ;; with the results.
-
-      ;; Create a buffer that can be used by `dir-status' and call
-      ;; `dir-status' with this buffer as the current buffer.  Use
-      ;; `vc-dir-process-buffer' to remember this buffer, so that
-      ;; it can be used later to kill the update process in case it
-      ;; takes too long.
-      (unless (buffer-live-p vc-dir-process-buffer)
-        (setq vc-dir-process-buffer
-              (generate-new-buffer (format " *VC-%s* tmp status" backend))))
+      (vc-dir--set-vc-dir-process-buffer backend)
       ;; set the needs-update flag on all non-directory entries
       (ewoc-map (lambda (info)
 		  (unless (vc-dir-fileinfo->directory info)
 		    (setf (vc-dir-fileinfo->needs-update info) t) nil))
                 vc-ewoc)
       ;; Bzr has serious locking problems, so setup the headers first (this is
-      ;; synchronous) rather than doing it while dir-status is running.
-      (ewoc-set-hf vc-ewoc (vc-dir-headers backend def-dir) "")
+      ;; mostly synchronous) rather than doing it while dir-status is running.
+      (vc-dir--set-header def-dir)
       (let ((buffer (current-buffer)))
         (with-current-buffer vc-dir-process-buffer
           (setq default-directory def-dir)
@@ -1561,11 +1733,11 @@ Throw an error if another update process is in progress."
                (vc-dir-update entries buffer)
                (unless more-to-come
                  (let ((remaining
-                        (ewoc-collect
-                         vc-ewoc 'vc-dir-fileinfo->needs-update)))
+                        (ewoc-collect vc-ewoc
+                                      'vc-dir-fileinfo->needs-update)))
                    (if remaining
-                       (vc-dir-refresh-files
-                        (mapcar #'vc-dir-fileinfo->name remaining))
+                       (vc-dir-refresh-files (mapcar #'vc-dir-fileinfo->name
+                                                     remaining))
                      (setq mode-line-process nil)
                      (run-hooks 'vc-dir-refresh-hook))))))))))))
 
@@ -1613,10 +1785,11 @@ state of item at point, if any."
 		     (vc-dir-fileinfo->directory (ewoc-data next))))
 	       ;; Remove files in specified STATE.  STATE can be a
 	       ;; symbol, a user-name, or nil.
-               (let ((data-state (vc-dir-fileinfo->state data)))
-                 (if state
-                     (equal data-state state)
-                   (memq data-state vc-dir--up-to-date-states))))
+               (and (not dir)
+                    (let ((data-state (vc-dir-fileinfo->state data)))
+                      (if state
+                          (equal data-state state)
+                        (memq data-state vc-dir--up-to-date-states)))))
 	  (ewoc-delete vc-ewoc crt))
 	(setq crt prev)))))
 

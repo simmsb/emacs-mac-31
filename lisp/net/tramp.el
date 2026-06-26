@@ -571,7 +571,9 @@ interpreted as a regular expression which always matches."
 ;; <https://debbugs.gnu.org/cgi/bugreport.cgi?bug=38079#20>.
 (defcustom tramp-restricted-shell-hosts-alist
   (when (and (eq system-type 'windows-nt)
-             (not (string-match-p (rx "sh" eol) tramp-encoding-shell)))
+             (not (string-match-p
+		   (rx "sh" eol)
+		   (file-name-sans-extension tramp-encoding-shell))))
     (list (rx
 	   bos (| (literal (downcase tramp-system-name))
 		  (literal (upcase tramp-system-name)))
@@ -801,19 +803,23 @@ The regexp should match at end of buffer."
       (? "/[fingerprint]") ")?"
       (* blank))
   "Regular expression matching all yes/no queries which need to be confirmed.
-The confirmation should be done with yes or no.
+The confirmation should be done with \"yes\" or \"no\".
 The regexp should match at end of buffer.
 See also `tramp-yn-prompt-regexp'."
   :type 'regexp)
 
 (defcustom tramp-yn-prompt-regexp
   (rx (| (: "Store key in cache? (y/n" (* nonl) ")")
-	 "Update cached key? (y/n, Return cancels connection)")
+	 "Update cached key? (y/n, Return cancels connection)"
+	 ;; distrobox.
+	 (: "Error: no such container \"" (+ nonl) "\"\n"
+	    "Create it now, out of image " (+ nonl) "? [Y/n]:"))
       (* blank))
   "Regular expression matching all y/n queries which need to be confirmed.
-The confirmation should be done with y or n.
+The confirmation should be done with \"y\" or \"n\".
 The regexp should match at end of buffer.
 See also `tramp-yesno-prompt-regexp'."
+  :version "31.1"
   :type 'regexp)
 
 ;;;###tramp-autoload
@@ -2209,12 +2215,12 @@ If VAR is nil, then we bind `v' to the structure and `method', `user',
        (ignore ,@(mapcar #'car bindings))
        ,@body)))
 
-(defun tramp-progress-reporter-update (reporter &optional value suffix)
+(defun tramp-progress-reporter-update (reporter &optional value update-text)
   "Report progress of an operation for Tramp."
   (let* ((parameters (cdr reporter))
 	 (message (aref parameters 3)))
     (when (string-search message (or (current-message) ""))
-      (progress-reporter-update reporter value suffix))))
+      (progress-reporter-update reporter value update-text))))
 
 ;;;###tramp-autoload
 (defvar tramp-inhibit-progress-reporter nil
@@ -2443,6 +2449,8 @@ symbol
   checked.
 - `process': `default-directory' of the process buffer of the first
   argument of OPERATION is the remote file name to be checked.
+- `tramp-file-name': the first argument of OPERATION, a
+  `tramp-file-name' structure, is the remote file name to be checked.
 
 If the first argument of OPERATION is nil, `default-directory' is the
 remote file name to be checked in case of `file' and `process'.
@@ -2496,8 +2504,10 @@ Must be handled by the callers."
     (if (and (stringp (nth 0 args)) (file-name-absolute-p (nth 0 args)))
 	(nth 0 args)
       default-directory))
+
    ;; STRING FILE.
    ((eq operation 'make-symbolic-link) (nth 1 args))
+
    ;; FILE DIRECTORY resp FILE1 FILE2.
    ((memq operation
 	  '(add-name-to-file copy-directory copy-file
@@ -2508,23 +2518,27 @@ Must be handled by the callers."
      ((tramp-tramp-file-p (nth 0 args)) (nth 0 args))
      ((file-name-absolute-p (nth 1 args)) (nth 1 args))
      (t default-directory)))
+
    ;; FILE DIRECTORY resp FILE1 FILE2.
    ((eq operation 'expand-file-name)
     (cond
      ((file-name-absolute-p (nth 0 args)) (nth 0 args))
      ((tramp-tramp-file-p (nth 1 args)) (nth 1 args))
      (t default-directory)))
+
    ;; START END FILE.
    ((eq operation 'write-region)
     (if (file-name-absolute-p (nth 2 args))
 	(nth 2 args)
       default-directory))
+
    ;; BUFFER.
    ((memq operation
 	  '(make-auto-save-file-name
 	    set-visited-file-modtime verify-visited-file-modtime))
     (buffer-file-name
      (if (bufferp (nth 0 args)) (nth 0 args) (current-buffer))))
+
    ;; COMMAND.
    ((or
      (memq operation
@@ -2537,6 +2551,7 @@ Must be handled by the callers."
      (eq (alist-get operation tramp-file-name-for-operation-external)
 	 'default-directory))
     default-directory)
+
    ;; PROC or BUFFER.
    ((or
      (memq operation '(file-notify-rm-watch file-notify-valid-p))
@@ -2553,16 +2568,25 @@ Must be handled by the callers."
 		    (or (get-process (nth 0 args)) (get-buffer (nth 0 args)))))))
 	  (tramp-get-default-directory buf))
 	""))
+
    ;; VEC.
-   ((memq operation
-	  '(tramp-get-home-directory tramp-get-remote-gid
-	    tramp-get-remote-groups tramp-get-remote-uid))
-    (tramp-make-tramp-file-name (nth 0 args)))
+   ((or
+     (memq operation
+	   '(tramp-get-home-directory tramp-get-remote-gid
+	     tramp-get-remote-groups tramp-get-remote-uid))
+     (eq (alist-get operation tramp-file-name-for-operation-external)
+	 'tramp-file-name))
+    (or
+     (and (tramp-file-name-p (nth 0 args))
+	  (tramp-make-tramp-file-name (nth 0 args)))
+     ""))
+
    ;; A function.
    ((functionp (alist-get operation tramp-file-name-for-operation-external))
     (apply
      (alist-get operation tramp-file-name-for-operation-external)
      operation args))
+
    ;; Unknown file primitive.
    (t (unless (memq 'remote-file-error debug-ignored-errors)
 	(tramp-error
@@ -2597,17 +2621,17 @@ OPERATION must not be one of the magic operations listed in Info
 node `(elisp) Magic File Names'.  FUNCTION must have the same argument
 list as OPERATION.  BACKEND, a symbol, must be one of the Tramp backend
 packages like `tramp-sh' (except `tramp-ftp').  ARG-TYPE is either
-`file' (the default), `default-directory', `process' or a function
-symbol.  It describes the type of the OPERATION argument to be checked.
-See the docstring of `tramp-file-name-for-operation-external' for its
-meaning."
+`file' (the default), `default-directory', `process', `tramp-file-name',
+or a function symbol.  It describes the type of the OPERATION argument
+to be checked.  See the docstring of
+`tramp-file-name-for-operation-external' for its meaning."
   (require backend)
   (when-let* ((fnha
 	       (intern-soft
 		(concat (symbol-name backend) "-file-name-handler-alist")))
 	      ((boundp fnha))
 	      (arg-type (or arg-type 'file)))
-    (unless (or (memq arg-type '(file default-directory process))
+    (unless (or (memq arg-type '(file default-directory process tramp-file-name))
 		(functionp arg-type))
       (tramp-error nil 'remote-file-error "Unknown arg type: %s" arg-type))
     ;; Make BACKEND aware of the new operation.
@@ -2630,6 +2654,15 @@ meaning."
 	      (apply handler #',operation args)
 	    (apply orig-fun args)))
        `((name . ,(concat "tramp-advice-" (symbol-name operation))))))))
+
+(defun tramp-external-operation-p (operation backend)
+  "Check, whether Tramp BACKEND supports external OPERATION.
+It returns the function registered as handler, or nil."
+  (and-let* ((fnha
+	      (intern-soft
+	       (concat (symbol-name backend) "-file-name-handler-alist")))
+	     ((boundp fnha))
+	     ((alist-get operation (symbol-value fnha))))))
 
 (defun tramp-remove-external-operation (operation backend)
   "Remove OPERATION from Tramp BACKEND as handler for OPERATION.
@@ -2975,24 +3008,26 @@ not in completion mode."
   "Like `expand-file-name' for partial Tramp files."
   ;; We need special handling only when a method is needed.  Then we
   ;; check, whether DIRECTORY is "/method:" or "/[method/".
-  (let ((dir (or directory default-directory "/")))
-    (cond
-     ((file-name-absolute-p filename)
-      ;; FILENAME could be like "~/".  We must expand this.
-      (tramp-run-real-handler #'expand-file-name (list filename directory)))
-     ((and (eq tramp-syntax 'simplified)
-           (string-match-p (rx (regexp tramp-postfix-host-regexp) eos) dir))
-      (concat dir filename))
-     ((string-match-p
-       (rx (regexp tramp-prefix-regexp)
-	   (* (regexp tramp-remote-file-name-spec-regexp)
-	      (regexp tramp-postfix-hop-regexp))
-	   (? (regexp tramp-method-regexp) (regexp tramp-postfix-method-regexp)
-	      (? (regexp tramp-user-regexp) (regexp tramp-postfix-user-regexp)))
-	   eos)
-       dir)
-      (concat dir filename))
-     (t (tramp-run-real-handler #'expand-file-name (list filename directory))))))
+  (tramp-drop-volume-letter
+   (let ((dir (or directory default-directory "/")))
+     (cond
+      ((file-name-absolute-p filename)
+       ;; FILENAME could be like "~/".  We must expand this.
+       (tramp-run-real-handler #'expand-file-name (list filename directory)))
+      ((and (eq tramp-syntax 'simplified)
+            (string-match-p (rx (regexp tramp-postfix-host-regexp) eos) dir))
+       (concat dir filename))
+      ((string-match-p
+	(rx (regexp tramp-prefix-regexp)
+	    (* (regexp tramp-remote-file-name-spec-regexp)
+	       (regexp tramp-postfix-hop-regexp))
+	    (? (regexp tramp-method-regexp) (regexp tramp-postfix-method-regexp)
+	       (? (regexp tramp-user-regexp) (regexp tramp-postfix-user-regexp)))
+	    eos)
+	dir)
+       (concat dir filename))
+      (t (tramp-run-real-handler
+	  #'expand-file-name (list filename directory)))))))
 
 ;; This is needed in pcomplete.el.
 (defun tramp-completion-handle-file-directory-p (filename)
@@ -4260,9 +4295,8 @@ Let-bind it when necessary.")
             (tramp-get-connection-property vec "~"))))
     (when home-dir
       (setq home-dir
-	    (tramp-compat-funcall
-	     'directory-abbrev-apply
-	     (tramp-make-tramp-file-name vec home-dir))))
+	    (tramp-compat-funcall 'directory-abbrev-apply
+	      (tramp-make-tramp-file-name vec home-dir))))
     ;; If any elt of `directory-abbrev-alist' matches this name,
     ;; abbreviate accordingly.
     (setq filename (tramp-compat-funcall 'directory-abbrev-apply filename))
@@ -4860,22 +4894,21 @@ existing) are returned."
 		      (setq remote-copy (tramp-make-tramp-temp-file v))
 		      ;; This is defined in tramp-sh.el.  Let's assume
 		      ;; this is loaded already.
-		      (tramp-compat-funcall
-		       'tramp-send-command
-		       v
-		       (cond
-			((and beg end)
-			 (format "dd bs=1 skip=%d if=%s count=%d of=%s"
-				 beg (tramp-shell-quote-argument localname)
-				 (- end beg) remote-copy))
-			(beg
-			 (format "dd bs=1 skip=%d if=%s of=%s"
-				 beg (tramp-shell-quote-argument localname)
-				 remote-copy))
-			(end
-			 (format "dd bs=1 count=%d if=%s of=%s"
-				 end (tramp-shell-quote-argument localname)
-				 remote-copy))))
+		      (tramp-compat-funcall 'tramp-send-command
+			v
+			(cond
+			 ((and beg end)
+			  (format "dd bs=1 skip=%d if=%s count=%d of=%s"
+				  beg (tramp-shell-quote-argument localname)
+				  (- end beg) remote-copy))
+			 (beg
+			  (format "dd bs=1 skip=%d if=%s of=%s"
+				  beg (tramp-shell-quote-argument localname)
+				  remote-copy))
+			 (end
+			  (format "dd bs=1 count=%d if=%s of=%s"
+				  end (tramp-shell-quote-argument localname)
+				  remote-copy))))
 		      (setq tramp-temp-buffer-file-name nil beg nil end nil))
 
 		    ;; `insert-file-contents-literally' takes care to
@@ -5474,7 +5507,11 @@ should be set connection-local.")
   "Return non-nil if ARG exists in default `process-environment'.
 Tramp does not propagate local environment variables in remote
 processes."
-  (member arg (default-toplevel-value 'process-environment)))
+  (or ;; `buffer-local-toplevel-value' has been defined in Emacs 31.1.
+      (ignore-error (void-variable void-function)
+        (member arg (tramp-compat-funcall 'buffer-local-toplevel-value
+		      'process-environment)))
+      (member arg (default-toplevel-value 'process-environment))))
 
 (defun tramp-handle-make-process (&rest args)
   "An alternative `make-process' implementation for Tramp files."
@@ -5557,12 +5594,10 @@ processes."
 		(tramp-compat-make-temp-name))))
 	   (options
 	    (when sh-file-name-handler-p
-	      (tramp-compat-funcall
-		  'tramp-ssh-controlmaster-options v)))
+	      (tramp-compat-funcall 'tramp-ssh-controlmaster-options v)))
 	   (device
 	    (when adb-file-name-handler-p
-	      (tramp-compat-funcall
-		  'tramp-adb-get-device v)))
+	      (tramp-compat-funcall 'tramp-adb-get-device v)))
            (pta (unless (eq connection-type 'pipe) "-t"))
 	   login-args p)
 
@@ -7467,13 +7502,12 @@ name of a process or buffer, or nil to default to the current buffer."
 	;; This is for tramp-sh.el.  Other backends do not support this (yet).
 	;; Not all "kill" implementations support process groups by
 	;; negative pid, so we try both variants.
-	(tramp-compat-funcall
-	 'tramp-send-command
-	 (process-get proc 'tramp-vector)
-	 (format "(\\kill -2 -%d || \\kill -2 %d) 2>%s"
-                 pid pid
-                 (tramp-get-remote-null-device
-		  (process-get proc 'tramp-vector))))
+	(tramp-compat-funcall 'tramp-send-command
+	  (process-get proc 'tramp-vector)
+	  (format "(\\kill -2 -%d || \\kill -2 %d) 2>%s"
+                  pid pid
+                  (tramp-get-remote-null-device
+		   (process-get proc 'tramp-vector))))
 	;; Wait, until the process has disappeared.  If it doesn't,
 	;; fall back to the default implementation.
         (while (tramp-accept-process-output proc))
@@ -7523,9 +7557,8 @@ SIGCODE may be an integer, or a symbol whose name is a signal name."
       (tramp-message
        vec 5 "Send signal %s to process %s with pid %s" sigcode process pid)
       ;; This is for tramp-sh.el.  Other backends do not support this (yet).
-      (if (tramp-compat-funcall
-           'tramp-send-command-and-check
-           vec (format "\\kill -%s %d" sigcode pid))
+      (if (tramp-compat-funcall 'tramp-send-command-and-check
+            vec (format "\\kill -%s %d" sigcode pid))
           0 -1))))
 
 ;; `signal-process-functions' exists since Emacs 29.1.
