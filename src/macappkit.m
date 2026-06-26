@@ -24,6 +24,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 
 #include "character.h"
@@ -2484,6 +2485,7 @@ mac_with_suppressed_transparent_titlebar( NSWindow* window, BOOL assumeTranspare
   overlayView = [[EmacsOverlayView alloc] initWithFrame:contentRect];
   [overlayView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
   [overlayView setLayer:[CALayer layer]];
+  [[overlayView layer] setDrawsAsynchronously:true];
   [overlayView setWantsLayer:YES];
   /* OS X 10.9 needs this.  */
   [overlayView setLayerUsesCoreImageFilters:YES];
@@ -3559,6 +3561,7 @@ mac_with_suppressed_transparent_titlebar( NSWindow* window, BOOL assumeTranspare
   CGFloat internalBorderWidth = FRAME_INTERNAL_BORDER_WIDTH (f);
 
   rootLayer = [CALayer layer];
+  [rootLayer setDrawsAsynchronously:true];
   contentViewRect.origin = NSZeroPoint;
   rootLayer.bounds = NSRectToCGRect (contentViewRect);
   rootLayer.anchorPoint = CGPointZero;
@@ -3687,6 +3690,7 @@ mac_with_suppressed_transparent_titlebar( NSWindow* window, BOOL assumeTranspare
       for (i = 0; i < nrects; i++)
 	{
 	  CALayer *layer = [CALayer layer];
+          [layer setDrawsAsynchronously:true];
 	  NSMutableDictionaryOf (NSString *, id <CAAction>) *actions;
 	  CAConstraintAttribute attribute;
 	  CGFloat scale;
@@ -15868,6 +15872,7 @@ mac_update_accessibility_status (struct frame *f)
 - (void)setupAnimationLayer
 {
   animationLayer = [CALayer layer];
+  animationLayer.drawsAsynchronously = true;
   animationLayer.anchorPoint = CGPointZero;
   [[overlayView layer] addSublayer:animationLayer];
 }
@@ -15880,7 +15885,9 @@ mac_update_accessibility_status (struct frame *f)
   NSBitmapImageRep *bitmap;
 
   layer = [CALayer layer];
+  layer.drawsAsynchronously = true;
   contentLayer = [CALayer layer];
+  contentLayer.drawsAsynchronously = true;
   layer.frame = NSRectToCGRect (rectInLayer);
   layer.masksToBounds = YES;
   contentLayer.frame = CGRectMake (0, 0, NSWidth (rectInLayer),
