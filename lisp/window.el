@@ -5328,18 +5328,18 @@ buffer by itself."
 	      (set-window-dedicated-p window nil)
 	      (if (switch-to-prev-buffer window 'kill)
                   (and dedicated-side (set-window-dedicated-p window 'side))
-		(window--delete window nil 'kill))))))
+		(window--delete window nil 'kill)))))))
 
-	(when (window-live-p window)
-	  ;; If the fourth elements of the 'quit-restore' or
-	  ;; 'quit-restore-prev' parameters equal BUFFER, these
-	  ;; parameters become useless - in 'quit-restore-window' the
-	  ;; fourth element must equal the buffer of WINDOW in order to
-	  ;; use that parameter.  If BUFFER is mentioned in the second
-	  ;; element of the parameter, 'quit-restore-window' cannot
-	  ;; possibly show BUFFER instead; so this parameter becomes
-	  ;; useless too.
-	  (unrecord-window-buffer window buffer t))))))
+      (when (window-live-p window)
+	;; If the fourth elements of the 'quit-restore' or
+	;; 'quit-restore-prev' parameters equal BUFFER, these
+	;; parameters become useless - in 'quit-restore-window' the
+	;; fourth element must equal the buffer of WINDOW in order to
+	;; use that parameter.  If BUFFER is mentioned in the second
+	;; element of the parameter, 'quit-restore-window' cannot
+	;; possibly show BUFFER instead; so this parameter becomes
+	;; useless too.
+	(unrecord-window-buffer window buffer t)))))
 
 (defcustom quit-window-hook nil
   "Hook run before performing any other actions in the `quit-window' command."
@@ -5432,7 +5432,8 @@ elsewhere.  This value is used by `quit-windows-on'."
 	 (quit-restore-prev-2 (nth 2 quit-restore-prev))
          (prev-buffer (catch 'prev-buffer
                         (dolist (buf (window-prev-buffers window))
-                          (unless (eq (car buf) buffer)
+                          (when (and (not (eq (car buf) buffer))
+                                     (buffer-live-p (car buf)))
                             (throw 'prev-buffer (car buf))))))
          (dedicated (window-dedicated-p window))
 	 (frame (window-frame window))
@@ -7994,6 +7995,12 @@ variable to t, strong dedication will be used by default and
 
 See the info node `(elisp)Dedicated Windows' for more details."
   (interactive "i\nP\np")
+
+  (when (and (not window) (mouse-event-p last-input-event))
+    (let ((event-window (posn-window (event-start last-input-event))))
+      (unless (eq (selected-window) event-window)
+        (setq window event-window))))
+
   (setq window (window-normalize-window window))
   (setq flag (cond
               ((consp flag)
@@ -8012,8 +8019,9 @@ See the info node `(elisp)Dedicated Windows' for more details."
                 ((null status) "no longer")
                 ((eq status t) "now strongly")
                 (t "now")))
-             (current-buffer))
-    (force-mode-line-update)))
+             (window-buffer window))
+    (with-current-buffer (window-buffer window)
+      (force-mode-line-update))))
 
 (defconst display-buffer--action-function-custom-type
   '(choice :tag "Function"

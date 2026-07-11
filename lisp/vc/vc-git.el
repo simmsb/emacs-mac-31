@@ -722,14 +722,18 @@ or an empty string if none."
 ;; Follows vc-exec-after.
 (declare-function vc-set-async-update "vc-dispatcher" (process-buffer))
 
+(declare-function vc-dir-maybe-narrow-and-show-more-button "vc-dir")
+
 (defun vc-git-dir-status-goto-stage (git-state)
   ;; TODO: Look into reimplementing this using `git status --porcelain=v2'.
+  (require 'vc-dir)
   (cl-flet ((git-cmd (&rest args)
               (set-process-query-on-exit-flag
                (apply #'vc-git-command (current-buffer) 'async args)
                nil)))
     (let ((files (vc-git-dir-status-state->files git-state))
-          (allowed-exit 1))
+          (allowed-exit 1)
+          (limit vc-dir-process-output-limit))
       (erase-buffer)
       (pcase (vc-git-dir-status-state->stage git-state)
         ('update-index
@@ -756,7 +760,10 @@ or an empty string if none."
         ('diff-index
          (git-cmd files "diff-index" "--relative" "-z" "-M" "HEAD" "--")))
       (vc-run-delayed-success allowed-exit
-        (vc-git-after-dir-status-stage git-state)))))
+        (let ((vc-dir-process-output-limit limit))
+          (vc-dir-maybe-narrow-and-show-more-button
+           "(reported states may be incorrect)")
+          (vc-git-after-dir-status-stage git-state))))))
 
 (defun vc-git-dir-status-files (_dir files update-function)
   "Return a list of (FILE STATE EXTRA) entries for DIR."
@@ -1918,28 +1925,18 @@ If LIMIT is a non-empty string, use it as a base revision."
 		'("--")))))))
 
 (defun vc-git-incoming-revision (&optional upstream-location refresh)
-  (let* ((remotes (and (not upstream-location) (vc-git--branch-remotes)))
-         (rev (or upstream-location
-                  (cdr (assq 'push remotes))
-                  (cdr (assq 'upstream remotes)))))
-    (when (and (or refresh (null (vc-git--rev-parse rev)))
-               ;; If the branch has no upstream, and we weren't supplied
-               ;; with one, then fetching is always useless (bug#79952).
-               (or upstream-location
-                   (and-let* ((branch (vc-git-working-branch)))
-                     (with-temp-buffer
-                       (vc-git--out-ok "config" "--get"
-                                       (format "branch.%s.remote"
-                                               branch))))))
-      (vc-git-command nil 0 nil "fetch"
-                      (and upstream-location
-                           ;; Extract remote from "remote/branch".
-                           (replace-regexp-in-string "/.*" ""
-                                                     upstream-location))))
-    (ignore-errors            ; in order to return nil if no such branch
-      (with-output-to-string
-        (vc-git-command standard-output 0 nil
-                        "log" "--max-count=1" "--pretty=format:%H" rev)))))
+  (let ((remotes (and (not upstream-location) (vc-git--branch-remotes))))
+    (and-let* ((rev (or upstream-location
+                        (cdr (assq 'push remotes))
+                        (cdr (assq 'upstream remotes)))))
+      (when (or refresh (null (vc-git--rev-parse rev)))
+        (vc-git-command nil 0 nil "fetch"
+                        ;; Extract remote from "remote/branch".
+                        (replace-regexp-in-string "/.*" "" rev)))
+      (ignore-errors          ; in order to return nil if no such branch
+        (with-output-to-string
+          (vc-git-command standard-output 0 nil
+                          "log" "--max-count=1" "--pretty=format:%H" rev))))))
 
 (defun vc-git-log-search (buffer pattern)
   "Search the log of changes for PATTERN and output results into BUFFER.
