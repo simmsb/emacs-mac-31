@@ -1475,6 +1475,11 @@ commands act on the child files of that directory that are displayed in
 the *vc-dir* buffer.
 
 \\{vc-dir-mode-map}"
+  ;; Delay the initial refresh until after mode hooks so that any minor
+  ;; modes are activated before the calls to `substitute-command-keys'
+  ;; in `vc-dir-headers'.  Then any bindings shadowed by minor modes
+  ;; won't be included in the key binding hints.
+  :after-hook (vc-dir-refresh)
   (setq-local vc-dir-backend use-vc-backend)
   (setq-local desktop-save-buffer 'vc-dir-desktop-buffer-misc-data)
   (setq-local bookmark-make-record-function #'vc-dir-bookmark-make-record)
@@ -1482,7 +1487,7 @@ the *vc-dir* buffer.
   (setq buffer-read-only t)
   (when (boundp 'tool-bar-map)
     (setq-local tool-bar-map vc-dir-tool-bar-map))
-  (let ((buffer-read-only nil))
+  (let ((inhibit-read-only t))
     (erase-buffer)
     (setq-local vc-dir-process-buffer nil)
     (setq-local vc-ewoc (ewoc-create #'vc-dir-printer))
@@ -1492,8 +1497,7 @@ the *vc-dir* buffer.
     ;; Make sure that if the directory buffer is killed, the update
     ;; process running in the background is also killed.
     (add-hook 'kill-buffer-query-functions #'vc-dir-kill-query nil t)
-    (hack-dir-local-variables-non-file-buffer)
-    (vc-dir-refresh)))
+    (hack-dir-local-variables-non-file-buffer)))
 
 (defvar-keymap vc-dir-outgoing-revisions-map
   :doc "Local keymap for viewing outgoing revisions."
@@ -1542,6 +1546,7 @@ uses OVERLAY."
                                                  (current-buffer)
                                                  '(log-outgoing short))
                   (setq proc (get-buffer-process (current-buffer)))
+                  (set-process-query-on-exit-flag proc nil)
                   (overlay-put overlay 'proc proc)
                   (vc-run-delayed
                     (unwind-protect
@@ -1990,14 +1995,21 @@ These are the commands available for use in the file status buffer:
 
   (interactive
    (list
-    ;; When you hit C-x v d in a visited VC file,
-    ;; the *vc-dir* buffer visits the directory under its truename;
-    ;; therefore it makes sense to always do that.
-    ;; Otherwise if you do C-x v d -> C-x C-f -> C-x v d
-    ;; you may get a new *vc-dir* buffer, different from the original
-    (file-truename (read-directory-name "VC status for directory: "
-					(vc-root-dir) nil t
-					nil))
+    (let ((dir (read-directory-name "VC status for directory: "
+                                    (vc-root-dir) nil t
+                                    nil))
+          truename)
+      ;; Try to match the result of `vc-refresh-state' in a file buffer.
+      ;; Otherwise if you do C-x v d -> C-x C-f -> C-x v d you may get a
+      ;; new *vc-dir* buffer, different from the original.
+      ;; If DIR has no VC backend but its truename does, use that
+      ;; instead of DIR.
+      (if (and vc-follow-symlinks
+               (not (vc-responsible-backend dir t))
+               (not (equal dir (setq truename (file-truename dir))))
+               (vc-responsible-backend truename t))
+          truename
+        dir))
     (if current-prefix-arg
 	(intern
 	 (completing-read

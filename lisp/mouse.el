@@ -2390,8 +2390,8 @@ if `mouse-drag-copy-region' is non-nil)."
       (exchange-point-and-mark)
       (mouse-set-region-1)
       (when (and mouse-drag-copy-region
-                 (or (not (eq mouse-drag-copy-region 'non-empty))
-                     (not (/= (mark t) (point)))))
+                 (not (and (eq mouse-drag-copy-region 'non-empty)
+                           (= (mark t) (point)))))
         (kill-new (filter-buffer-substring (mark t) (point))))
       (setq mouse-save-then-kill-posn click-pt)))))
 
