@@ -89,7 +89,7 @@ show line numbers on the left:
     \\='(lambda (props)
        (let ((show-line-num (gethash \\='emacs_linum props)))
          (cond ((equal show-line-num \"true\") (linum-mode 1))
-           ((equal show-line-num \"false\") (linum-mode 0))))))
+           ((equal show-line-num \"false\") (linum-mode -1))))))
 
 This hook will be run even when there are no matching sections in
 \".editorconfig\", or no \".editorconfig\" file was found at all."
@@ -134,7 +134,6 @@ This hook will be run even when there are no matching sections in
     (cmake-mode cmake-tab-width)
     (coffee-mode coffee-tab-width)
     (csharp-mode c-basic-offset)
-    (css-ts-mode css-indent-offset)
     (d-mode c-basic-offset)
     (elixir-ts-mode elixir-ts-indent-offset)
     (emacs-lisp-mode . editorconfig--get-indentation-lisp-mode)
@@ -191,7 +190,6 @@ This hook will be run even when there are no matching sections in
     (rjsx-mode js-indent-level sgml-basic-offset)
     (ruby-ts-mode ruby-indent-level)
     (scala-mode scala-indent:step)
-    (scss-mode css-indent-offset)
     (swift-mode swift-mode:basic-offset)
     (tcl-mode tcl-indent-level
               tcl-continued-indent-level)

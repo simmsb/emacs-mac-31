@@ -187,7 +187,8 @@
                      ("1.12" . "29.2")
                      ("1.12" . "29.3")
                      ("1.12.29" . "29.4")
-                     ("1.17.30" . "30.1")))
+                     ("1.17.30" . "30.1")
+                     ("1.24.31" . "31.1")))
 
 (defun eglot-alternatives (alternatives)
   "Compute server-choosing function for `eglot-server-programs'.
@@ -248,6 +249,7 @@ automatically)."
     ((cmake-mode cmake-ts-mode)
      . ,(eglot-alternatives '(("neocmakelsp" "stdio") "cmake-language-server")))
     (vimrc-mode . ("vim-language-server" "--stdio"))
+    (vala-mode . ("vala-language-server"))
     ((python-mode python-ts-mode)
      . ,(eglot-alternatives
          '(("rass" "python")
@@ -600,7 +602,8 @@ This is done by sending an additional '$/cancelRequest' notification
 every time Eglot decides to forget a request.  The effect of this
 notification is implementation defined, and is only useful for some
 servers."
-  :type 'boolean)
+  :type 'boolean
+  :package-version '(Eglot . "1.22"))
 
 (defface eglot-code-action-indicator-face
   '((t (:inherit warning :weight bold)))
@@ -1491,6 +1494,11 @@ PRESERVE-BUFFERS as in `eglot-shutdown', which see."
          (lambda (x) (eq server
                          (get-text-property 0 'eglot--server (car x))))
          flymake-list-only-diagnostics))
+  ;; Cleanup progress reporters
+  (maphash (lambda (_ r)
+             (unless (eq (car r) 'eglot--mode-line-reporter )
+               (progress-reporter-done r)))
+           (eglot--progress-reporters server))
   (cond ((eglot--shutdown-requested server)
          t)
         ((not (eglot--inhibit-autoreconnect server))
@@ -2057,7 +2065,7 @@ Unless IMMEDIATE, send pending changes before making request."
 
 (defvar-local eglot--inflight-async-requests nil
   "An plist of symbols to lists of JSONRPC ids.
-The ids designate in-flight asynchronous requests that may be cancelled
+The ids designate in-flight asynchronous requests that may be canceled
 according to `eglot-advertise-cancellation'.")
 
 (cl-defun eglot--cancel-inflight-async-requests
@@ -2472,21 +2480,24 @@ the previous reports for TOKEN.")
                  #'eglot--after-set-visited-file-name-hook t)
     (remove-hook 'before-save-hook #'eglot--signal-textDocument/willSave t)
     (remove-hook 'after-save-hook #'eglot--signal-textDocument/didSave t)
-    (remove-hook 'xref-backend-functions #'eglot-xref-backend t)
+    (unless (eglot--stay-out-of-p 'xref)
+      (remove-hook 'xref-backend-functions #'eglot-xref-backend t))
     (remove-hook 'completion-at-point-functions #'eglot-completion-at-point t)
     (remove-hook 'completion-in-region-mode-hook #'eglot--capf-session-flush t)
     (remove-hook 'company-after-completion-hook #'eglot--capf-session-flush t)
     (remove-hook 'change-major-mode-hook #'eglot--managed-mode-off t)
     (remove-hook 'post-self-insert-hook #'eglot--post-self-insert-hook t)
     (remove-hook 'pre-command-hook #'eglot--pre-command-hook t)
-    (dolist (f (list #'eglot-hover-eldoc-function
-                     #'eglot-signature-eldoc-function
-                     #'eglot-highlight-eldoc-function
-                     #'eglot-code-action-suggestion))
-        (remove-hook 'eldoc-documentation-functions f t))
+    (unless (eglot--stay-out-of-p 'eldoc)
+      (dolist (f (list #'eglot-hover-eldoc-function
+                       #'eglot-signature-eldoc-function
+                       #'eglot-highlight-eldoc-function
+                       #'eglot-code-action-suggestion))
+        (remove-hook 'eldoc-documentation-functions f t)))
     (cl-loop for (var . saved-binding) in eglot--saved-bindings
              do (set (make-local-variable var) saved-binding))
-    (remove-function (local 'imenu-create-index-function) #'eglot-imenu)
+    (unless (eglot--stay-out-of-p 'imenu)
+      (remove-function (local 'imenu-create-index-function) #'eglot-imenu))
     (eglot--flymake-reset)
     (setq eglot--flymake-report-fn nil)
     (run-hooks 'eglot-managed-mode-hook)
@@ -2872,7 +2883,8 @@ return it back to the server.  :null is returned if the list was empty."
                 (if (eq eglot-report-progress 'messages)
                     (make-progress-reporter
                      (format "[eglot] %s %s: %s"
-                             (eglot-project-nickname server) token title))
+                             (eglot-project-nickname server) token title)
+                     0 100)
                   (list 'eglot--mode-line-reporter token title)))
               (upd (pcnt msg &optional
                          (pr (gethash token (eglot--progress-reporters server))))
@@ -2880,14 +2892,17 @@ return it back to the server.  :null is returned if the list was empty."
                   ((eq (car pr) 'eglot--mode-line-reporter)
                    (setcdr (cddr pr) (list msg pcnt))
                    (force-mode-line-update t))
-                  (pr (eglot--reporter-update pr pcnt msg)))))
+                  (pr
+                   (if (eql pcnt 100)
+                       (progress-reporter-done pr)
+                     (eglot--reporter-update pr pcnt msg))))))
       (eglot--dbind ((WorkDoneProgress) kind title percentage message) value
         (pcase kind
           ("begin"
-           (upd percentage (fmt title message)
+           (upd (or percentage 0) (fmt title message)
                 (puthash token (mkpr title)
                          (eglot--progress-reporters server))))
-          ("report" (upd percentage message))
+          ("report" (upd (or percentage 0) message))
           ("end" (upd (or percentage 100) message)
            (run-at-time 2 nil
                         (lambda ()
@@ -2952,19 +2967,22 @@ THINGS are either registrations or unregisterations (sic)."
     (cond
      ((eq external t) (browse-url uri))
      ((file-readable-p (setq filename (eglot-uri-to-path uri)))
-      ;; Use run-with-timer to avoid nested client requests like the
-      ;; "synchronous imenu" floated in bug#62116 presumably caused by
-      ;; which-func-mode.
-      (run-with-timer
-       0 nil
-       (lambda ()
-         (with-current-buffer (find-file-noselect filename)
-           (cond (takeFocus
-                  (pop-to-buffer (current-buffer))
-                  (select-frame-set-input-focus (selected-frame)))
-                 ((display-buffer (current-buffer))))
-           (when selection
-             (eglot--goto selection))))))
+      ;; Really ensure this runs when it is safe to run it.
+      ;; run-with-timer avoid nested client requests like the
+      ;; "synchronous imenu" floated in bug#62116, while the
+      ;; "post-command once" trick is for bug#81538.
+      (cl-labels ((findit ()
+                  (remove-hook 'post-command-hook #'findit)
+                  (with-current-buffer (find-file-noselect filename)
+                    (cond (takeFocus
+                           (pop-to-buffer (current-buffer))
+                           (select-frame-set-input-focus (selected-frame)))
+                          ((display-buffer (current-buffer))))
+                    (when selection
+                      (eglot--goto selection)))))
+                (if this-command
+                    (add-hook 'post-command-hook #'findit)
+                  (run-at-time 0 nil #'findit))))
      (t (setq success :json-false)))
     `(:success ,success)))
 
@@ -4951,8 +4969,8 @@ not watching some directories" eglot-max-file-watches)
                       (:*       "\\*"                   eglot--glob-emit-*)
                       (:?       "\\?"                   eglot--glob-emit-?)
                       (:{}      "{[^{}]+}"              eglot--glob-emit-{})
-                      (:range   "\\[\\^?[^][/,*{}]+\\]" eglot--glob-emit-range)
-                      (:literal "[^][,*?{}]+"           eglot--glob-emit-self))
+                      (:range   "\\[\\^?[^][/*{}]+\\]"  eglot--glob-emit-range)
+                      (:literal "[^][*?{}]+"            eglot--glob-emit-self))
      until (eobp)
      collect (cl-loop
               for (_token regexp emitter) in grammar
@@ -5393,11 +5411,13 @@ initial delay and repeat rate, and may not be 100% accurate."
          (defcustom eglot-semantic-token-types
            ',types "LSP-supplied semantic types Eglot should consider."
            :type '(set ,@(mapcar (lambda (o) `(const ,o)) types))
-           :group 'eglot-semantic-fontification)
+           :group 'eglot-semantic-fontification
+           :package-version '(Eglot . "1.20"))
          (defcustom eglot-semantic-token-modifiers
            ',modifiers "LSP-supplied semantic modifiers Eglot should consider."
            :type '(set ,@(mapcar (lambda (o) `(const ,o)) modifiers))
-           :group 'eglot-semantic-fontification)))))
+           :group 'eglot-semantic-fontification
+           :package-version '(Eglot . "1.20"))))))
 
 (eglot--semtok-define-things)
 

@@ -1581,6 +1581,15 @@ Calls `completion-boundaries' with STRING, COLLECTION, PRED, SUFFIX."
          (end (+ (length string) (cdr boundaries))))
     (>= start pos end)))
 
+(defvar completion-list-inhibit-functions nil
+  "Abnormal hook for inhibiting display of the *Completions* buffer.
+If any of these functions returns non-nil, it inhibits the display
+of *Completions*.")
+
+(defun completion-list-inhibit-p ()
+  "Return non-nil to inhibit the display of the *Completions* buffer."
+  (run-hook-with-args-until-success 'completion-list-inhibit-functions))
+
 (defun completion--do-completion (beg end &optional
                                       try-completion-function expect-exact)
   "Do the completion and return a summary of what happened.
@@ -1671,7 +1680,7 @@ when the buffer's text is already an exact match."
                   (when (and threshold
                              (not completed)
                              (not only-changed-boundaries))
-                   (completion-all-sorted-completions beg end))))
+                    (completion-all-sorted-completions beg end))))
             (completion--flush-all-sorted-completions)
             (cond
              ((and (consp (cdr comps)) ;; There's something to cycle.
@@ -1686,6 +1695,7 @@ when the buffer's text is already an exact match."
               (minibuffer-force-complete beg end))
              ((or completed only-changed-boundaries)
               (cond
+               ((completion-list-inhibit-p)) ; Bug#81537.
                ((pcase completion-auto-help
                   ('visible (minibuffer--completions-visible))
                   ('always t))
@@ -1699,14 +1709,16 @@ when the buffer's text is already an exact match."
                                           'exact 'unknown))))))
              ;; Show the completion table, if requested.
              ((not exact)
-	      (if (pcase completion-auto-help
-                    ('lazy (eq this-command last-command))
-                    (_ completion-auto-help))
+	      (if (if (or (eq completion-auto-help 'lazy)
+                          (completion-list-inhibit-p)) ; Bug#81537.
+                      (eq this-command last-command)
+                    completion-auto-help)
                   (minibuffer-completion-help beg end)
                 (completion--message "Next char not unique")))
              ;; If the last exact completion and this one were the same, it
              ;; means we've already given a "Complete, but not unique" message
-             ;; and the user's hit TAB again, so now we give him help.
+             ;; and the user's hit TAB again, so now we give him help
+             ;; (even if `completion-list-inhibit-p' returns non-nil).
              (t
               (when (and (eq this-command last-command) completion-auto-help)
                 (minibuffer-completion-help beg end))
@@ -1745,25 +1757,31 @@ scroll the window of possible completions."
          (eq t (frame-visible-p (window-frame minibuffer-scroll-window))))
     (let ((window minibuffer-scroll-window))
       (with-current-buffer (window-buffer window)
-        (cond
-         ;; Here this is possible only when second-tab, but instead of
-         ;; scrolling the completion list window, switch to it below,
-         ;; outside of `with-current-buffer'.
-         ((eq completion-auto-select 'second-tab))
-         ;; Reverse tab
-         ((equal (this-command-keys) [backtab])
-          (if (pos-visible-in-window-p (point-min) window)
-              ;; If beginning is in view, scroll up to the end.
-              (set-window-point window (point-max))
-            ;; Else scroll down one screen.
-            (with-selected-window window (scroll-down))))
-         ;; Normal tab
-         (t
-          (if (pos-visible-in-window-p (point-max) window)
-              ;; If end is in view, scroll up to the end.
-              (set-window-start window (point-min) nil)
-            ;; Else scroll down one screen.
-            (with-selected-window window (scroll-up))))))
+        (let* ((pm (point-max))
+               ;; If completions buffer ends in a newline (e.g. when
+               ;; `completions-format' is 'vertical), disregard that
+               ;; when checking `pos-visible-in-window-p' to prevent
+               ;; unnecessary scrolling (bug#81630).
+               (pt (if (eq (char-before pm) ?\C-j) (1- pm) pm)))
+          (cond
+           ;; Here this is possible only when second-tab, but instead of
+           ;; scrolling the completion list window, switch to it below,
+           ;; outside of `with-current-buffer'.
+           ((eq completion-auto-select 'second-tab))
+           ;; Reverse tab
+           ((equal (this-command-keys) [backtab])
+            (if (pos-visible-in-window-p (point-min) window)
+                ;; If beginning is in view, scroll up to the end.
+                (set-window-point window pt)
+              ;; Else scroll down one screen.
+              (with-selected-window window (scroll-down))))
+           ;; Normal tab
+           (t
+            (if (pos-visible-in-window-p pt window)
+                ;; If end is in view, scroll up to the end.
+                (set-window-start window (point-min) nil)
+              ;; Else scroll down one screen.
+              (with-selected-window window (scroll-up)))))))
       (when (eq completion-auto-select 'second-tab)
         (switch-to-completions))
       nil))
@@ -1774,12 +1792,18 @@ scroll the window of possible completions."
    (t (prog1 (pcase (completion--do-completion beg end)
                (#b000 nil)
                (_     t))
-        (if (window-live-p minibuffer-scroll-window)
-            (and (eq completion-auto-select t)
-                 (eq t (frame-visible-p (window-frame minibuffer-scroll-window)))
-                 ;; When the completion list window was displayed, select it.
-                 (switch-to-completions))
-          (completion-in-region-mode -1))))))
+        ;; FIXME: This part of the fix for bug#81537 reintroduces
+        ;; bug#67001 for `icomplete-in-buffer' users.  It's not as bad
+        ;; for them because Icomplete users probably expect to have to
+        ;; C-g out of completion before using other bindings, but maybe
+        ;; we can still fix it.  --spwhitton
+        (unless (completion-list-inhibit-p)
+          (if (window-live-p minibuffer-scroll-window)
+              (and (eq completion-auto-select t)
+                   (eq t (frame-visible-p (window-frame minibuffer-scroll-window)))
+                   ;; When the completion list window was displayed, select it.
+                   (switch-to-completions))
+            (completion-in-region-mode -1)))))))
 
 (defun completion--cache-all-sorted-completions (beg end comps)
   (add-hook 'after-change-functions
@@ -2747,6 +2771,13 @@ The candidate will still be chosen by `choose-completion' unless
     (goto-char (or (next-single-property-change (point) 'completion--string)
                    (point-max)))))
 
+(defun completions--clear-selection ()
+  "Clear the selected candidate in the completions buffer.
+
+Unlike `completions--deselect' this fully clears all selected-completion
+state from the buffer."
+  (goto-char (point-min)))
+
 (defun completions--should-show-p (metadata &optional force-eager-update)
   "Return non-nil if *Completions* should be automatically updated or displayed.
 
@@ -3025,7 +3056,7 @@ has been requested by the completion table."
     (with-selected-window win
       ;; Move point off any completions, so we don't move point there
       ;; again the next time `minibuffer-completion-help' is called.
-      (goto-char (point-min))
+      (completions--clear-selection)
       (bury-buffer))))
 
 (defun exit-minibuffer ()
@@ -3130,8 +3161,6 @@ Also respects the obsolete wrapper hook `completion-in-region-functions'.
       completion-in-region-functions (start end collection predicate)
     (let ((minibuffer-completion-table collection)
           (minibuffer-completion-predicate predicate))
-      ;; HACK: if the text we are completing is already in a field, we
-      ;; want the completion field to take priority (e.g. Bug#6830).
       (when completion-in-region-mode-predicate
         (setq completion-in-region--data
 	      `(,(if (markerp start) start (copy-marker start))
@@ -4388,7 +4417,7 @@ or a symbol, see `completion-pcm--merge-completions'."
               (setq p0 p)
             (push (substring string p (match-end 0)) pattern)
             ;; `any-delim' is used so that "a-b" also finds "array->beginning".
-            (setq pending (if completion-pcm-leading-wildcard 'prefix 'any-delim))
+            (setq pending 'any-delim)
             (setq p0 (match-end 0))))
         (setq p p0))
 
@@ -4797,10 +4826,24 @@ the same set of elements."
                   (when (seq-some (lambda (elem) (eq elem 'prefix)) wildcards)
                     (setq prefix (substring prefix 0 (length fixed))))
                   (push prefix res)
+                  (when (seq-every-p (lambda (comp) (< (length prefix) (length comp))) comps)
+                    ;; Wherever the user could type a character to disambiguate between
+                    ;; completions, possibly move point there.
+                    (push 'nonempty res))
                   ;; Push all the wildcards in this stretch, to preserve `point' and
-                  ;; `star' wildcards before ELEM.
-                  (dolist (wildcard wildcards)
-                    (push wildcard res))
+                  ;; `star' wildcards before ELEM.  Collapse multiple `star's down to one
+                  ;; on each side of point. (bug#81394)
+                  (let ((star-seen nil))
+                    (dolist (wildcard wildcards)
+                      (cond
+                       ((eq wildcard 'star)
+                        (unless star-seen
+                          (push 'star res))
+                        (setq star-seen t))
+                       (t
+                        (when (eq wildcard 'point)
+                          (setq star-seen nil))
+                        (push wildcard res)))))
                   ;; Extract common suffix additionally to common prefix.
                   ;; Don't do it for `any' since it could lead to a merged
                   ;; completion that doesn't itself match the candidates.
@@ -4866,6 +4909,7 @@ the same set of elements."
            ;; the last place where there's something to choose, or
            ;; at the very end.
            (pointpat (or (memq 'point mergedpat)
+                         (memq 'nonempty mergedpat)
                          (memq 'any   mergedpat)
                          (memq 'star  mergedpat)
                          ;; Not `prefix'.
@@ -5127,24 +5171,12 @@ usual. Returns (ALL PAT PREFIX SUFFIX)."
 
 (defun completion-shorthand-try-completion (string table pred point)
   "Try completion with `read-symbol-shorthands' of original buffer."
-  (cl-loop with expanded
-           for (short . long) in
-           (with-current-buffer minibuffer--original-buffer
-             read-symbol-shorthands)
-           for probe =
-           (and (> point (length short))
-                (string-prefix-p short string)
-                (try-completion (setq expanded
-                                      (concat long
-                                              (substring
-                                               string
-                                               (length short))))
-                                table pred))
-           when probe
-           do (message "Shorthand expansion")
-           and return (cons expanded (max (length long)
-                                          (+ (- point (length short))
-                                             (length long))))))
+  (let ((expanded (with-current-buffer minibuffer--original-buffer
+                    (shorthands-to-longhand string))))
+    (when (and (not (equal expanded string))
+               (try-completion expanded table pred))
+      (cons expanded (+ (- point (length string))
+                        (length expanded))))))
 
 (defun completion-shorthand-all-completions (_string _table _pred _point)
   ;; no-op: For now, we don't want shorthands to list all the possible

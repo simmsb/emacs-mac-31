@@ -1024,11 +1024,11 @@ Used in `tramp-make-tramp-file-name'.")
 
 (defun tramp-build-prefix-regexp ()
   "Return `tramp-prefix-regexp'."
-  (rx bol (literal (tramp-build-prefix-format))))
+  (rx bos (literal (tramp-build-prefix-format))))
 
 (defvar tramp-prefix-regexp nil ; Initialized when defining `tramp-syntax'!
   "Regexp matching the very beginning of Tramp file names.
-Should always start with \"^\".  Derived from `tramp-prefix-format'.")
+Should always start with \"\\\\=`\".  Derived from `tramp-prefix-format'.")
 
 (defconst tramp-method-regexp-alist
   `((default . ,(rx (| (literal tramp-default-method-marker) (>= 2 alnum))))
@@ -1070,7 +1070,10 @@ Used in `tramp-make-tramp-file-name'.")
   "Regexp matching delimiter between method and user or host names.
 Derived from `tramp-postfix-method-format'.")
 
-(defconst tramp-user-regexp (rx (+ (not (any "/:|[]" blank))))
+(defconst tramp-user-regexp
+  (rx (| (+ (not (any "/\\^$?*:;|[]{}()<>`'\"" blank)))
+	 ;; Environment variable.
+	 (: "$" (+ (any "_" alnum)))))
   "Regexp matching user names.")
 
 (defconst tramp-prefix-domain-format "%"
@@ -1845,6 +1848,8 @@ default values are used."
 	    (hop       (match-string (nth 5 tramp-file-name-structure) name))
 	    domain port v)
 	(when user
+	  (while (string-match (rx bos "$" (group (+ (any "_" alnum))) eos) user)
+	    (setq user (getenv (match-string 1 user))))
 	  (when (string-match tramp-user-with-domain-regexp user)
 	    (setq domain (match-string 2 user)
 		  user (match-string 1 user))))
@@ -2254,10 +2259,13 @@ without a visible progress reporter."
 		      (or tramp-inhibit-progress-reporter tm)))
 		 ,@body)
 	     (setq cookie "done"))
-         ;; Stop progress reporter.
+	 ;; Stop progress reporter.  We suppress the message in the
+	 ;; message buffer and echo area; proper handling is performed
+	 ;; by `tramp-message'.
 	 (when (and tm pr)
 	   (cancel-timer tm)
-	   (let (message-log-max)
+	   (let ((inhibit-message t)
+		 message-log-max)
 	     (progress-reporter-done pr)))
          (tramp-message ,vec ,level "%s...%s" ,message cookie)))))
 
@@ -2570,7 +2578,9 @@ Must be handled by the callers."
 		   ((bufferp (nth 0 args)) (get-buffer (nth 0 args)))
 		   ((stringp (nth 0 args))
 		    ;; Process or buffer name.
-		    (or (get-process (nth 0 args)) (get-buffer (nth 0 args)))))))
+		    (or (and-let* ((proc (get-process (nth 0 args))))
+                          (process-buffer proc))
+                        (get-buffer (nth 0 args)))))))
 	  (tramp-get-default-directory buf))
 	""))
 
@@ -2705,9 +2715,9 @@ Fall back to normal file name handler if no Tramp file name handler exists."
 	;; `file-remote-p' is called for everything, even for symbolic
 	;; links which look remote.  We don't want to get an error.
 	(non-essential (or non-essential (eq operation 'file-remote-p))))
+    (setq filename (tramp-replace-environment-variables filename))
     (if (tramp-tramp-file-p filename)
 	(save-match-data
-          (setq filename (tramp-replace-environment-variables filename))
           (with-parsed-tramp-file-name filename nil
             (let ((current-connection tramp-current-connection)
 		  (foreign
@@ -4787,40 +4797,42 @@ existing) are returned."
 
 (defun tramp-handle-find-backup-file-name (filename)
   "Like `find-backup-file-name' for Tramp files."
-  (with-parsed-tramp-file-name filename nil
-    (let ((backup-directory-alist
-	   (if tramp-backup-directory-alist
-	       (mapcar
-		(lambda (x)
-		  (cons
-		   (car x)
-		   (if (and (stringp (cdr x))
-			    (file-name-absolute-p (cdr x))
-			    (not (tramp-tramp-file-p (cdr x))))
-		       (tramp-make-tramp-file-name v (cdr x))
-		     (cdr x))))
-		tramp-backup-directory-alist)
-	     backup-directory-alist))
-	  result)
-      (prog1 ;; Run plain `find-backup-file-name'.
-	  (setq result
-		(tramp-run-real-handler
-		 #'find-backup-file-name (list filename)))
-        ;; Protect against security hole.
-	(when (and (not tramp-allow-unsafe-temporary-files)
-		   (not backup-inhibited)
-		   (file-in-directory-p (car result) temporary-file-directory)
-		   (= (or (file-attribute-user-id
-			   (file-attributes filename 'integer))
-			  tramp-unknown-id-integer)
-		      tramp-root-id-integer)
-		   (not (with-tramp-connection-property
-			    (tramp-get-process v) "unsafe-temporary-file"
-			  (yes-or-no-p
-			   (concat
-			    "Backup file on local temporary directory, "
-			    "do you want to continue?")))))
-	  (tramp-error v 'file-error "Unsafe backup file name"))))))
+  (when-let* ((default-directory (file-name-directory filename))
+	      ((tramp-compat-connection-local-value make-backup-files)))
+    (with-parsed-tramp-file-name filename nil
+      (let ((backup-directory-alist
+	     (if tramp-backup-directory-alist
+		 (mapcar
+		  (lambda (x)
+		    (cons
+		     (car x)
+		     (if (and (stringp (cdr x))
+			      (file-name-absolute-p (cdr x))
+			      (not (tramp-tramp-file-p (cdr x))))
+			 (tramp-make-tramp-file-name v (cdr x))
+		       (cdr x))))
+		  tramp-backup-directory-alist)
+	       backup-directory-alist))
+	    result)
+	(prog1 ;; Run plain `find-backup-file-name'.
+	    (setq result
+		  (tramp-run-real-handler
+		   #'find-backup-file-name (list filename)))
+          ;; Protect against security hole.
+	  (when (and (not tramp-allow-unsafe-temporary-files)
+		     (not backup-inhibited)
+		     (file-in-directory-p (car result) temporary-file-directory)
+		     (= (or (file-attribute-user-id
+			     (file-attributes filename 'integer))
+			    tramp-unknown-id-integer)
+			tramp-root-id-integer)
+		     (not (with-tramp-connection-property
+			      (tramp-get-process v) "unsafe-temporary-file"
+			    (yes-or-no-p
+			     (concat
+			      "Backup file on local temporary directory, "
+			      "do you want to continue?")))))
+	    (tramp-error v 'file-error "Unsafe backup file name")))))))
 
 (defun tramp-handle-insert-directory
     (filename switches &optional wildcard full-directory-p)
@@ -6950,6 +6962,9 @@ to cache the result.  Return the modified ATTR."
 			       (caar attr))
 			      (decode-coding-string
 			       (match-string 1 (caar attr)) 'utf-8))))
+	       ;; Quote remote-like symlink.
+	       (when (and (stringp (car attr)) (tramp-tramp-file-p (car attr)))
+		 (setcar attr (file-name-quote (car attr) 'top)))
 	       ;; Set file's gid change bit.
 	       (setcar
 		(nthcdr 9 attr)

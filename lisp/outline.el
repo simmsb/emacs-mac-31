@@ -38,6 +38,7 @@
   (require 'cl-lib)
   (require 'subr-x))
 (require 'icons)
+(require 'xref)
 
 (defgroup outlines nil
   "Support for hierarchical outlining."
@@ -107,7 +108,8 @@ imitate the function `looking-at'."
   "/ h" #'outline-hide-by-heading-regexp
   "C-<" #'outline-promote
   "C->" #'outline-demote
-  "RET" #'outline-insert-heading)
+  "RET" #'outline-insert-heading
+  "M-o" #'outline-xref)
 
 (defvar outline-mode-menu-bar-map
   (let ((map (make-sparse-keymap)))
@@ -148,6 +150,9 @@ imitate the function `looking-at'."
 		  :help "Show all of the text in the buffer"))
     (define-key map [headings]
       (cons "Headings" (make-sparse-keymap "Headings")))
+    (define-key map [headings outline-xref]
+      '(menu-item "Show in Xref" outline-xref
+		  :help "Navigate the buffer's outline using Xref"))
     (define-key map [headings demote-subtree]
       '(menu-item "Demote Subtree" outline-demote
 		  :help "Demote headings lower down the tree"))
@@ -2178,6 +2183,51 @@ With a prefix argument, show headings up to that LEVEL."
   ">"   #'outline-demote
   "C-<" #'outline-promote
   "<"   #'outline-promote)
+
+
+;;; Xref outline navigation
+
+(defun outline-xref--fetch-headings (search-function buffer)
+  "Return a list of Xref values matching SEARCH-FUNCTION in BUFFER."
+  (let (headings)
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char (point-min))
+        (while (funcall search-function nil t)
+          (let* ((line-beg (line-beginning-position))
+                 (line-end (line-end-position))
+                 (summary (progn
+                            (font-lock-ensure line-beg line-end)
+                            (buffer-substring line-beg line-end)))
+                 (location (xref-make-buffer-location buffer line-beg))
+                 (length (length summary)))
+            (push (xref-make-match summary location length) headings))
+          (forward-line 1))))
+    (nreverse headings)))
+
+(defun outline-xref--show-xrefs (search-function)
+  "Display search results in an Xref buffer.
+Populate an Xref buffer with the matches returned by SEARCH-FUNCTION
+applied to the current buffer."
+  (let ((buf (current-buffer)))
+    (xref-show-xrefs
+     (lambda ()
+       (outline-xref--fetch-headings search-function buf))
+     nil)))
+
+;;;###autoload
+(defun outline-xref ()
+  "Navigate the current buffer's outline using Xref.
+If `outline-search-function' is defined, it is used to find the outline
+headings.  Otherwise, the `outline-regexp' variable is used."
+  (interactive)
+  (cond
+   (outline-search-function
+    (outline-xref--show-xrefs outline-search-function))
+   (outline-regexp
+    (outline-xref--show-xrefs #'outline-search-from-regexp))
+   (t
+    (user-error "Undefined outline search strategy"))))
 
 
 (provide 'outline)

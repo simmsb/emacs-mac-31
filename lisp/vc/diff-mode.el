@@ -107,7 +107,10 @@ The value `font-lock' means to refine during font-lock.
 The value `navigation' means to refine each hunk as you visit it
 with `diff-hunk-next' or `diff-hunk-prev'.
 
-You can always manually refine a hunk with `diff-refine-hunk'."
+You can always manually refine a hunk with `diff-refine-hunk'.
+
+By default, refining a hunk in any way displays the \"shadow cursor\"
+at one end of the refined region.  See `smerge-refine-shadow-cursor'."
   :version "27.1"
   :type '(choice (const :tag "Don't refine hunks" nil)
                  (const :tag "Refine hunks during font-lock" font-lock)
@@ -1550,7 +1553,7 @@ else cover the whole buffer."
 			(insert (or half2 ""))))
 		    (goto-char pt-lines1)
 		    (insert str1))))))
-	   ;; a unified-diff hunk header
+	   ;; A unified-diff hunk header.
 	   ((match-beginning 7)
 	    (replace-match "@@ -\\8 +\\7 @@" nil)
 	    (forward-line 1)
@@ -2073,6 +2076,7 @@ char-offset in TEXT."
   "Return the buffer position (BEG . END) of the nearest occurrence of TEXT.
 If TEXT isn't found, nil is returned."
   (let* ((orig (point))
+         (case-fold-search nil)
 	 (forw (and (search-forward text nil t)
 		    (cons (match-beginning 0) (match-end 0))))
 	 (back (and (goto-char (+ orig (length text)))
