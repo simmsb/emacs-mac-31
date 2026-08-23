@@ -1339,7 +1339,7 @@ static bool handling_queued_nsevents_p;
   Lisp_Object keymap = get_keymap (Vmac_apple_event_map, 0, 0);
 
   if (!NILP (keymap))
-    keymap = get_keymap (access_keymap (keymap, Qapplication_kvo, 0, 1, 0),
+    keymap = get_keymap (access_keymap (keymap, Qapplication_kvo, 0, 1),
 			 0, 0);
   if (!NILP (keymap))
     {
@@ -13252,16 +13252,16 @@ is_services_handler_selector (SEL selector)
       Lisp_Object tem = get_keymap (Vmac_apple_event_map, 0, 0);
 
       if (!NILP (tem))
-	tem = get_keymap (access_keymap (tem, Qservice, 0, 1, 0), 0, 0);
+	tem = get_keymap (access_keymap (tem, Qservice, 0, 1), 0, 0);
       if (!NILP (tem))
-	tem = get_keymap (access_keymap (tem, Qperform, 0, 1, 0), 0, 0);
+	tem = get_keymap (access_keymap (tem, Qperform, 0, 1), 0, 0);
       if (!NILP (tem))
 	{
 	  NSUInteger index = [name length] - (sizeof (":userData:error:") - 1);
 
 	  name = [name substringToIndex:index];
 	  tem = access_keymap (tem, intern (SSDATA ([name UTF8LispString])),
-			       0, 1, 0);
+			       0, 1);
 	}
       if (!NILP (tem) && !EQ (tem, Qundefined))
 	return YES;
@@ -13376,12 +13376,12 @@ is_action_selector (SEL selector)
       Lisp_Object tem = get_keymap (Vmac_apple_event_map, 0, 0);
 
       if (!NILP (tem))
-	tem = get_keymap (access_keymap (tem, Qaction, 0, 1, 0), 0, 0);
+	tem = get_keymap (access_keymap (tem, Qaction, 0, 1), 0, 0);
       if (!NILP (tem))
 	{
 	  name = [name substringToIndex:([name length] - 1)];
 	  tem = access_keymap (tem, intern (SSDATA ([name UTF8LispString])),
-			       0, 1, 0);
+			       0, 1);
 	}
       if (!NILP (tem) && !EQ (tem, Qundefined))
 	return YES;
@@ -15592,10 +15592,10 @@ ax_get_selected_text_ranges (EmacsMainView *emacsView)
       Lisp_Object tem = get_keymap (Vmac_apple_event_map, 0, 0);
 
       if (!NILP (tem))
-	tem = get_keymap (access_keymap (tem, Qaccessibility, 0, 1, 0), 0, 0);
+	tem = get_keymap (access_keymap (tem, Qaccessibility, 0, 1), 0, 0);
       if (!NILP (tem))
 	tem = access_keymap (tem, AREF (ax_attribute_event_ids, index),
-			     0, 1, 0);
+			     0, 1);
 
       return !NILP (tem) && !EQ (tem, Qundefined);
     }

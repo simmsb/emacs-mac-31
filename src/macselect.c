@@ -623,7 +623,7 @@ find_event_binding (Lisp_Object keymap, Lisp_Object propname,
 		    UInt32 code, Lisp_Object *key)
 {
   if (code == 0)
-    return access_keymap (keymap, *key, 0, 1, 0);
+    return access_keymap (keymap, *key, 0, 1);
   else
     {
       Lisp_Object __block result = Qnil;
