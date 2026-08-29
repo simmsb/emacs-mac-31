@@ -1441,6 +1441,17 @@ static bool handling_queued_nsevents_p;
 - (void)setMenuItemSelectionToTag:(id)sender
 {
   menuItemSelection = [sender tag];
+
+  if (mac_operating_system_version.major >= 26)
+    {
+      struct input_event inev;
+
+      EVENT_INIT (inev);
+      inev.arg = Qnil;
+      inev.kind = MENU_BAR_ACTIVATE_EVENT;
+      inev.frame_or_window = mac_event_frame ();
+      [self storeEvent:&inev];
+    }
 }
 
 /* Equivalent of (ns-hide-emacs 'active).  */
@@ -2004,7 +2015,8 @@ install_application_handler (void)
 	   2. Rerouting a C-g event to the GUI queue from -[EmacsMenu
 	      performKeyEquivalent:] causes hang.
 	   3. Deferring a menu bar click event may fail and report
-	      "Canceling unexpected menu tracking:".  */
+	      "Canceling unexpected menu tracking:".
+	    */
 	[NSUserDefaults.standardUserDefaults
 	    registerDefaults:@{@"NSEventConcurrentProcessingEnabled" : @"NO",
 	      @"NSApplicationUpdateCycleEnabled" : @"NO"}];
@@ -2043,6 +2055,19 @@ mac_application_state (void)
 /************************************************************************
 			       Windows
  ************************************************************************/
+
+enum
+  {
+    MANUAL_RESIZE_WEST  = 1 << 0,
+    MANUAL_RESIZE_EAST  = 1 << 1,
+    MANUAL_RESIZE_SOUTH = 1 << 2,
+    MANUAL_RESIZE_NORTH = 1 << 3,
+  };
+
+/* Width, in points, of the border along each window edge within which a
+   left mouse down starts a manual resize.  Kept small so it does not
+   swallow clicks meant for content or scroll bars near the edge.  */
+#define MANUAL_RESIZE_MARGIN (4)
 
 static void set_global_focus_view_frame (struct frame *);
 static void unset_global_focus_view_frame (void);
@@ -2222,6 +2247,86 @@ mac_with_suppressed_transparent_titlebar( NSWindow* window, BOOL assumeTranspare
   setupResizeTrackingSuspended = YES;
 }
 
+- (int)manualResizeEdgesForLocation:(NSPoint)loc
+{
+  NSRect frame = [self frame];
+  int edges = 0;
+
+  if (loc.x < MANUAL_RESIZE_MARGIN)
+    edges |= MANUAL_RESIZE_WEST;
+  else if (NSWidth (frame) - loc.x < MANUAL_RESIZE_MARGIN)
+    edges |= MANUAL_RESIZE_EAST;
+
+  if (loc.y < MANUAL_RESIZE_MARGIN)
+    edges |= MANUAL_RESIZE_SOUTH;
+  else if (NSHeight (frame) - loc.y < MANUAL_RESIZE_MARGIN)
+    edges |= MANUAL_RESIZE_NORTH;
+
+  return edges;
+}
+
+- (void)performManualResize
+{
+  EmacsFrameController *frameController =
+    (EmacsFrameController *) self.delegate;
+  NSRect start = manualResizeStartFrame;
+  NSPoint current = NSEvent.mouseLocation;
+  CGFloat dx = current.x - manualResizeStartLocation.x;
+  CGFloat dy = current.y - manualResizeStartLocation.y;
+  NSSize size = start.size;
+  NSRect frame;
+
+  if (manualResizeEdges & MANUAL_RESIZE_EAST)
+    size.width = NSWidth (start) + dx;
+  else if (manualResizeEdges & MANUAL_RESIZE_WEST)
+    size.width = NSWidth (start) - dx;
+  if (manualResizeEdges & MANUAL_RESIZE_NORTH)
+    size.height = NSHeight (start) + dy;
+  else if (manualResizeEdges & MANUAL_RESIZE_SOUTH)
+    size.height = NSHeight (start) - dy;
+
+  size = [frameController hintedWindowFrameSize:size allowsLarger:YES];
+
+  frame.size = size;
+  /* Keep the edge opposite to the one being dragged fixed.  */
+  if (manualResizeEdges & MANUAL_RESIZE_WEST)
+    frame.origin.x = NSMaxX (start) - size.width;
+  else
+    frame.origin.x = start.origin.x;
+  if (manualResizeEdges & MANUAL_RESIZE_SOUTH)
+    frame.origin.y = NSMaxY (start) - size.height;
+  else
+    frame.origin.y = start.origin.y;
+
+  /* Respect the maximized/fullscreen window manager state, mirroring
+     the constraint that -windowWillResize:toSize: applies on earlier
+     systems: a maximized dimension stays pinned to the screen so the
+     frame's `fullscreen' parameter does not get out of sync.  */
+  {
+    WMState wmState = [frameController windowManagerState];
+
+    if (wmState & WM_STATE_FULLSCREEN)
+      return;
+    if (wmState & (WM_STATE_MAXIMIZED_HORZ | WM_STATE_MAXIMIZED_VERT))
+      {
+	NSRect visibleFrame = self.screen.visibleFrame;
+
+	if (wmState & WM_STATE_MAXIMIZED_HORZ)
+	  {
+	    frame.origin.x = visibleFrame.origin.x;
+	    frame.size.width = NSWidth (visibleFrame);
+	  }
+	if (wmState & WM_STATE_MAXIMIZED_VERT)
+	  {
+	    frame.origin.y = visibleFrame.origin.y;
+	    frame.size.height = NSHeight (visibleFrame);
+	  }
+      }
+  }
+
+  [self setFrame:frame display:YES];
+}
+
 - (void)sendEvent:(NSEvent *)event
 {
   if ([event type] == NSEventTypeLeftMouseDown)
@@ -2231,6 +2336,46 @@ mac_with_suppressed_transparent_titlebar( NSWindow* window, BOOL assumeTranspare
       else
 	[self setupResizeTracking:event];
     }
+
+  /* On macOS 26 and later, AppKit no longer drives interactive window
+     resize while the application update cycle is disabled (which we do
+     to keep C-g and menu bar handling working, see
+     install_application_handler).  The mouse events still reach us
+     here, though, so drive the resize ourselves.  */
+  if (mac_operating_system_version.major >= 26 && self.hasTitleBar)
+    switch (event.type)
+      {
+      case NSEventTypeLeftMouseDown:
+	manualResizeEdges = [self manualResizeEdgesForLocation:
+				     event.locationInWindow];
+	if (manualResizeEdges)
+	  {
+	    manualResizeStartFrame = [self frame];
+	    manualResizeStartLocation = NSEvent.mouseLocation;
+	  }
+	/* Still forward the down to super, so focus and the resize
+	   cursor behave normally.  */
+	break;
+
+      case NSEventTypeLeftMouseDragged:
+	if (manualResizeEdges)
+	  {
+	    [self performManualResize];
+	    return;
+	  }
+	break;
+
+      case NSEventTypeLeftMouseUp:
+	if (manualResizeEdges)
+	  {
+	    manualResizeEdges = 0;
+	    return;
+	  }
+	break;
+
+      default:
+	break;
+      }
 
   [super sendEvent:event];
 }
@@ -11136,6 +11281,8 @@ static NSString *localizedMenuTitleForEdit, *localizedMenuTitleForHelp, *localiz
 {
   if (!popup_activated ())
     {
+      if (mac_operating_system_version.major >= 26)
+	return;
       NSLog (@"Canceling unexpected menu tracking: %@", [NSApp currentEvent]);
       [self cancelTracking];
     }
@@ -11418,6 +11565,19 @@ mac_activate_menubar (struct frame *f)
   int selection;
 
   eassert (FRAME_MAC_P (f));
+
+  if (mac_operating_system_version.major >= 26)
+    {
+      selection = [emacsController getAndClearMenuItemSelection];
+      if (selection)
+	find_and_call_menu_selection (f, f->menu_bar_items_used,
+				      f->menu_bar_vector,
+				      (void *) (intptr_t) selection);
+      else
+	set_frame_menubar (f, true);
+
+      return;
+    }
 
   set_frame_menubar (f, true);
   block_input ();

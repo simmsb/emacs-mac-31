@@ -637,6 +637,11 @@ typedef NSInteger NSGlyphProperty;
      next left mouse down event.  */
   BOOL setupResizeTrackingSuspended;
 
+  int manualResizeEdges;
+
+  NSRect manualResizeStartFrame;
+  NSPoint manualResizeStartLocation;
+
   /* Whether the window should be made visible when the application
      gets unhidden next time.  */
   BOOL needsOrderFrontOnUnhide;
@@ -763,6 +768,7 @@ typedef NSInteger NSGlyphProperty;
 - (NSBitmapImageRep *)bitmapImageRep;
 - (void)storeModifyFrameParametersEvent:(Lisp_Object)alist;
 - (BOOL)isWindowFrontmost;
+- (NSSize)hintedWindowFrameSize:(NSSize)frameSize allowsLarger:(BOOL)flag;
 - (void)setupLiveResizeTransition;
 - (void)setShouldLiveResizeTriggerTransition:(BOOL)flag;
 - (void)setLiveResizeCompletionHandler:(void (^)(void))block;

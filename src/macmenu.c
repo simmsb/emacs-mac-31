@@ -114,6 +114,14 @@ set_frame_menubar (struct frame *f, bool deep_p)
     deep_p = true;
 #endif
 
+  bool skip_hooks = false;
+
+  if (mac_operating_system_version.major >= 26 && !deep_p)
+    {
+      deep_p = true;
+      skip_hooks = true;
+    }
+
   if (deep_p)
     {
       /* Make a widget-value tree representing the entire menu trees.  */
@@ -146,13 +154,16 @@ set_frame_menubar (struct frame *f, bool deep_p)
 
       set_buffer_internal_1 (XBUFFER (buffer));
 
-      /* Run the Lucid hook.  */
-      safe_run_hooks (Qactivate_menubar_hook);
+      if (!skip_hooks)
+	{
+	  /* Run the Lucid hook.  */
+	  safe_run_hooks (Qactivate_menubar_hook);
 
-      /* If it has changed current-menubar from previous value,
-	 really recompute the menubar from the value.  */
-      safe_run_hooks (Qmenu_bar_update_hook);
-      fset_menu_bar_items (f, menu_bar_items (FRAME_MENU_BAR_ITEMS (f)));
+	  /* If it has changed current-menubar from previous value,
+	     really recompute the menubar from the value.  */
+	  safe_run_hooks (Qmenu_bar_update_hook);
+	  fset_menu_bar_items (f, menu_bar_items (FRAME_MENU_BAR_ITEMS (f)));
+	}
 
       items = FRAME_MENU_BAR_ITEMS (f);
 
