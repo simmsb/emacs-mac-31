@@ -131,13 +131,20 @@ of the terminal emulator:
 
 * Editing Changes in Emacs 32.1
 
-+++
 ** New user option 'query-replace-show-preview'.
-When set to t, the replacement commands preview the replacement while
-you type it: the matches visible in the window are shown as they would
-look after the replacement, using the new face 'query-replace-preview'.
-This tells you what back-references like '\1' expand to before you
-commit to the edit.  The preview is off by default.
+If non-nil, the replacement commands preview the replacement while you
+type it: the matches visible in the window are shown as they would look
+after the replacement.  This tells you what back-references like '\1'
+expand to before you commit to the edit.  However, replacements that use
+'\,' or '\#' are not previewed.  The preview is off by default.
+
+If the value is t, each match is shown as the replacement text, in the
+new face 'query-replace-preview'.  If the value is 'both', the match and
+the replacement are shown side by side, separated by an arrow, in the
+new faces 'query-replace-preview-match' and 'query-replace-preview'.
+The value can also be a function of two arguments, the match and the
+replacement, returning the string to show in place of the match, or nil
+to leave that match alone.
 
 ** Electric Pair mode
 
@@ -310,6 +317,10 @@ details.
 When enabled, this causes Eshell to evaluate commands in Lisp syntax
 using lexical binding.
 
+** Dired
+
+*** The repeat-mode key 'j' has been removed from 'dired-jump-map'.
+
 ** Viper
 
 ---
@@ -344,6 +355,13 @@ To install the grammars, use 'M-x markdown-ts-mode-install-parsers'.
 
 ---
 *** A nil value for 'speedbar-file-unshown-regexp' means "show all".
+
++++
+** New library 'uuid'.
+This library provides useful code for handling Universally Unique
+Identifiers (UUIDs).  It provides methods for generating UUIDs, parsing
+them, and outputting them as a string, a unibyte binary string, or as a
+number.
 
 
 * Incompatible Lisp Changes in Emacs 32.1
@@ -444,6 +462,13 @@ function as you would with 'elisp-scope-define-function-analyzer'.
 ** New variable 'display-buffer-default-alist'.
 Lisp programs may let-bind this variable to specify conditional actions
 for nested 'display-buffer' calls.
+
++++
+** New button to diff failed erts-file test output in ERT.
+When a test fails, the erts-file tests buffer displayed by
+'ert-results-pop-to-erts-file-tests-for-test-at-point' now includes a
+button labeled "diff".  Pushing it displays a Diff Mode buffer comparing
+the actual and expected output.
 
 
 * Changes in Emacs 32.1 on Non-Free Operating Systems

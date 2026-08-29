@@ -748,6 +748,8 @@ When called from Lisp code, ARG may be a prefix string to copy."
      :height 0.1 :background "#505050")
     (((type graphic) (background light))
      :height 0.1 :background "#a0a0a0")
+    (((supports :strike-through t))
+     :foreground "ForestGreen" :strike-through t)
     (t
      :foreground "ForestGreen" :underline t))
   "Face for separator lines."
@@ -760,12 +762,14 @@ This uses the `separator-line' face.
 
 If LENGTH is nil, use the window width."
   (if (or (display-graphic-p)
+          (display-supports-face-attributes-p '(:strike-through t))
           (display-supports-face-attributes-p '(:underline t)))
       (if length
           (concat (propertize (make-string length ?\s) 'face 'separator-line)
                   "\n")
         (propertize "\n" 'face '(:inherit separator-line :extend t)))
-    ;; In terminals (that don't support underline), use a line of dashes.
+    ;; In terminals that don't support underline or strike-through, use
+    ;; a line of dashes.
     (concat (propertize (make-string (or length (1- (window-width))) ?-)
                         'face 'separator-line)
             "\n")))
@@ -10178,8 +10182,11 @@ the completions is popped up and down."
           (last-col (progn
                       (first-completion)
                       (goto-char (pos-eol))
-                      (goto-char (previous-single-property-change
-                                  (point) 'mouse-face))
+                      ;; Go to the beginning of the candidate.  We loop
+                      ;; to move past any completion annotations.
+                      (while (not (get-text-property (point) 'mouse-face))
+                        (goto-char
+                         (previous-single-property-change (point) 'mouse-face)))
                       (current-column))))
       (if (zerop last-col)
           ;; If there is only one column of completions, the last
