@@ -54,17 +54,15 @@
 (ert-deftest tab-bar-tests-quit-restore-window ()
   :tags '(:unstable)                    ; Can hang.
   (skip-when (pcase system-type
-               ;; Skip test on MS-Windows in batch mode, since terminal
-               ;; frames cannot be created in that case.
-               ('windows-nt noninteractive)
-               ;; This test is unreliable on macOS when run in batch mode
-               ;; from Emacs (M-x compile).
-               ('darwin (equal (getenv "TERM") "dumb"))
                ;; Emba runs the container without "--tty"
                ;; (the environment variable "TERM" is nil), and this
                ;; test fails with '(error "Could not open file: /dev/tty")'.
                ;; Therefore skip it unless it can use '(tty-type . "linux")'.
-               ('gnu/linux (null (getenv "TERM")))))
+               ('gnu/linux (null (getenv "TERM")))
+               ;; Skip in batch mode, since the tty-type "linux"
+               ;; might not work on other platforms, and on MS-Windows
+               ;; terminal frames cannot be created in batch mode anyway.
+               (_ noninteractive)))
 
   (let* ((frame-params (when noninteractive
                          '((window-system . nil)

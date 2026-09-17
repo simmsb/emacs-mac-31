@@ -1742,6 +1742,9 @@ scroll the window of possible completions."
                         minibuffer-completion-table
                         minibuffer-completion-predicate))
 
+(defvar-local completion--attempt-state nil
+  "`buffer-chars-modified-tick' and `point' at the time of the last TAB.")
+
 (defun completion--in-region-1 (beg end)
   ;; If the previous command was not this,
   ;; mark the completion buffer obsolete.
@@ -1751,10 +1754,16 @@ scroll the window of possible completions."
     (setq minibuffer-scroll-window nil))
 
   (cond
-   ;; If there's a fresh completion window with a live buffer,
-   ;; and this command is repeated, scroll that window.
-   ((and (window-live-p minibuffer-scroll-window)
-         (eq t (frame-visible-p (window-frame minibuffer-scroll-window))))
+   ((and
+     ;; If this command is repeated, and the buffer hasn't changed since
+     ;; the last time we tried to complete...
+     (let ((state (cons (buffer-chars-modified-tick) (point))))
+       (prog1 (equal completion--attempt-state state)
+         (setq completion--attempt-state state)))
+     ;; ...and there's a window displaying completions...
+     (window-live-p minibuffer-scroll-window)
+     (eq t (frame-visible-p (window-frame minibuffer-scroll-window))))
+    ;; ...scroll that window.
     (let ((window minibuffer-scroll-window))
       (with-current-buffer (window-buffer window)
         (let* ((pm (point-max))
@@ -2872,13 +2881,16 @@ has been requested by the completion table."
                        minibuffer-completion-table
                        minibuffer-completion-predicate
                        (- (point) start)
-                       md)))
+                       md))
+         (last (last completions))
+         (base-size (or (cdr last) 0)))
     (message nil)
     (when (or completion-auto-deselect completion-eager-update)
       (add-hook 'after-change-functions #'completions--after-change nil t))
     (if (or (null completions)
             (and (not (consp (cdr completions)))
-                 (equal (car completions) string)))
+                 (equal (car completions)
+                        (substring string base-size))))
         (progn
           ;; If there are no completions, or if the current input is already
           ;; the sole completion, then hide (previous&stale) completions.
@@ -2889,9 +2901,8 @@ has been requested by the completion table."
 	      (ding)
 	      (completion--message "No match"))))
 
-      (let* ((last (last completions))
-             (base-size (or (cdr last) 0))
-             (prefix (unless (zerop base-size) (substring string 0 base-size)))
+      (let* ((prefix (and (plusp base-size)
+                          (substring string 0 base-size)))
              (minibuffer-completion-base (substring string 0 base-size))
              (ctable minibuffer-completion-table)
              (cpred minibuffer-completion-predicate)

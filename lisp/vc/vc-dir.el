@@ -708,6 +708,7 @@ information."
   (when (buffer-live-p vc-dir-process-buffer)
     (let ((proc (get-buffer-process vc-dir-process-buffer)))
       (when proc (delete-process proc))
+      (kill-buffer vc-dir-process-buffer)
       (setq vc-dir-process-buffer nil)
       (setq mode-line-process nil))))
 
@@ -715,9 +716,10 @@ information."
   ;; Make sure that when the status buffer is killed the update
   ;; process running in background is also killed.
   (if (vc-dir-busy)
-    (when (y-or-n-p "Status update process running, really kill status buffer? ")
-      (vc-dir-kill-dir-status-process)
-      t)
+      (and (y-or-n-p "\
+Status update process running, really kill status buffer? ")
+           (vc-dir-kill-dir-status-process)
+           t)
     t))
 
 ;; By design the vc-dir-next-* commands move point from the current
@@ -730,8 +732,10 @@ information."
 ;; entry, as determined by the following function.  See bug#81248 for
 ;; further details.
 (defun vc-dir--before-dotname-p ()
-  "Return non-nil if point is before the \"./\" entry."
-  (< (point) (ewoc-location (ewoc-nth vc-ewoc 0))))
+  "Return non-nil if point is before the \"./\" entry.
+If that entry hasn't appeared yet, return nil."
+  (and-let* ((zeroth (ewoc-nth vc-ewoc 0)))
+    (< (point) (ewoc-location zeroth))))
 
 (defun vc-dir-next-line (arg)
   "Go to the next line.
@@ -1494,7 +1498,9 @@ the *vc-dir* buffer.
     (add-to-list 'vc-dir-buffers (current-buffer))
     ;; Make sure that if the directory buffer is killed, the update
     ;; process running in the background is also killed.
-    (add-hook 'kill-buffer-query-functions #'vc-dir-kill-query nil t)
+    (if noninteractive
+        (add-hook 'kill-buffer-hook #'vc-dir-kill-dir-status-process nil t)
+      (add-hook 'kill-buffer-query-functions #'vc-dir-kill-query nil t))
     (hack-dir-local-variables-non-file-buffer)))
 
 (defvar-keymap vc-dir-outgoing-revisions-map
@@ -1519,14 +1525,19 @@ longer needed."
 See `vc-dir-async-header-values' for an explanation of how this function
 uses OVERLAY."
   (cl-flet ((set-overlay-text (text)
-              (with-current-buffer (overlay-buffer overlay)
-                (save-excursion
-                  (let ((inhibit-read-only t)
-                        (start (overlay-start overlay)))
-                    (delete-region start (overlay-end overlay))
-                    (goto-char start)
-                    (insert text)
-                    (move-overlay overlay start (point)))))))
+              ;; If `vc-dir--set-header' was called again before our
+              ;; sentinel ran (either because we were still counting or
+              ;; Emacs just hadn't run the sentinel yet) then the
+              ;; overlay won't exist anymore.
+              (when-let* ((buffer (overlay-buffer overlay)))
+                (with-current-buffer buffer
+                  (save-excursion
+                    (let ((inhibit-read-only t)
+                          (start (overlay-start overlay)))
+                      (delete-region start (overlay-end overlay))
+                      (goto-char start)
+                      (insert text)
+                      (move-overlay overlay start (point))))))))
     (set-overlay-text (propertize "[counting ...]"
                                   'face 'vc-dir-header-value))
     ;; `vc-incoming-outgoing-internal' invokes external processes
@@ -1811,12 +1822,26 @@ Called by VC backend `dir-status-files' implementations."
     (with-current-buffer vc-parent-buffer
       (vc-dir-show-more-button text))))
 
-(defun vc-dir-refresh ()
+(defun vc-dir-refresh (&optional ok-if-already-running)
   "Refresh the contents of the *VC-Dir* buffer.
-Throw an error if another update process is in progress."
+
+Signal an error if another update process is in progress, unless
+OK-IF-ALREADY-RUNNING is non-nil.
+
+If OK-IF-ALREADY-RUNNING is `restart' and another update process is in
+progress, kill it and start a new one."
   (interactive)
-  (if (vc-dir-busy)
-      (error "Another update process is in progress, cannot run two at a time")
+  (cond*
+   ((bind* (proc (and (buffer-live-p vc-dir-process-buffer)
+                      (get-buffer-process vc-dir-process-buffer)))))
+   ((and proc (not ok-if-already-running))
+    (error "Another update process is in progress, cannot run two at a time"))
+   ((and proc (not (eq ok-if-already-running 'restart)))) ;do nothing
+   (proc
+    ;; OK-IF-ALREADY-RUNNING is `restart'.
+    (delete-process proc)
+    :non-exit)
+   (t
     (let ((def-dir default-directory)
 	  (backend vc-dir-backend))
       (when (and vc-dir-save-some-buffers-on-revert (not non-essential))
@@ -1836,6 +1861,9 @@ Throw an error if another update process is in progress."
       ;; Bzr has serious locking problems, so setup the headers first (this is
       ;; mostly synchronous) rather than doing it while dir-status is running.
       (vc-dir--set-header def-dir 'reset-footer)
+      (unless revert-buffer-in-progress
+        (when vc-dir-show-key-binding-hints
+          (goto-char (1+ (length vc-dir--key-binding-hints)))))
       (let ((buffer (current-buffer)))
         (with-current-buffer vc-dir-process-buffer
           (setq default-directory def-dir)
@@ -1855,7 +1883,7 @@ Throw an error if another update process is in progress."
                      (vc-dir-refresh-files (mapcar #'vc-dir-fileinfo->name
                                                    remaining))
                    (setq mode-line-process nil)
-                   (run-hooks 'vc-dir-refresh-hook)))))))))))
+                   (run-hooks 'vc-dir-refresh-hook))))))))))))
 
 (defun vc-dir--refresh-headers (directory)
   "Refresh the headers for any VC-Dir buffers within DIRECTORY."
@@ -2042,7 +2070,7 @@ These are the commands available for use in the file status buffer:
   (let (pop-up-windows)		      ; based on cvs-examine; bug#6204
     (pop-to-buffer (vc-dir-prepare-status-buffer "*vc-dir*" dir backend)))
   (if (derived-mode-p 'vc-dir-mode)
-      (vc-dir-refresh)
+      (vc-dir-refresh t)
     ;; FIXME: find a better way to pass the backend to `vc-dir-mode'.
     (let ((use-vc-backend backend))
       (vc-dir-mode)

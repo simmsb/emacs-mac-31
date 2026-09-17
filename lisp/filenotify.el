@@ -243,6 +243,16 @@ It is nil or a `file-notify--rename' defstruct where the cookie can be nil.")
                    (list desc action file file1)
                  (list desc action file))))))
 
+(defun file-notify--check-pending-rename ()
+  "Fire a `deleted' event from a pending `rename'."
+  (when file-notify--pending-rename
+    (file-notify--call-handler
+     (file-notify--rename-watch file-notify--pending-rename)
+     (file-notify--rename-desc file-notify--pending-rename)
+     'deleted
+     (file-notify--rename-from-file file-notify--pending-rename)
+     (setq file-notify--pending-rename nil))))
+
 (defun file-notify--handle-event (desc actions file file1-or-cookie)
   "Handle an event returned from file notification.
 DESC is the back-end descriptor.  ACTIONS is a list of:
@@ -290,7 +300,8 @@ DESC is the back-end descriptor.  ACTIONS is a list of:
            ((eq action 'renamed-from)
             (setq file-notify--pending-rename
                   (file-notify--rename-make watch desc file file1-or-cookie)
-                  action nil))
+                  action nil)
+	    (run-at-time 0.1 nil #'file-notify--check-pending-rename))
            ;; Look for pending event.
            ((eq action 'renamed-to)
             (if file-notify--pending-rename
@@ -323,14 +334,7 @@ DESC is the back-end descriptor.  ACTIONS is a list of:
                        (string-equal
                         file (file-notify--watch-absolute-filename watch))))
           ;; Fire pending `renamed-from' event.
-          (when file-notify--pending-rename
-            (file-notify--call-handler
-             (file-notify--rename-watch file-notify--pending-rename)
-             (file-notify--rename-desc file-notify--pending-rename)
-             'deleted
-             (file-notify--rename-from-file file-notify--pending-rename)
-             nil)
-            (setq file-notify--pending-rename nil))
+          (file-notify--check-pending-rename)
           (setq actions nil)
           ;; Make sure this is the last time the callback was invoked.
           (when (eq action 'stopped)
@@ -461,6 +465,8 @@ FILE is the name of the file whose event is being reported."
                     callback)))
         (puthash desc watch file-notify-descriptors))
       ;; Return descriptor.
+      (when file-notify-debug
+	(message "file-notify-add-watch %S %S %S %S" desc file flags callback))
       desc)))
 
 (defun file-notify-rm-watch (descriptor)
@@ -469,6 +475,8 @@ DESCRIPTOR should be an object returned by `file-notify-add-watch'."
   (when-let* ((watch (gethash descriptor file-notify-descriptors)))
     ;; If we are called from a `stopped' event, do nothing.
     (when (file-notify--watch-callback watch)
+      (when file-notify-debug
+        (message "file-notify-rm-watch %S" descriptor))
       (let ((handler (find-file-name-handler
                       (file-notify--watch-directory watch)
                       'file-notify-rm-watch)))
@@ -490,12 +498,11 @@ DESCRIPTOR should be an object returned by `file-notify-add-watch'."
       ;; Send a `stopped' event.
       (unwind-protect
           ;; Insert `stopped' event.
-          (insert-special-event
+          (file-notify-handle-event
            (make-file-notify
             :-event `(,descriptor stopped
-                    ,(file-notify--watch-absolute-filename watch))
+                      ,(file-notify--watch-absolute-filename watch))
             :-callback 'file-notify-callback))
-        (read-event nil nil 0.01)
         ;; Make sure this is the last time the callback was invoked.
         (setf (file-notify--watch-callback watch) nil)))
 
