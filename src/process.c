@@ -3631,7 +3631,11 @@ connect_network_socket (Lisp_Object proc, Lisp_Object addrinfos,
 	  FD_ZERO (&fdset);
 	  FD_SET (s, &fdset);
 	  maybe_quit ();
+#ifdef HAVE_MACGUI
+	  sc = mac_kqueue_select (s + 1, NULL, &fdset, NULL, NULL, NULL);
+#else
 	  sc = pselect (s + 1, NULL, &fdset, NULL, NULL, NULL);
+#endif
 	  if (sc == -1)
 	    {
 	      if (errno == EINTR)
@@ -5795,7 +5799,7 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
 	     And if so, we need to skip the select which could block. */
 	  FD_ZERO (&tls_available);
 	  tls_nfds = 0;
-	  for (channel = 0; channel < FD_SETSIZE; ++channel)
+	  for (channel = 0; channel <= max_desc; ++channel)
 	    if (! NILP (chan_process[channel])
 		&& FD_ISSET (channel, &Available))
 	      {
@@ -5878,7 +5882,7 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
 	      else if (nfds > 0)
 		/* Slow path, merge one by one.  Note: nfds does not need
 		   to be accurate, just positive is enough. */
-		for (channel = 0; channel < FD_SETSIZE; ++channel)
+		for (channel = 0; channel <= max_desc; ++channel)
 		  if (FD_ISSET (channel, &tls_available))
 		    FD_SET (channel, &Available);
 	    }

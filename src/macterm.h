@@ -596,6 +596,8 @@ extern CFPropertyListRef cfproperty_list_create_with_string (Lisp_Object);
 extern void xrm_merge_string_database (XrmDatabase, const char *);
 extern Lisp_Object xrm_get_resource (XrmDatabase, const char *, const char *);
 extern XrmDatabase xrm_get_preference_database (const char *);
+extern int mac_kqueue_select (int, fd_set *, fd_set *, fd_set *,
+			      const struct timespec *, const sigset_t *);
 extern bool mac_service_provider_registered_p (void);
 extern Lisp_Object mac_carbon_version_string (void);
 extern const char *mac_relocate (const char *);

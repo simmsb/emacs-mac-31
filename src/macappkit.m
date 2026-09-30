@@ -1295,8 +1295,8 @@ static bool handling_queued_nsevents_p;
   /* Some functions/methods in CoreFoundation/Foundation increase the
      maximum number of open files for the process in their first call.
      We make dummy calls to them and then reduce the resource limit
-     here, since pselect cannot handle file descriptors that are
-     greater than or equal to FD_SETSIZE.  */
+     here, since fd_set cannot hold file descriptors that are greater
+     than or equal to FD_SETSIZE.  */
   CFSocketGetTypeID ();
   CFFileDescriptorGetTypeID ();
   MRC_RELEASE ([[NSFileHandle alloc] init]);
@@ -17150,7 +17150,7 @@ mac_within_lisp_deferred_if_gui_thread (void (^block) (void))
 			   Select emulation
 ***********************************************************************/
 
-/* File descriptors of the socket pair used for breaking pselect calls
+/* File descriptors of the socket pair used for breaking kqueue waits
    in Lisp threads.  One direction, writing to mac_select_fds[0] and
    reading from mac_select_fds[1], is for notifying termination of the
    run loop in the GUI thread.  The other direction, writing to
@@ -17282,7 +17282,8 @@ mac_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
   int __block r;
 
   if (!initialized)
-    return thread_select (pselect, nfds, rfds, wfds, efds, timeout, sigmask);
+    return thread_select (mac_kqueue_select, nfds, rfds, wfds, efds,
+			  timeout, sigmask);
 
   read_all_from_nonblocking_fd (mac_select_fds[0]);
 
@@ -17300,7 +17301,8 @@ mac_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
       if (nfds <= mac_select_fds[0])
 	nfds = mac_select_fds[0] + 1;
 
-      r = thread_select (pselect, nfds, rfds, wfds, efds, timeout, sigmask);
+      r = thread_select (mac_kqueue_select, nfds, rfds, wfds, efds,
+			 timeout, sigmask);
 
       if (r > 0 && FD_ISSET (mac_select_fds[0], rfds))
 	{
@@ -17332,7 +17334,8 @@ mac_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
       read_all_from_nonblocking_fd (mac_select_fds[1]);
 
       FD_CLR (mac_select_fds[1], rfds);
-      r = pselect (nfds, rfds, wfds, efds, &select_timeout, sigmask);
+      r = mac_kqueue_select (nfds, rfds, wfds, efds, &select_timeout,
+			     sigmask);
       if (r == 0)
 	{
 	  *rfds = orfds;
@@ -17424,7 +17427,8 @@ mac_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
       if (thread_may_switch_p)
 	{
 #endif
-	  r = thread_select (pselect, nfds, rfds, wfds, efds, timeout, sigmask);
+	  r = thread_select (mac_kqueue_select, nfds, rfds, wfds, efds,
+			     timeout, sigmask);
 	  dispatch_source_merge_data (mac_select_dispatch_source,
 				      MAC_SELECT_COMMAND_TERMINATE);
 #if MAC_SELECT_ALLOW_LISP_EVALUATION
@@ -17435,7 +17439,8 @@ mac_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
 	    dispatch_get_global_queue (DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
 
 	  dispatch_async (queue, ^{
-	      r = pselect (nfds, rfds, wfds, efds, timeout, sigmask);
+	      r = mac_kqueue_select (nfds, rfds, wfds, efds, timeout,
+				     sigmask);
 	      dispatch_source_merge_data (mac_select_dispatch_source,
 					  MAC_SELECT_COMMAND_TERMINATE);
 	    });

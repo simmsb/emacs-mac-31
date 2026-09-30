@@ -2829,7 +2829,7 @@ mac_flash (struct frame *f)
 	timeout = make_timespec (0, 10 * 1000 * 1000);
 
 	/* Try to wait that long--but we might wake up sooner.  */
-	pselect (0, NULL, NULL, NULL, &timeout, NULL);
+	mac_kqueue_select (0, NULL, NULL, NULL, &timeout, NULL);
       }
   }
   mac_invert_rectangles_and_flush (f, rects, nrects, false);

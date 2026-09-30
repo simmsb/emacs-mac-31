@@ -58,6 +58,13 @@ typedef int fd_set;
 #define pselect sys_select
 #endif
 
+#ifdef EMACS_FD_SETSIZE
+/* fd_set is passed between translation units, so they must all agree
+   on its size.  */
+static_assert (FD_SETSIZE == EMACS_FD_SETSIZE);
+static_assert (sizeof (fd_set) * CHAR_BIT == EMACS_FD_SETSIZE);
+#endif
+
 #ifndef WINDOWSNT
 INLINE_HEADER_BEGIN
 

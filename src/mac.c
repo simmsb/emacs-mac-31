@@ -37,6 +37,7 @@ along with GNU Emacs Mac port.  If not, see <https://www.gnu.org/licenses/>.  */
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <sys/statvfs.h>
+#include <sys/event.h>
 
 #include <libkern/OSByteOrder.h>
 
@@ -2048,6 +2049,287 @@ xrm_get_preference_database (const char *application)
     CFRelease (app_id);
 
   return database;
+}
+
+
+/***********************************************************************
+		  kqueue-based replacement for pselect
+ ***********************************************************************/
+
+/* Each thread that waits for file descriptors has its own kqueue.
+   Lisp threads wait without holding the global lock, and mac_select
+   may also wait on a GCD worker thread, so a shared kqueue would
+   deliver events to the wrong waiter.  The kqueue is created on
+   first use and closed when the thread exits.  */
+
+struct mac_kqueue_state
+{
+  /* The kqueue of this thread, or -1.  */
+  int fd;
+
+  /* Value of mac_kqueue_generation when FD was created.  */
+  unsigned int generation;
+};
+
+static pthread_key_t mac_kqueue_key;
+static pthread_once_t mac_kqueue_key_once = PTHREAD_ONCE_INIT;
+
+/* Incremented in the child of fork.  kqueues are not inherited by
+   the child, so a kqueue created in an older generation must not be
+   used (or closed) any more.  */
+static unsigned int mac_kqueue_generation;
+
+static void
+mac_kqueue_destroy (void *arg)
+{
+  struct mac_kqueue_state *state = arg;
+
+  if (state->fd >= 0 && state->generation == mac_kqueue_generation)
+    close (state->fd);
+  free (state);
+}
+
+static void
+mac_kqueue_atfork_child (void)
+{
+  mac_kqueue_generation++;
+}
+
+static void
+mac_kqueue_init_key (void)
+{
+  if (pthread_key_create (&mac_kqueue_key, mac_kqueue_destroy) != 0)
+    emacs_abort ();
+  pthread_atfork (NULL, NULL, mac_kqueue_atfork_child);
+}
+
+/* Return the kqueue of the calling thread, creating it if necessary.
+   Return -1 and set errno on failure.  This may be called from a
+   thread other than Lisp ones, so it must not allocate Lisp memory
+   or signal.  */
+
+static int
+mac_kqueue_get (void)
+{
+  struct mac_kqueue_state *state;
+
+  pthread_once (&mac_kqueue_key_once, mac_kqueue_init_key);
+  state = pthread_getspecific (mac_kqueue_key);
+  if (state == NULL)
+    {
+      state = malloc (sizeof *state);
+      if (state == NULL)
+	{
+	  errno = ENOMEM;
+	  return -1;
+	}
+      state->fd = -1;
+      if (pthread_setspecific (mac_kqueue_key, state) != 0)
+	{
+	  free (state);
+	  errno = ENOMEM;
+	  return -1;
+	}
+    }
+
+  if (state->fd >= 0 && state->generation != mac_kqueue_generation)
+    state->fd = -1;
+  if (state->fd < 0)
+    {
+      state->fd = kqueue ();
+      if (state->fd < 0)
+	return -1;
+      state->generation = mac_kqueue_generation;
+    }
+
+  return state->fd;
+}
+
+/* Apply the N changes in CHANGES to KQ, each of which must have
+   EV_RECEIPT set, and store the receipts back into CHANGES.  Return
+   the number of receipts, or -1 on failure.  */
+
+static int
+mac_kqueue_apply_changes (int kq, struct kevent *changes, int n)
+{
+  static const struct timespec zero;
+  int r;
+
+  do
+    r = kevent (kq, changes, n, changes, n, &zero);
+  while (r < 0 && errno == EINTR);
+
+  return r;
+}
+
+/* Replacement for pselect using kqueue.  It has the same interface
+   as `select_func' so that it can be passed to thread_select.
+
+   Unlike pselect, this does not report exceptional conditions: EFDS,
+   if non-NULL, is always cleared on success.  SIGMASK must be NULL.
+   File descriptors that kqueue cannot monitor (e.g., /dev/null) are
+   reported as ready, which is what select does for them.  */
+
+int
+mac_kqueue_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
+		   const struct timespec *timeout, const sigset_t *sigmask)
+{
+  static const struct timespec zero;
+  enum { STACK_KEVENTS = 64 };
+  struct kevent stack_kevents[2 * STACK_KEVENTS], *changes, *events;
+  fd_set ready_rfds, ready_wfds;
+  int kq, fd, nfilters, nregistered, nready, r, i, saved_errno = 0;
+  bool bad_fd_p;
+
+  eassert (0 <= nfds && nfds <= FD_SETSIZE);
+  if (sigmask)
+    emacs_abort ();
+
+  kq = mac_kqueue_get ();
+  if (kq < 0)
+    return -1;
+
+  nfilters = 0;
+  for (fd = 0; fd < nfds; fd++)
+    nfilters += ((rfds && FD_ISSET (fd, rfds))
+		 + (wfds && FD_ISSET (fd, wfds)));
+
+  /* The first half is for changes and the second half is for
+     events.  At least one event slot is needed so that kevent
+     actually waits when there is nothing to monitor.  */
+  if (nfilters < STACK_KEVENTS)
+    changes = stack_kevents;
+  else
+    {
+      changes = malloc (2 * (nfilters + 1) * sizeof *changes);
+      if (changes == NULL)
+	{
+	  errno = ENOMEM;
+	  return -1;
+	}
+    }
+  events = changes + nfilters;
+
+  nfilters = 0;
+  for (fd = 0; fd < nfds; fd++)
+    {
+      if (rfds && FD_ISSET (fd, rfds))
+	EV_SET (&changes[nfilters++], fd, EVFILT_READ,
+		EV_ADD | EV_RECEIPT, 0, 0, NULL);
+      if (wfds && FD_ISSET (fd, wfds))
+	EV_SET (&changes[nfilters++], fd, EVFILT_WRITE,
+		EV_ADD | EV_RECEIPT, 0, 0, NULL);
+    }
+
+  FD_ZERO (&ready_rfds);
+  FD_ZERO (&ready_wfds);
+  nready = nregistered = 0;
+  bad_fd_p = false;
+
+  if (nfilters > 0)
+    {
+      r = mac_kqueue_apply_changes (kq, changes, nfilters);
+      if (r < 0)
+	{
+	  /* Some filters might have been added.  Remove them all so
+	     that they will not linger in the kqueue.  */
+	  saved_errno = errno;
+	  for (i = 0; i < nfilters; i++)
+	    changes[i].flags = EV_DELETE | EV_RECEIPT;
+	  mac_kqueue_apply_changes (kq, changes, nfilters);
+	  errno = saved_errno;
+	  r = -1;
+	  goto out;
+	}
+
+      /* Keep the successfully added filters at the beginning of
+	 CHANGES so that they can be deleted later.  */
+      for (i = 0; i < r; i++)
+	{
+	  struct kevent *receipt = &changes[i];
+
+	  eassert (receipt->flags & EV_ERROR);
+	  if (receipt->data == 0)
+	    changes[nregistered++] = *receipt;
+	  else if (receipt->data == EBADF)
+	    bad_fd_p = true;
+	  else
+	    {
+	      /* kqueue does not support this kind of file (e.g., some
+		 character devices).  Treat it as always ready.  */
+	      FD_SET (receipt->ident,
+		      (receipt->filter == EVFILT_READ
+		       ? &ready_rfds : &ready_wfds));
+	      nready++;
+	    }
+	}
+    }
+
+  if (bad_fd_p)
+    {
+      r = -1;
+      saved_errno = EBADF;
+    }
+  else if (nready > 0 && nregistered == 0)
+    r = 0;
+  else
+    {
+      r = kevent (kq, NULL, 0, events, max (nregistered, 1),
+		  nready > 0 ? &zero : timeout);
+      saved_errno = errno;
+    }
+
+  for (i = 0; i < r; i++)
+    {
+      struct kevent *event = &events[i];
+      fd_set *requested, *ready;
+
+      fd = event->ident;
+      if (event->filter == EVFILT_READ)
+	requested = rfds, ready = &ready_rfds;
+      else if (event->filter == EVFILT_WRITE)
+	requested = wfds, ready = &ready_wfds;
+      else
+	continue;
+
+      /* Ignore anything left over from an earlier call.  An event
+	 with EV_ERROR set also counts as ready, so that the caller
+	 finds the error on the subsequent I/O.  */
+      if (fd < nfds && requested && FD_ISSET (fd, requested)
+	  && !FD_ISSET (fd, ready))
+	{
+	  FD_SET (fd, ready);
+	  nready++;
+	}
+    }
+
+  if (nregistered > 0)
+    {
+      for (i = 0; i < nregistered; i++)
+	changes[i].flags = EV_DELETE | EV_RECEIPT;
+      /* Receipts for file descriptors closed in the meantime report
+	 ENOENT or EBADF; there is nothing to do about them.  */
+      mac_kqueue_apply_changes (kq, changes, nregistered);
+    }
+
+  if (r < 0)
+    errno = saved_errno;
+  else
+    {
+      r = nready;
+      if (rfds)
+	*rfds = ready_rfds;
+      if (wfds)
+	*wfds = ready_wfds;
+      if (efds)
+	FD_ZERO (efds);
+    }
+
+ out:
+  if (changes != stack_kevents)
+    free (changes);
+
+  return r;
 }
 
 
