@@ -487,6 +487,11 @@ extern bool mac_end_scale_mismatch_detection (struct frame *);
 extern void mac_clear_area (struct frame *, int, int, int, int);
 extern CGImageRef mac_create_image_mask_from_bitmap_data (const char *,
 							  int, int);
+/* Create a CGImage from WIDTH x HEIGHT ARGB32 pixels (alpha in the
+   high byte).  PIXELS stays owned by the caller; the result holds a
+   premultiplied copy.  */
+extern CGImageRef mac_create_cg_image_from_argb32 (int width, int height,
+						   const unsigned int *pixels);
 extern void mac_invert_flash_rectangles (struct frame *);
 extern GC mac_create_gc (unsigned long, XGCValues *);
 #if DRAWING_USE_GCD

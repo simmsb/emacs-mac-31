@@ -2142,27 +2142,42 @@ prepare_image_for_display (struct frame *f, struct image *img)
       unblock_input ();
     }
 #elif defined HAVE_MACGUI
-  if (!img->load_failed_p && img->cg_image == NULL)
+  if (!img->load_failed_p)
     {
-      /* Fill in the background/background_transparent field while we
-	 have img->pixmap->data/img->mask->data.  */
-      IMAGE_BACKGROUND (img, f, img->pixmap);
-      IMAGE_BACKGROUND_TRANSPARENT (img, f, img->mask);
-      img->cg_image = mac_create_cg_image_from_image (f, img);
+      /* Canvas pixels land in the pixmap only when the refresh counter
+	 changes.  Do that before building cg_image, which would
+	 otherwise snapshot an empty buffer and then never see updates.
+	 Drawing uses cg_image, not the pixmap.  */
+      if (img->refresh
+	  && EQ (image_spec_value (img->spec, QCtype, NULL), Qcanvas)
+	  && img->refresh != ((struct canvas *) XFIXNUMPTR (img->lisp_data))->refresh)
+	canvas_prepare_for_display (f, img);
+
       if (img->cg_image == NULL)
 	{
-	  img->load_failed_p = 1;
-	  img->type->free_img (f, img);
+	  /* Fill in the background/background_transparent field while we
+	     have img->pixmap->data/img->mask->data.  */
+	  IMAGE_BACKGROUND (img, f, img->pixmap);
+	  IMAGE_BACKGROUND_TRANSPARENT (img, f, img->mask);
+	  img->cg_image = mac_create_cg_image_from_image (f, img);
+	  if (img->cg_image == NULL)
+	    {
+	      img->load_failed_p = 1;
+	      img->type->free_img (f, img);
+	    }
 	}
     }
 #endif
 
+#if !defined HAVE_MACGUI
   /* Update image pixmap from canvas pixel buffer if refresh counter has
-     been updated.  For canvases the refresh counter is always >= 1.  */
+     been updated.  For canvases the refresh counter is always >= 1.
+     The Mac port does this above, before cg_image is created.  */
   if (img->refresh
       && EQ (image_spec_value (img->spec, QCtype, NULL), Qcanvas)
       && img->refresh != ((struct canvas *) XFIXNUMPTR (img->lisp_data))->refresh)
     canvas_prepare_for_display (f, img);
+#endif
 }
 
 
@@ -7230,6 +7245,39 @@ canvas_prepare_for_display (struct frame *f, struct image *img)
   for (int y = 0; y < height; ++y)
     for (int x = 0; x < width; ++x)
       PUT_PIXEL (img->pixmap, x, y, src[y * width + x]);
+#elif defined HAVE_MACGUI
+  /* Mac port draws img->cg_image.  Keep a straight-ARGB pixmap for
+     metrics and pixel readers, and rebuild the CGImage (premultiplied)
+     from the canvas buffer.  An earlier display may have donated
+     pixmap->data to a CGDataProvider, so recreate the buffer then.  */
+  if (img->pixmap == NO_PIXMAP
+      || img->pixmap->data == NULL
+      || img->pixmap->width != width
+      || img->pixmap->height != height
+      || img->pixmap->bits_per_pixel != 32)
+    {
+      if (img->pixmap)
+	image_free_pix_container (f, img->pixmap);
+      img->pixmap = image_create_pix_container (width, height, 0);
+    }
+  if (img->pixmap->bytes_per_line == 4 * width)
+    memcpy (img->pixmap->data, src, (size_t) 4 * width * height);
+  else
+    for (int y = 0; y < height; ++y)
+      memcpy (img->pixmap->data + y * img->pixmap->bytes_per_line,
+	      src + y * width, 4 * width);
+  {
+    CGImageRef cg_image
+      = mac_create_cg_image_from_argb32 (width, height,
+					 (const unsigned int *) src);
+
+    if (cg_image)
+      {
+	if (img->cg_image)
+	  CGImageRelease (img->cg_image);
+	img->cg_image = cg_image;
+      }
+  }
 #else
   /* Platform independent canvas reloading.  Less efficient, since it
      recreates images and pixmaps.  */

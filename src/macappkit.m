@@ -5952,6 +5952,80 @@ mac_frame_restack (struct frame *f1, struct frame *f2, bool above_flag)
 			   View and Drawing
  ************************************************************************/
 
+/* Free a pixel buffer handed to CGDataProviderCreateWithData.  */
+
+static void
+mac_argb32_data_provider_release (void *info, const void *data, size_t size)
+{
+  xfree ((void *) data);
+}
+
+/* Create a CGImage from straight ARGB32 pixels.  Canvas images use
+   this layout on every platform: 0xAARRGGBB in host order.  Core
+   Graphics draws premultiplied alpha, so copy and premultiply here.
+   The returned image owns that copy.  */
+
+CGImageRef
+mac_create_cg_image_from_argb32 (int width, int height,
+				 const unsigned int *pixels)
+{
+  ptrdiff_t npixels, i;
+  unsigned int *data;
+  CGDataProviderRef provider;
+  CGImageRef image;
+
+  if (width <= 0 || height <= 0 || pixels == NULL)
+    return NULL;
+
+  npixels = (ptrdiff_t) width * height;
+  data = xmalloc (npixels * sizeof *data);
+  for (i = 0; i < npixels; i++)
+    {
+      unsigned int c = pixels[i];
+      unsigned int a = c >> 24;
+
+      if (a == 0)
+	data[i] = 0;
+      else if (a == 0xff)
+	data[i] = c;
+      else
+	{
+	  unsigned int r = (((c >> 16) & 0xff) * a + 0x7f) / 255;
+	  unsigned int g = (((c >> 8) & 0xff) * a + 0x7f) / 255;
+	  unsigned int b = ((c & 0xff) * a + 0x7f) / 255;
+
+	  data[i] = (a << 24) | (r << 16) | (g << 8) | b;
+	}
+    }
+
+  block_input ();
+  provider = CGDataProviderCreateWithData (NULL, data,
+					   (size_t) npixels * sizeof *data,
+					   mac_argb32_data_provider_release);
+  if (provider == NULL)
+    {
+      unblock_input ();
+      xfree (data);
+      return NULL;
+    }
+  /* Host-order 0xAARRGGBB matches kCGImageAlphaPremultipliedFirst
+     together with kCGBitmapByteOrder32Host (BGRA in memory on
+     little-endian).  */
+  image = CGImageCreate (width, height, 8, 32, width * 4,
+			 mac_cg_color_space_rgb,
+			 (kCGImageAlphaPremultipliedFirst
+			  | kCGBitmapByteOrder32Host),
+			 provider, NULL, 0, kCGRenderingIntentDefault);
+  /* Releases DATA via the provider callback when IMAGE could not be
+     created, and otherwise transfers that duty to IMAGE.  */
+  CGDataProviderRelease (provider);
+  unblock_input ();
+
+  return image;
+}
+
+
+
 /* Array of Carbon key events that are deferred during the execution
    of AppleScript.  NULL if not executing AppleScript.  */
 static CFMutableArrayRef deferred_key_events;
