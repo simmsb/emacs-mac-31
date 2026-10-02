@@ -1565,7 +1565,7 @@ w32_draw_glyphless_glyph_string_foreground (struct glyph_string *s)
 	}
       else if (glyph->u.glyphless.method == GLYPHLESS_DISPLAY_HEX_CODE)
 	{
-	  sprintf ((char *) buf, "%0*X",
+	  sprintf (buf, "%0*X",
 		   glyph->u.glyphless.ch < 0x10000 ? 4 : 6,
 		   (unsigned int) glyph->u.glyphless.ch & 0xffffff);
 	  str = buf;
@@ -3161,6 +3161,16 @@ w32_scroll_run (struct window *w, struct run *run)
 	height = bottom_y - from_y;
       else
 	height = run->height;
+
+      /* Don't draw over the display parts above if destination is off
+         the top of the current window.  */
+      if (to_y < y)
+	{
+	  int d = y - to_y;
+	  height -= d;
+	  to_y += d;
+	  from_y += d;
+	}
 
       if (w32_disable_double_buffering)
 	expect_dirty = CreateRectRgn (x, y + height, x + width, bottom_y);

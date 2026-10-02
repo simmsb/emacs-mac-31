@@ -255,10 +255,23 @@
   :group 'editing
   :version "31.1")
 
+(defun markdown-ts--custom-set (symbol value &optional buffer-local)
+  "Set SYMBOL to VALUE, as the `:set' function of display options.
+If BUFFER-LOCAL is non-nil, set it in the current buffer and update the
+display there."
+  (if (not buffer-local)
+      (set-default symbol value)
+    (set-local symbol value)
+    (when (derived-mode-p 'markdown-ts-mode)
+      (pcase symbol
+        ('markdown-ts-hide-markup (markdown-ts--set-hide-markup value))
+        ('markdown-ts-inline-images (markdown-ts--set-inline-images value))))))
+
 (defcustom markdown-ts-hide-markup nil
   "Non-nil means hide Markdown markup delimiters in this buffer."
   :type 'boolean
   :local t
+  :set #'markdown-ts--custom-set
   :safe #'booleanp
   :version "31.1"
   :package-version "1.0")
@@ -291,6 +304,7 @@ use that string instead."
   "Non-nil means display inline images below image links."
   :type 'boolean
   :local t
+  :set #'markdown-ts--custom-set
   :safe #'booleanp
   :version "31.1"
   :package-version "1.0")
@@ -886,6 +900,13 @@ OVERRIDE, START, and END are passed through to
 
 (defvar url-mail-command) ; url/url-vars.el
 
+(defun markdown-ts--unbracket-destination (url)
+  "Return URL without CommonMark's optional `<...>' wrapper."
+  ;; Only when both delimiters are there, so `[a](foo>)' is left alone.
+  (if (and (string-prefix-p "<" url) (string-suffix-p ">" url))
+      (substring url 1 -1)
+    url))
+
 (defun markdown-ts--make-link-button (beg end url)
   "Make the region from BEG to END a clickable button for URL.
 For mailto: URIs, use `url-mail-command'.  For other schemes
@@ -900,7 +921,8 @@ list with a single `markdown-ts-link', clobbering an enclosing
 heading face."
   ;; NOTE: URI scheme and host name are case-insensitive per RFC 3986
   ;; and RFC 7230.
-  (let ((case-fold-search nil))
+  (let ((url (markdown-ts--unbracket-destination url))
+        (case-fold-search nil))
     (make-text-button beg end
                       'action (lambda (_button)
                                 (cond
@@ -1715,7 +1737,8 @@ Remote images are controlled by
                ;; with the folded display.
                (not (markdown-ts--outline-invisible-p node-start)))
       (let* ((dest (treesit-search-subtree node "\\`link_destination\\'"))
-             (url (and dest (treesit-node-text dest t)))
+             (url (and dest (markdown-ts--unbracket-destination
+                             (treesit-node-text dest t))))
              (remotep (and url (string-match-p "\\`https?://" url)))
              (displayable
               (when url
@@ -5142,10 +5165,10 @@ commands in a code-block context."
 These override keys in `markdown-ts-mode-map' to support executing their
 commands in a table context."
   :menu nil
-  "<return>"    #'markdown-ts-table-next-row
+  "RET"         #'markdown-ts-table-next-row
   "S-<return>"  #'markdown-ts-table-previous-row
   "M-RET"       #'markdown-ts-table-insert-row-below
-  "<tab>"       #'markdown-ts-table-next-cell
+  "TAB"         #'markdown-ts-table-next-cell
   "<backtab>"   #'markdown-ts-table-previous-cell
   "M-<up>"      #'markdown-ts-table-move-row-up
   "M-<down>"    #'markdown-ts-table-move-row-down
@@ -5372,21 +5395,27 @@ NOTE: Call this function only when the treesit `markdown' and
   ;; Do not enable `jit-lock-mode' in indirect buffers such as the one
   ;; we use for code block commands.
   (unless (buffer-base-buffer)
-    (jit-lock-register #'markdown-ts--fontify-bare-uri))
+    (jit-lock-register #'markdown-ts--fontify-bare-uri)))
 
-  (unless markdown-ts--set-up-inline
-    ;; Order matters: `markdown-ts--set-hide-markup' calls `font-lock-flush'
-    ;; (only meaningful once `treesit-major-mode-setup' has wired up
-    ;; font-lock), and `markdown-ts-default-folding' calls outline
-    ;; commands that rely on `outline-search-function', which
-    ;; `treesit-major-mode-setup' installs from `treesit-outline-predicate'.
+(defun markdown-ts--apply-settings ()
+  "Apply settings that file-local or directory-local variables may set.
+Called from the mode's `:after-hook', which runs after local variables
+are applied, so their values take effect."
+  (when (and (derived-mode-p 'markdown-ts-mode)
+             (not markdown-ts--set-up-inline))
+    ;; These rely on font-lock and `outline-search-function', which
+    ;; `treesit-major-mode-setup' has already set up.
     (markdown-ts--set-hide-markup markdown-ts-hide-markup)
+    (markdown-ts--set-inline-images markdown-ts-inline-images)
     ;; Respect the user's default outline folding.
     (pcase markdown-ts-default-folding
       ('show-all (ignore))
       ('fold-all (outline-hide-sublevels 1))
       ('fold-headings (outline-show-all)
-                      (outline-hide-region-body (point-min) (point-max))))))
+                      (outline-hide-region-body (point-min) (point-max))))
+    ;; `outline-minor-mode' applied this before local variables were set.
+    (when outline-default-state
+      (outline-apply-default-state))))
 
 (defun markdown-ts-mode-install-parsers (arg)
   "Install `markdown-ts-mode' tree-sitter language parsers.
@@ -5435,6 +5464,7 @@ With a prefix argument, it can also install optional parsers"
 (define-derived-mode markdown-ts-mode text-mode "Markdown"
   "Major mode for editing Markdown using tree-sitter grammar.
 NOTE: See `markdown-ts--set-up-inline'."
+  :after-hook (markdown-ts--apply-settings)
   (markdown-ts-mode--initialize))
 
 (derived-mode-add-parents 'markdown-ts-mode '(markdown-mode))
@@ -5446,8 +5476,9 @@ NOTE: See `markdown-ts--set-up-inline'."
   nil ; Intentionally left blank.
   "Markdown View"
   "Major mode for read-only viewing Markdown using tree-sitter grammar."
-  ;; NOTE: `markdown-ts-mode' is manually added as a parent to avoid
+  ;; `markdown-ts-mode' is manually added as a parent to avoid
   ;; invoking its initialization before we set override variables.
+  :after-hook (markdown-ts--apply-settings)
   (setq-local markdown-ts-menu-bar-show nil)
   (setq-local markdown-ts-hide-markup t)
   (setq-local markdown-ts-inline-images t)
