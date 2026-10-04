@@ -544,7 +544,7 @@ extern void cleanup_all_suspended_apple_events (void);
 extern void mac_menu_set_in_use (bool);
 extern Lisp_Object mac_popup_dialog (struct frame *, Lisp_Object, Lisp_Object);
 extern bool name_is_separator (const char *);
-extern void mac_fill_menubar (widget_value *, bool);
+extern bool mac_fill_menubar (widget_value *, bool);
 extern int create_and_show_popup_menu (struct frame *, widget_value *,
 				       int, int, bool);
 extern int create_and_show_dialog (struct frame *, widget_value *);

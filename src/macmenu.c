@@ -92,6 +92,24 @@ If FRAME is nil or not given, use the selected frame.  */)
 }
 
 
+/* Return true when A and B are the same menu-bar slot.
+   Key-equivalent and prefixed names are newly allocated strings on
+   every rebuild, so compare strings by contents.  Other slots are
+   symbols, keymaps, or t/nil and must be identical objects.  This
+   must not allocate or GC: the previous items live only in an
+   unprotected stack copy.  */
+
+static bool
+menu_bar_item_equal (Lisp_Object a, Lisp_Object b)
+{
+  if (EQ (a, b))
+    return true;
+  if (!STRINGP (a) || !STRINGP (b))
+    return false;
+  return SBYTES (a) == SBYTES (b)
+    && memcmp (SDATA (a), SDATA (b), SBYTES (a)) == 0;
+}
+
 /* Set the contents of the menubar widgets of frame F.  */
 
 void
@@ -116,7 +134,14 @@ set_frame_menubar (struct frame *f, bool deep_p)
 
   bool skip_hooks = false;
 
-  if (mac_operating_system_version.major >= 26 && !deep_p)
+  /* On macOS 26 the menu bar is tracked by AppKit, so a shallow update
+     used to be promoted to a full rebuild to keep items ready for the
+     click.  That made every mode-line redisplay walk every submenu.
+     Submenus are filled from menuNeedsUpdate: instead.  With other
+     Lisp threads running, that callback cannot enter Lisp, so keep
+     rebuilding here.  */
+  if (mac_operating_system_version.major >= 26 && !deep_p
+      && all_threads->next_thread != NULL)
     {
       deep_p = true;
       skip_hooks = true;
@@ -235,10 +260,12 @@ set_frame_menubar (struct frame *f, bool deep_p)
       /* If there has been no change in the Lisp-level contents
 	 of the menu bar, skip redisplaying it.  Just exit.  */
 
-      /* Compare the new menu items with the ones computed last time.  */
+      /* Compare the new menu items with the ones computed last time.
+	 Key-equivalent strings are rebuilt on every update, so compare
+	 those by contents.  EQ never succeeds for them.  */
       for (i = 0; i < previous_menu_items_used; i++)
 	if (menu_items_used == i
-	    || (!EQ (previous_items[i], AREF (menu_items, i))))
+	    || !menu_bar_item_equal (previous_items[i], AREF (menu_items, i)))
 	  break;
       if (i == menu_items_used && i == previous_menu_items_used && i != 0)
 	{
@@ -305,10 +332,8 @@ set_frame_menubar (struct frame *f, bool deep_p)
 	  prev_wv = wv;
 	}
 
-      /* Forget what we thought we knew about what is in the
-	 detailed contents of the menu bar menus.
-	 Changing the top level always destroys the contents.  */
-      f->menu_bar_items_used = 0;
+      /* Detailed contents stay installed until the top-level titles
+	 change.  mac_fill_menubar reports that case.  */
     }
 
   /* Create or update the menu bar widget.  */
@@ -318,7 +343,9 @@ set_frame_menubar (struct frame *f, bool deep_p)
   /* Non-null value to indicate menubar has already been "created".  */
   f->output_data.mac->menubar_widget = 1;
 
-  mac_fill_menubar (first_wv->contents, deep_p);
+  /* True when the installed submenus no longer match menu_bar_vector.  */
+  if (mac_fill_menubar (first_wv->contents, deep_p))
+    f->menu_bar_items_used = 0;
 
   free_menubar_widget_value_tree (first_wv);
 

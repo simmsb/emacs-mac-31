@@ -125,6 +125,13 @@ static void mac_draw_queue_sync(void);
 static bool mac_select_allow_lisp_evaluation;
 #endif
 
+/* Nesting of mac_within_lisp.  menuNeedsUpdate: must not enter Lisp
+   again while a callback is already running.  */
+static int mac_within_lisp_depth;
+
+/* True while the menu bar's NSMenus are being rebuilt.  */
+static bool mac_menubar_update_in_progress;
+
 @implementation NSData (Emacs)
 
 /* Return a unibyte Lisp string.  */
@@ -11386,6 +11393,43 @@ static NSString *localizedMenuTitleForEdit, *localizedMenuTitleForHelp, *localiz
 
 @implementation EmacsController (Menu)
 
+/* Fill MENU's siblings from Lisp before AppKit displays it.
+
+   On macOS 26 the menu bar is tracked here, on the GUI thread, and the
+   click can no longer be deferred until Lisp has built the items.
+   Redisplay only installs the top-level titles; this callback builds
+   the submenus once, when one of them is about to open.  */
+
+- (void)menuNeedsUpdate:(NSMenu *)menu
+{
+  struct frame *f;
+
+  if (mac_menubar_update_in_progress || mac_within_lisp_depth > 0)
+    return;
+  if (popup_activated ())
+    return;
+  if (mac_operating_system_version.major < 26)
+    return;
+#if MAC_SELECT_ALLOW_LISP_EVALUATION
+  if (!mac_select_allow_lisp_evaluation)
+    return;
+#else
+  return;
+#endif
+  if (menu.supermenu != [NSApp mainMenu])
+    return;
+
+  f = SELECTED_FRAME ();
+  if (!FRAME_LIVE_P (f) || !FRAME_MAC_P (f))
+    return;
+
+  mac_menubar_update_in_progress = true;
+  mac_within_lisp (^{
+      set_frame_menubar (f, true);
+    });
+  mac_menubar_update_in_progress = false;
+}
+
 - (void)menu:(NSMenu *)menu willHighlightItem:(NSMenuItem *)item
 {
   if (!popup_activated ())
@@ -11736,80 +11780,135 @@ init_menu_bar (void)
 						    appKitBundle, NULL));
 }
 
+/* Localized menu-bar title for NAME, matching AppKit's menu names.  */
+
+static NSString *
+mac_localized_menubar_title (const char *name)
+{
+  NSString *title = CFBridgingRelease (CFStringCreateWithCString
+				       (NULL, name,
+					kCFStringEncodingMacRoman));
+
+  /* The title of the Help menu needs to be localized in order for
+     Spotlight for Help to be installed on Mac OS X 10.5.  */
+  if ([title isEqualToString:@"Help"])
+    title = localizedMenuTitleForHelp;
+  /* To make Input Manager add "Special Characters..." to the Edit
+     menu, we have to localize the menu title.  */
+  else if ([title isEqualToString:@"Edit"])
+    title = localizedMenuTitleForEdit;
+  /* Localize the Window menu for consistency with AppKit.  */
+  else if ([title isEqualToString:@"Window"])
+    title = localizedMenuTitleForWindow;
+
+  return title;
+}
+
+static bool
+mac_menubar_titles_match (NSMenu *mainMenu, widget_value *first_wv)
+{
+  NSInteger index = 1, nitems = [mainMenu numberOfItems];
+
+  for (widget_value *wv = first_wv; wv != NULL; wv = wv->next, index++)
+    {
+      NSString *title = mac_localized_menubar_title (wv->name);
+      NSMenu *submenu;
+
+      if (index >= nitems)
+	return false;
+      submenu = [mainMenu itemAtIndex:index].submenu;
+      if (!(submenu && [title isEqualToString:submenu.title]))
+	return false;
+    }
+
+  return index == nitems;
+}
+
 /* Fill menu bar with the items defined by FIRST_WV.  If DEEP_P,
    consider the entire menu trees we supply, rather than just the menu
-   bar item names.  */
+   bar item names.
 
-void
+   Value is true when the previously installed submenu contents were
+   discarded, so the frame's menu_bar_vector no longer matches them.  */
+
+bool
 mac_fill_menubar (widget_value *first_wv, bool deep_p)
 {
+  bool __block discarded = false;
+
   mac_within_gui (^{
-      NSMenu *newMenu, *mainMenu = [NSApp mainMenu], *helpMenu, *windowMenu = nil;
-      NSInteger index = 1, nitems = [mainMenu numberOfItems];
-      bool needs_update_p = deep_p;
+      NSMenu *mainMenu = [NSApp mainMenu];
+      NSMenu *helpMenu = nil, *windowMenu = nil;
+      bool was_in_progress = mac_menubar_update_in_progress;
 
-      newMenu = [[EmacsMenu alloc] init];
-      [newMenu setAutoenablesItems:NO];
+      mac_menubar_update_in_progress = true;
 
-      for (widget_value *wv = first_wv; wv != NULL; wv = wv->next, index++)
+      if (mac_menubar_titles_match (mainMenu, first_wv))
 	{
-	  NSString *title = CFBridgingRelease (CFStringCreateWithCString
-					       (NULL, wv->name,
-						kCFStringEncodingMacRoman));
-	  NSMenu *submenu;
+	  NSInteger index = 1;
 
-	  /* The title of the Help menu needs to be localized in order
-	     for Spotlight for Help to be installed on Mac OS X
-	     10.5.  */
-	  if ([title isEqualToString:@"Help"])
-	    title = localizedMenuTitleForHelp;
-
-          /* To make Input Manager add "Special Characters..." to the
-             "Edit" menu, we have to localize the menu title. */
-	  else if ([title isEqualToString:@"Edit"])
-	    title = localizedMenuTitleForEdit;
-
-          /* Localize Window Menu for consistency with AppKit provided
-             menu items. */
-	  else if ([title isEqualToString:@"Window"])
-	    title = localizedMenuTitleForWindow;
-
-
-	  if (!needs_update_p)
+	  for (widget_value *wv = first_wv; wv != NULL; wv = wv->next, index++)
 	    {
-	      if (index >= nitems)
-		needs_update_p = true;
-	      else
+	      NSString *title = mac_localized_menubar_title (wv->name);
+	      NSMenu *submenu = [mainMenu itemAtIndex:index].submenu;
+
+	      if (title == localizedMenuTitleForHelp)
+		helpMenu = submenu;
+	      else if (title == localizedMenuTitleForWindow)
+		windowMenu = submenu;
+
+	      if (deep_p)
 		{
-		  submenu = [mainMenu itemAtIndex:index].submenu;
-		  if (!(submenu && [title isEqualToString:submenu.title]))
-		    needs_update_p = true;
+		  [submenu removeAllItems];
+		  if (wv->contents)
+		    [submenu fillWithWidgetValue:wv->contents];
 		}
+	      /* Empty submenus are filled from menuNeedsUpdate:.  */
+	      if (mac_operating_system_version.major >= 26
+		  && submenu.delegate != emacsController)
+		[submenu setDelegate:emacsController];
 	    }
 
-	  submenu = [[NSMenu alloc] initWithTitle:title];
-	  [submenu setAutoenablesItems:NO];
-
-	  if (title == localizedMenuTitleForHelp)
-	    helpMenu = submenu;
-	  else if (title == localizedMenuTitleForWindow)
-	    windowMenu = submenu;
-
-	  [newMenu setSubmenu:submenu
-		      forItem:[newMenu addItemWithTitle:title action:nil
-					  keyEquivalent:@""]];
-
-	  if (wv->contents)
-	    [submenu fillWithWidgetValue:wv->contents];
-
-	  MRC_RELEASE (submenu);
+	  if (deep_p)
+	    {
+	      if (windowMenu && [windowMenu numberOfItems])
+		[NSApp setWindowsMenu:windowMenu];
+	      if (helpMenu)
+		[NSApp setHelpMenu:helpMenu];
+	    }
 	}
-
-      if (!needs_update_p && index != nitems)
-	needs_update_p = true;
-
-      if (needs_update_p)
+      else
 	{
+	  NSMenu *newMenu = [[EmacsMenu alloc] init];
+
+	  [newMenu setAutoenablesItems:NO];
+	  discarded = !deep_p;
+
+	  for (widget_value *wv = first_wv; wv != NULL; wv = wv->next)
+	    {
+	      NSString *title = mac_localized_menubar_title (wv->name);
+	      NSMenu *submenu = [[NSMenu alloc] initWithTitle:title];
+
+	      [submenu setAutoenablesItems:NO];
+
+	      if (title == localizedMenuTitleForHelp)
+		helpMenu = submenu;
+	      else if (title == localizedMenuTitleForWindow)
+		windowMenu = submenu;
+
+	      [newMenu setSubmenu:submenu
+			  forItem:[newMenu addItemWithTitle:title action:nil
+					      keyEquivalent:@""]];
+
+	      if (wv->contents)
+		[submenu fillWithWidgetValue:wv->contents];
+	      if (mac_operating_system_version.major >= 26
+		  && submenu.delegate != emacsController)
+		[submenu setDelegate:emacsController];
+
+	      MRC_RELEASE (submenu);
+	    }
+
 	  NSMenuItem *appleMenuItem = MRC_RETAIN ([mainMenu itemAtIndex:0]);
 
 	  [mainMenu removeItem:appleMenuItem];
@@ -11823,10 +11922,14 @@ mac_fill_menubar (widget_value *first_wv, bool deep_p)
 
 	  if (helpMenu)
 	    [NSApp setHelpMenu:helpMenu];
+
+	  MRC_RELEASE (newMenu);
 	}
 
-      MRC_RELEASE (newMenu);
+      mac_menubar_update_in_progress = was_in_progress;
     });
+
+  return discarded;
 }
 
 static void
@@ -17177,7 +17280,9 @@ mac_within_lisp (void (^block) (void))
 
   [mac_lisp_queue enqueue:block];
   dispatch_semaphore_signal (mac_lisp_semaphore);
+  mac_within_lisp_depth++;
   mac_gui_loop ();
+  mac_within_lisp_depth--;
 }
 
 /* Ask deferred execution of BLOCK to the Lisp thread.  This should be
