@@ -5641,7 +5641,9 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
 		  rarely_quit (++count);
 		  if (nread < 0)
 		    {
-		      if (errno != EINTR)
+		      if (errno != EINTR
+			  /* In case a process filter deletes the process.  */
+			  || wait_proc->infd < 0)
 			break;
 		    }
 		  else
@@ -5651,6 +5653,9 @@ wait_reading_process_output (intmax_t time_limit, int nsecs, int read_kbd,
 		      if (nread == 0)
 			break;
 		      read_some_bytes = true;
+		      /* In case a process filter deletes the process.  */
+		      if (wait_proc->infd < 0)
+			break;
 		    }
 		}
 	    }

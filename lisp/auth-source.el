@@ -271,14 +271,14 @@ the choices can get pretty complex."
                                  :tag "Mac OS internet Keychain"
                                  (const :format ""
                                         :value :macos-keychain-internet)
-                                 (choice :tag "Collection to use"
+                                 (choice :tag "Keychain to use"
                                          (string :tag "internet Keychain path")
                                          (const :tag "default" default)))
                                 (list
                                  :tag "Mac OS generic Keychain"
                                  (const :format ""
                                         :value :macos-keychain-generic)
-                                 (choice :tag "Collection to use"
+                                 (choice :tag "Keychain to use"
                                          (string :tag "generic Keychain path")
                                          (const :tag "default" default))))
                         (repeat :tag "Extra Parameters" :inline t
@@ -450,10 +450,8 @@ Supported backend types are `netrc', `plstore' and `json'."
      ((or (not (stringp source))
           (and auth-source-ignore-non-existing-file
                (not (file-exists-p source))))
-      (when auth-source-debug
-        (auth-source-do-warn
-         "auth-source-backend-parse: not existing file, ignoring spec: %S"
-         entry))
+      (auth-source-do-debug
+       "auth-source-backend-parse: not existing file, ignoring spec: %S" entry)
       (auth-source-backend
        :source ""
        :type 'ignore))
@@ -493,9 +491,11 @@ Supported backend types are `netrc', `plstore' and `json'."
                            ,(match-string 1 entry)))))
   ;; take 'macos-keychain-internet or generic and use it as a Mac OS
   ;; Keychain collection matching any user, host, and protocol
-  (when (eq entry 'macos-keychain-internet)
+  (when (or (eq entry 'macos-keychain-internet)
+            (and (stringp entry) (string= entry "macos-keychain-internet")))
     (setq entry '(:source (:macos-keychain-internet default))))
-  (when (eq entry 'macos-keychain-generic)
+  (when (or (eq entry 'macos-keychain-generic)
+            (and (stringp entry) (string= entry "macos-keychain-generic")))
     (setq entry '(:source (:macos-keychain-generic default))))
   (cond
    ;; the macOS Keychain
@@ -522,7 +522,13 @@ Supported backend types are `netrc', `plstore' and `json'."
        :source source
        :type keychain-type
        :search-function #'auth-source-macos-keychain-search
-       :create-function #'auth-source-macos-keychain-create)))))
+       :create-function #'auth-source-macos-keychain-create)))
+
+   (t (auth-source-do-debug
+       "auth-source-backend-parse: no macos keychain, ignoring spec: %S" entry)
+      (auth-source-backend
+       :source ""
+       :type 'ignore))))
 
 (add-hook 'auth-source-backend-parser-functions
           #'auth-source-backends-parser-macos-keychain)
@@ -564,7 +570,7 @@ Supported backend types are `netrc', `plstore' and `json'."
            :type 'secrets
            :search-function #'auth-source-secrets-search
            :create-function #'auth-source-secrets-create)
-        (auth-source-do-warn
+        (auth-source-do-debug
          "auth-source-backend-parse: no Secrets API, ignoring spec: %S" entry)
         (auth-source-backend
          :source ""
@@ -2080,13 +2086,13 @@ Here's an example that looks for the first item in the default
 generic macOS Keychain:
 
  (let ((auth-sources \\='(macos-keychain-generic)))
-    (auth-source-search :max 1)
+    (auth-source-search :max 1))
 
 Here's another that looks for the first item in the internet
 macOS Keychain collection whose label is `gnus':
 
  (let ((auth-sources \\='(macos-keychain-internet)))
-    (auth-source-search :max 1 :label \"gnus\")
+    (auth-source-search :max 1 :label \"gnus\"))
 
 And this one looks for the first item in the internet keychain
 entries for git.gnus.org:
@@ -2105,6 +2111,8 @@ entries for git.gnus.org:
          (max (or max 5000))     ; sanity check: default to stop at 5K
          (auth-source-ignored-keys
           (seq-union auth-source-ignored-keys '(:host :port)))
+         (auth-source-ignored-keys
+          (seq-difference auth-source-ignored-keys '(:label)))
          ;; Extract host, port and user from spec
          (hosts (plist-get spec :host))
          (hosts (if (consp hosts) hosts `(,hosts)))
@@ -2160,9 +2168,9 @@ entries for git.gnus.org:
                      collect var))
      'utf-8)))
 
-(cl-defun auth-source-macos-keychain-search-items (coll _type _max
+(cl-defun auth-source-macos-keychain-search-items (coll type _max
                                                         host port user
-                                                   &key label type
+                                                   &key label
                                                    &allow-other-keys)
   (let* ((keychain-generic (eq type 'macos-keychain-generic))
          (args `(,(if keychain-generic
@@ -2171,7 +2179,7 @@ entries for git.gnus.org:
                  "-g"))
          (ret (list :type type)))
     (when label
-      (setq args (append args (list "-l" label))))
+      (setq args (append args (cons "-l" label))))
     (when host
       (setq args (append args (list (if keychain-generic "-c" "-s") host))))
     (when user

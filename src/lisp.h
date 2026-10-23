@@ -286,8 +286,9 @@ DEFINE_GDB_SYMBOL_END (VALMASK)
    If a struct is always GC-aligned (either by the GC, or via
    allocation in a containing union that has GCALIGNED_UNION_MEMBER)
    and does not contain a GC-aligned struct or union, putting
-   GCALIGNED_STRUCT after its closing '}' can help the compiler
-   generate better code.  Also, such structs should be added to the
+   GCALIGNED_STRUCT after its closing '}', though not required for correctness,
+   can help the compiler generate better code on some platforms.
+   Also, as these structs might be GC allocated, they should be added to the
    emacs_align_type union in alloc.c.
 
    Although these macros are reasonably portable, they are not
@@ -2405,7 +2406,7 @@ struct Lisp_Obarray
 
   unsigned size_bits;  /* log2(size of buckets vector) */
   unsigned count;      /* number of symbols in obarray */
-};
+} GCALIGNED_STRUCT;
 
 INLINE bool
 OBARRAYP (Lisp_Object a)
@@ -2557,6 +2558,7 @@ typedef enum hash_table_weakness_t {
 /* The type of a hash table index, both for table indices and index
    (hash) indices.  It's signed and a subtype of ptrdiff_t.  */
 typedef int_least32_t hash_idx_t;
+#define HASH_IDX_MAX INT_LEAST32_MAX
 #define PRIdHASH_IDX PRIdLEAST32
 
 struct Lisp_Hash_Table
@@ -2644,6 +2646,10 @@ struct Lisp_Hash_Table
      collection --- at other times, it is NULL.  */
   struct Lisp_Hash_Table *next_weak;
 } GCALIGNED_STRUCT;
+
+/* struct Lisp_Hash_Table.index_bits is of type unsigned char;
+   make sure that's wide enough to store any bit width.  */
+static_assert (UINTMAX_WIDTH - 1 <= UCHAR_MAX);
 
 /* A specific Lisp_Object that is not a valid Lisp value.
    We need to be careful not to leak this value into machinery
@@ -4665,15 +4671,18 @@ extern void syms_of_alloc (void);
 extern struct buffer *allocate_buffer (void) ATTRIBUTE_RETURNS_NONNULL;
 extern int valid_lisp_object_p (Lisp_Object);
 
-void *hash_table_alloc_bytes (ptrdiff_t nbytes) ATTRIBUTE_MALLOC_SIZE ((1));
 void hash_table_free_bytes (void *p, ptrdiff_t nbytes);
+void *hash_table_alloc_bytes (ptrdiff_t nbytes)
+  ATTRIBUTE_MALLOC_SIZE ((1))
+  ATTRIBUTE_DEALLOC (hash_table_free_bytes, 1) ATTRIBUTE_RETURNS_NONNULL;
 
 /* Defined in gmalloc.c.  */
 #ifndef SYSTEM_MALLOC
 extern size_t __malloc_extra_blocks;
 #endif
 #if !HAVE_DECL_ALIGNED_ALLOC
-extern void *aligned_alloc (size_t, size_t) ATTRIBUTE_MALLOC_SIZE ((2));
+extern void *aligned_alloc (size_t, size_t)
+  ATTRIBUTE_MALLOC_SIZE ((2)) ATTRIBUTE_DEALLOC_FREE;
 #endif
 extern void malloc_enable_thread (void);
 
@@ -5286,7 +5295,8 @@ maybe_disable_address_randomization (int argc, char **argv)
 #endif
 extern int emacs_exec_file (char const *, char *const *, char *const *);
 extern void init_standard_fds (void);
-extern char *emacs_get_current_dir_name (void);
+extern char *emacs_get_current_dir_name (void)
+  ATTRIBUTE_MALLOC ATTRIBUTE_DEALLOC_FREE;
 extern int stuff_char (char c);
 extern void init_foreground_group (void);
 extern void sys_subshell (void);
@@ -5576,26 +5586,33 @@ extern char my_edata[];
 extern char my_endbss[];
 extern char *my_endbss_static;
 
+/* Defined in alloc.c.  */
+extern void xfree (void *);
 extern void *xmalloc (size_t)
-  ATTRIBUTE_MALLOC_SIZE ((1)) ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC_SIZE ((1))
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern void *xzalloc (size_t)
-  ATTRIBUTE_MALLOC_SIZE ((1)) ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC_SIZE ((1))
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern void *xcalloc (size_t, size_t)
-  ATTRIBUTE_MALLOC_SIZE ((1,2)) ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC_SIZE ((1,2))
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern void *xrealloc (void *, size_t)
   ATTRIBUTE_ALLOC_SIZE ((2)) ATTRIBUTE_RETURNS_NONNULL;
-extern void xfree (void *);
 extern void *xnmalloc (ptrdiff_t, ptrdiff_t)
-  ATTRIBUTE_MALLOC_SIZE ((1,2)) ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC_SIZE ((1,2))
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern void *xnrealloc (void *, ptrdiff_t, ptrdiff_t)
   ATTRIBUTE_ALLOC_SIZE ((2,3)) ATTRIBUTE_RETURNS_NONNULL;
 extern void *xpalloc (void *, ptrdiff_t *, ptrdiff_t, ptrdiff_t, ptrdiff_t)
   ATTRIBUTE_RETURNS_NONNULL;
 
 extern char *xstrdup (char const *)
-  ATTRIBUTE_MALLOC ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern char *xlispstrdup (Lisp_Object)
-  ATTRIBUTE_MALLOC ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 extern void dupstring (char **, char const *);
 
 /* Make DEST a copy of STRING's data.  Return a pointer to DEST's terminating
@@ -5660,7 +5677,8 @@ extern void init_system_name (void);
 enum MAX_ALLOCA { MAX_ALLOCA = 16 * 1024 };
 
 extern void *record_xmalloc (size_t)
-  ATTRIBUTE_ALLOC_SIZE ((1)) ATTRIBUTE_RETURNS_NONNULL;
+  ATTRIBUTE_MALLOC_SIZE ((1))
+  ATTRIBUTE_DEALLOC (xfree, 1) ATTRIBUTE_RETURNS_NONNULL;
 
 #define USE_SAFE_ALLOCA			\
   ptrdiff_t sa_avail = MAX_ALLOCA;	\

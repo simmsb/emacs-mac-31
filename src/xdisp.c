@@ -21919,6 +21919,18 @@ try_window_reusing_current_matrix (struct window *w)
 	 text.  Note that it.vpos == 0 if or if not there is a
          header-line; it's not the same as the MATRIX_ROW_VPOS!  */
       start_display (&it, w, new_start);
+
+      /* After skipping invisible text, we might reach the end position
+	 of the first row before displaying strings or a display-table
+	 entry belonging to that row.  This can happen, for example,
+	 when window-start is in invisible text that is immediately
+	 followed by an overlay string with an embedded newline Buffer
+	 positions cannot reliably identify a reusable row in that case,
+	 so we cannot use this method.  (Bug#82054).  */
+      if (IT_CHARPOS (it) > CHARPOS (start)
+	  && IT_CHARPOS (it) >= CHARPOS (start_row->end.pos))
+	return false;
+
       w->cursor.vpos = -1;
       last_text_row = last_reused_text_row = NULL;
 
@@ -29581,16 +29593,7 @@ decode_mode_spec (struct window *w, register int c, int field_width,
 	}
 
     case 'e':
-#if !defined SYSTEM_MALLOC
-      {
-	if (NILP (Vmemory_full))
-	  return "";
-	else
-	  return "!MEM FULL! ";
-      }
-#else
-      return "";
-#endif
+      return !NILP (Vmemory_full) ? "!MEM FULL! " : "";
 
     case 'F':
       /* %F displays the frame name.  */
@@ -39366,6 +39369,24 @@ with fonts that specify an UNDERLINE_POSITION relatively close to the
 baseline.  The default value is 1.  */);
   underline_minimum_offset = 1;
   DEFSYM (Qunderline_minimum_offset, "underline-minimum-offset");
+
+  DEFVAR_BOOL ("underline-line-scaling-flag",
+	       underline_line_scaling_flag,
+     doc: /* Non-nil means scale the underline line with text scaling.
+This can make underline more prominent with large scaling.  */);
+  underline_line_scaling_flag = false;
+
+  DEFVAR_BOOL ("overline-line-scaling-flag",
+	       overline_line_scaling_flag,
+     doc: /* Non-nil means scale the overline line with text scaling.
+This can make overline more prominent with large scaling.  */);
+  overline_line_scaling_flag = false;
+
+  DEFVAR_BOOL ("strike-through-line-scaling-flag",
+	       strike_through_line_scaling_flag,
+     doc: /* Non-nil means scale the strike-through line with text scaling.
+This can make strike-through more prominent with large scaling.  */);
+  strike_through_line_scaling_flag = false;
 
   DEFVAR_BOOL ("display-hourglass", display_hourglass_p,
 	       doc: /* Non-nil means show an hourglass pointer, when Emacs is busy.

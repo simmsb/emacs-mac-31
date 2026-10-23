@@ -1069,7 +1069,7 @@ Used in `tramp-make-tramp-file-name'.")
 Derived from `tramp-postfix-method-format'.")
 
 (defconst tramp-user-regexp
-  (rx (| (+ (not (any "/\\^$?*:;|[]{}()<>`'\"" blank)))
+  (rx (| (+ (not (any "/\\^$!#&?*:;,|[]{}()<>`'\"" blank control)))
 	 ;; Environment variable.
 	 (: "$" (+ (any "_" alnum)))))
   "Regexp matching user names.")
@@ -1653,6 +1653,17 @@ If nil, return `tramp-default-port'."
   (or (tramp-file-name-port vec)
       (tramp-get-method-parameter vec 'tramp-default-port)))
 
+(defsubst tramp-get-connection-local-criteria (vec)
+  "Get connection-local criteria for VEC."
+  (append
+   '(:application tramp)
+   (and-let* ((method (tramp-file-name-method vec)))
+     `(:protocol ,(substring-no-properties method)))
+   (and-let* ((user-domain (tramp-file-name-user-domain vec)))
+     `(:user ,(substring-no-properties user-domain)))
+   (and-let* ((host-port (tramp-file-name-host-port vec)))
+     `(:machine ,(substring-no-properties host-port)))))
+
 ;;;###tramp-autoload
 (defun tramp-file-name-unify (vec &optional localname)
   "Unify VEC by removing localname and hop from `tramp-file-name' structure.
@@ -1824,6 +1835,11 @@ This is HOST, if non-nil.  Otherwise, do a lookup in
 	result
       (propertize result 'tramp-default t))))
 
+(defvar tramp-allow-double-percent (not (eq system-type 'windows-nt))
+  "Whether a pattern \"%NAME%\" can be used in user or host names.
+It is not recommended to change this variable globally.  Instead, it
+should be set connection-local.")
+
 ;;;###tramp-autoload
 (defun tramp-dissect-file-name (name &optional nodefault)
   "Return a `tramp-file-name' structure of NAME, a remote file name.
@@ -1847,7 +1863,7 @@ default values are used."
 	    domain port v)
 	(when user
 	  (while (string-match (rx bos "$" (group (+ (any "_" alnum))) eos) user)
-	    (setq user (getenv (match-string 1 user))))
+	    (setq user (or (getenv (match-string 1 user)) "")))
 	  (when (string-match tramp-user-with-domain-regexp user)
 	    (setq domain (match-string 2 user)
 		  user (match-string 1 user))))
@@ -1877,11 +1893,10 @@ default values are used."
 	      (setq
 	       hop (tramp-format-spec hop (format-spec-make ?h host ?u user))))))
 
-	;; Return result.
-	(prog1
-	    (setq v (make-tramp-file-name
-		     :method method :user user :domain domain :host host
-		     :port port :localname localname :hop hop))
+	;; Return result.  Apply sanity checks.
+	(prog1 (setq v (make-tramp-file-name
+			:method method :user user :domain domain :host host
+			:port port :localname localname :hop hop))
 	  ;; The method must be known.
 	  (unless (or nodefault non-essential
 		      (string-equal method tramp-archive-method)
@@ -1891,7 +1906,37 @@ default values are used."
 	  ;; Only some methods from tramp-sh.el do support multi-hops.
 	  (unless (or (null hop) nodefault non-essential (tramp-multi-hop-p v))
 	    (tramp-user-error
-	     v "Method `%s' is not supported for multi-hops" method)))))))
+	     v "Method `%s' is not supported for multi-hops" method))
+	  (let (connection-local-variables-alist)
+	    (hack-connection-local-variables
+	     (tramp-get-connection-local-criteria v))
+	    (let ((allow-double-percent
+		   (alist-get
+		    'tramp-allow-double-percent
+		    connection-local-variables-alist
+		    tramp-allow-double-percent)))
+	      ;; User name could be invalid after expansion of
+	      ;; environment variables, or contain a literal
+	      ;; environment variable.
+	      (unless (tramp-string-empty-or-nil-p user)
+		(when (or (not (string-match-p tramp-user-regexp user))
+			  (string-match-p
+			   (rx "$") (tramp-file-name-user-domain v))
+			  (and (not allow-double-percent)
+			       (string-match-p
+				(rx "%" (* nonl) "%")
+				(tramp-file-name-user-domain v))))
+		  (tramp-user-error
+		   v "Not a valid user name: \"%s\""
+		   (tramp-file-name-user-domain v))))
+	      ;; Host name could contain a literal environment variable.
+	      (unless (tramp-string-empty-or-nil-p host)
+		(when (or (not (string-match-p tramp-host-regexp host))
+			  (string-match-p (rx "$") host)
+			  (and (not allow-double-percent)
+			       (string-match-p (rx "%" (* nonl) "%") host)))
+		  (tramp-user-error
+		   v "Not a valid host name: \"%s\"" host))))))))))
 
 ;; We cannot use the `declare' form for `tramp-suppress-trace' in
 ;; autoloaded functions, because the tramp-loaddefs.el generation
@@ -2105,17 +2150,6 @@ Return `tramp-cache-undefined' in case it doesn't exist."
 In case a second asynchronous communication has been started, it is different
 from the default one."
   (and (tramp-file-name-p vec) (get-process (tramp-get-connection-name vec))))
-
-(defsubst tramp-get-connection-local-criteria (vec)
-  "Get connection-local criteria for VEC."
-  (append
-   '(:application tramp)
-   (when (tramp-file-name-method vec)
-     `(:protocol ,(substring-no-properties (tramp-file-name-method vec))))
-   (when (tramp-file-name-user-domain vec)
-     `(:user ,(substring-no-properties (tramp-file-name-user-domain vec))))
-   (when (tramp-file-name-host-port vec)
-     `(:machine ,(substring-no-properties (tramp-file-name-host-port vec))))))
 
 (defun tramp-set-connection-local-variables (vec)
   "Set connection-local variables in the connection buffer used for VEC.
@@ -3864,14 +3898,9 @@ BODY is the backend specific code."
            ;; Tilde expansion shall be possible also for quoted localname.
 	   (when (string-prefix-p "~" (file-name-unquote localname))
 	     (setq localname (file-name-unquote localname)))
-	   ;; Use tilde for relative localname.  A simple check of
-	   ;; `file-name-absolute-p' for localname isn't sufficient;
-	   ;; localname could be "~user/..." with a (remote) user which
-	   ;; doesn't exist locally.
+	   ;; Use tilde for relative localname.
 	   (when (tramp-sh-file-name-handler-p v)
-	     (unless (or (string-prefix-p "~" localname)
-			 (tramp-run-real-handler
-			  #'file-name-absolute-p (list localname)))
+	     (unless (string-match-p (rx bos (any "/~")) localname)
 	       (setq localname (concat "~/" localname))))
 
 	   ;; This does tilde expansion.
@@ -3881,9 +3910,8 @@ BODY is the backend specific code."
 	   (when (and (not tramp-tolerate-tilde)
 		      (string-prefix-p "~" localname))
 	     (tramp-error v 'file-error "Cannot expand tilde in file `%s'" name))
-	   ;; Make it absolute.
-	   (unless
-	       (tramp-run-real-handler #'file-name-absolute-p (list localname))
+	   ;; Add leading "/" if needed.
+	   (unless (string-match-p (rx bos (any "/~")) localname)
 	     (setq localname (concat "/" localname)))
 	   ;; There might be a double slash, for example when "~/"
 	   ;; expands to "/".  Remove this.

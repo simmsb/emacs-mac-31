@@ -1822,7 +1822,6 @@ AS_IF([test $gl_gcc_warnings = no],
   nw="$nw -Wduplicated-branches"    # Too many false alarms
   nw="$nw -Wformat-overflow=2"      # False alarms due to GCC bug 110333
   nw="$nw -Woverlength-strings"     # Not a problem these days
-  nw="$nw -Wvla"                    # Emacs uses <vla.h>.
   nw="$nw -Winline"                 # OK to ignore 'inline'
   nw="$nw -Wstrict-overflow"        # OK to optimize assuming that
                                     # signed overflow has undefined behavior
@@ -6601,31 +6600,6 @@ case $opsys in
     emacs_broken_SIGIO=yes
     ;;
 
-  aix4-2)
-    dnl On AIX Emacs uses the gmalloc.c malloc implementation.  But given
-    dnl the way this system works, libc functions that return malloced
-    dnl memory use the libc malloc implementation. Calling xfree or
-    dnl xrealloc on the results of such functions results in a crash.
-    dnl
-    dnl One solution for this could be to define SYSTEM_MALLOC in configure,
-    dnl but that does not currently work on this system.
-    dnl
-    dnl It is possible to completely override the malloc implementation on
-    dnl AIX, but that involves putting the malloc functions in a shared
-    dnl library and setting the MALLOCTYPE environment variable to point to
-    dnl that shared library.
-    dnl
-    dnl Emacs currently calls xrealloc on the results of get_current_dir name,
-    dnl to avoid a crash just use the Emacs implementation for that function.
-    dnl
-    dnl FIXME We could change the AC_CHECK_FUNCS call near the start
-    dnl of this file, so that we do not check for get_current_dir_name
-    dnl on AIX.  But that might be fragile if something else ends
-    dnl up testing for get_current_dir_name as a dependency.
-    AC_DEFINE([BROKEN_GET_CURRENT_DIR_NAME], [1], [Define if
-      get_current_dir_name should not be used.])
-    ;;
-
   freebsd)
     dnl Circumvent a bug in FreeBSD.  In the following sequence of
     dnl writes/reads on a PTY, read(2) returns bogus data:
@@ -7651,17 +7625,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
-
-/* No code in Emacs #includes config.h twice, but some bits of code
-   intended to work with other packages as well (like gmalloc.c)
-   think they can include it as many times as they like.  */
-#ifndef EMACS_CONFIG_H
+/* This is for nt/inc/sys/socket.h, which behaves one way when 'configure'
+   is running tests and another way when Emacs is being built.  */
 #define EMACS_CONFIG_H
 ])dnl
 
 AH_BOTTOM([#include <conf_post.h>
-
-#endif /* EMACS_CONFIG_H */
 
 /*
 Local Variables:

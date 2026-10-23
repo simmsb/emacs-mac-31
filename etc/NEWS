@@ -95,6 +95,10 @@ commands invoked from the menu will operate on the right buffer.
 You can restore the previous behavior by removing
 'mode-line-window-select' from 'x-pre-popup-menu-hook'.
 
+---
+*** %e in the mode line now expands to a warning when memory is low.
+Previously this behavior had been inadvertently limited to MS-DOS.
+
 ** Minibuffer
 
 ---
@@ -131,8 +135,21 @@ of the terminal emulator:
   first code point in the sequence.  In this case, it might help to set
   'tty-display-emoji-force-wide' to nil.
 
+** Faces
+
+*** New face 'header-line-emphasis'.
+This corresponds to the face 'header-line-highlight' as
+'mode-line-emphasis' corresponds to 'mode-line-highlight'.
+
+*** Underline, overline, and strike-through can now be scaled with text.
+The thickness of the line of these face attributes can now optionally
+be scaled when the text is scaled.  This is by default off; you can use
+the new variables 'underline-line-scaling-flag',
+'overline-line-scaling-flag' and 'strike-through-line-scaling-flag' to
+control the scaling for each attribute.
+
 ---
-** Support for overline face attributes on text-only terminals.
+*** Support for overline face attributes on text-only terminals.
 Emacs now displays overlines on text-only terminals.  Terminal support
 for overline is determined based on the 'Smol' capability in the
 terminfo database.  For terminals where the terminfo database does not
@@ -171,6 +188,7 @@ for nearby fields.
 * Changes in Specialized Modes and Packages in Emacs 32.1
 
 ** Use-Package
+
 ---
 *** ':ensure t' installs the package only at run-time.
 In previous versions, it tried to install it more eagerly during
@@ -193,6 +211,14 @@ check out the repository to prepare a patch for the package maintainer.
 
 ---
 *** Messages from Ansible are now recognized.
+
+** Mml
+
+---
+*** mml can now generate unobtrusive signatures.
+These tend to stand out less when displayed in common receiving MUA than
+PGP/MIME signatures.  New command 'mml-secure-message-sign-unobtrusive',
+bound to 'C-c RET s u' in 'mml-mode-map'.
 
 ** Flymake
 
@@ -256,7 +282,7 @@ have a backend, and 'vc-follow-symlinks' is non-nil, the truename is
 used instead.  Previously, the truename was used unconditionally.
 
 +++
-*** New option 'vc-dir-simple-unmark-all-files'.
+*** New user option 'vc-dir-simple-unmark-all-files'.
 This inverts the meaning of a prefix argument to the existing 'U'
 ('vc-dir-unmark-all-files') command, which some users may find more
 intuitive.
@@ -354,6 +380,15 @@ Perl 5.44 allows to declare a signature like "sub subname (:$par)", see
 <https://perldoc.perl.org/5.44.0/perldelta#Named-Parameters-in-Signatures>.
 CPerl mode now recognizes this as a variable declaration.
 
+** Lisp mode
+
+---
+*** Improved accuracy of Common Lisp code parsing.
+Lisp mode will now correctly parse multiple escapes as part of symbols
+and will parse dispatch reader macros as expression prefixes.  It uses a
+new function 'lisp-mode-syntax-propertize' as the value of
+'syntax-propertize-function' in Lisp mode.
+
 ** Newsticker
 
 ---
@@ -402,7 +437,8 @@ than <blockquote> elements.  Now, they all have the same indent width.
 
 ** Dired
 
-*** The 'repeat-mode' key 'j' has been removed from 'dired-jump-map'.
+*** The 'repeat-mode' key 'j' has been removed from 'dired-jump-repeat-map'.
+'dired-jump-repeat-map' has been renamed from 'dired-jump-map'.
 
 ** Viper
 
@@ -424,6 +460,10 @@ output of the lines.
 ** Tramp
 
 +++
+*** New optional connection method "wslc".
+This connection method accesses WSL containers on MS-Windows.
+
++++
 *** Tramp is more strict now in expanding the tilde "~USER".
 If this isn't possible, an error is raised.  This happens often in test
 functions, which use example file names like "/ssh:host:~user/file.txt".
@@ -433,6 +473,36 @@ non-nil value.
 +++
 *** 'tramp-recompile-elpa' is marked obsolete.
 Use 'package-recompile' instead.
+
+** Browse URL
+
+---
+*** 'browse-url-chromium' and 'browse-url-chrome' can open new windows.
+These functions no longer ignore the browse-url-new-window-flag user
+option and the NEW-WINDOW optional argument.
+
+---
+*** Prefix arguments to several 'browse-url-browser-function' values fixed.
+Now, like with 'browse-url', a prefix argument to these commands inverts
+the meaning of 'browse-url-new-window-flag' instead of always meaning to
+use a new window.  (This was always how it was intended to work, there
+was a bug.)
+
+** Rcirc
+
+---
+*** Prefix argument to 'rcirc-browse-url' enhanced.
+Now, like with 'browse-url', a prefix argument to this command inverts
+the meaning of 'browse-url-new-window-flag' instead of always meaning to
+use a new window.
+
+** Desktop
+
+---
+*** Saving and restoring a session will now save and restore 'buffer-list'.
+This avoids losing the buffer history for each frame, and in particular,
+'M-n' and 'M-p' at the 'C-x b' prompt will now suggest recent buffers of
+the frame after restoring a session.
 
 
 * New Modes and Packages in Emacs 32.1
@@ -489,6 +559,28 @@ older '(HIGH LOW USEC PSEC)' form.
 
 
 * Lisp Changes in Emacs 32.1
+
+---
+** The regexp engine now matches in linear time.
+In practice, matching a regexp against a string of length N /usually/
+took a time proportional to N (i.e. linear), but with important and
+annoying exceptions, typically described as "pathological" cases,
+where the backtracking algorithm could degenerate to polynomial
+or even exponential time, typically leading to situations where Emacs
+appears frozen.
+With the new code, such "pathological" freezes due to regexp matching
+should be gone, because the time is /always/ (rather than "usually")
+linear.
+Admittedly, this is not quite true.  We know of the following exceptions:
+- The time can still be exponential in the presence of backreferences,
+  of course (theory says it can't be avoided).
+- The time can still be exponential in the presence of counted repetitions
+  (i.e. \{N,M\}) because we do not currently apply memoization for
+  regexps that use that.
+- The time can still be O(N^2) for a few corner cases, tho with a small
+  constant factor.  [ This is because of a conflict between two
+  optimizations: one brings the constant factor down significantly,
+  the other makes the matching algorithm linear-time.  ]
 
 +++
 ** Support for canvas image objects.
