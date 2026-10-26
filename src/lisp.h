@@ -4446,7 +4446,7 @@ extern AVOID buffer_memory_full (ptrdiff_t);
 extern bool survives_gc_p (Lisp_Object);
 extern void mark_object (Lisp_Object);
 extern void mark_objects (Lisp_Object *, ptrdiff_t);
-#if defined REL_ALLOC && !defined SYSTEM_MALLOC
+#ifdef GMALLOC_REL_ALLOC
 extern void refill_memory_reserve (void);
 #endif
 extern void mark_c_stack (char const *, char const *);
@@ -4677,16 +4677,14 @@ void *hash_table_alloc_bytes (ptrdiff_t nbytes)
   ATTRIBUTE_DEALLOC (hash_table_free_bytes, 1) ATTRIBUTE_RETURNS_NONNULL;
 
 /* Defined in gmalloc.c.  */
-#ifndef SYSTEM_MALLOC
+#ifdef GMALLOC_REL_ALLOC
 extern size_t __malloc_extra_blocks;
-#endif
-#if !HAVE_DECL_ALIGNED_ALLOC
 extern void *aligned_alloc (size_t, size_t)
   ATTRIBUTE_MALLOC_SIZE ((2)) ATTRIBUTE_DEALLOC_FREE;
-#endif
 extern void malloc_enable_thread (void);
+#endif
 
-#ifdef REL_ALLOC
+#ifdef GMALLOC_REL_ALLOC
 /* Defined in ralloc.c.  */
 extern void *r_alloc (void **, size_t) ATTRIBUTE_ALLOC_SIZE ((2));
 extern void r_alloc_free (void **);
