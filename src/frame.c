@@ -4251,6 +4251,9 @@ enum x_frame_parameter
   NS_APPEARANCE,
   NS_TRANSPARENT_TITLEBAR,
 #endif
+#ifdef HAVE_MACGUI
+  MAC_TRANSPARENT_TITLEBAR,
+#endif
   DISPLAY,
   LEFT,
   TOP,
