@@ -5276,6 +5276,18 @@ frame_parm_handler mac_frame_parm_handlers[] =
      ns-transparent-titlebar
    */
   mac_set_transparent_titlebar,
+  NULL, /* display */
+  NULL, /* left */
+  NULL, /* top */
+  NULL, /* width */
+  NULL, /* height */
+  NULL, /* parent-id */
+  NULL, /* window-id */
+  NULL, /* outer-window-id */
+  NULL, /* explicit-name */
+  NULL, /* modeline */
+  NULL, /* buffer-list */
+  NULL, /* buried-buffer-list */
 };
 
 void
